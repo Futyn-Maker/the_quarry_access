@@ -1,0 +1,18 @@
+# Build output
+build/
+out/
+*.pdb
+*.ilk
+*.obj
+
+# IDE / tooling
+.vs/
+.vscode/
+.cache/
+CMakeUserPresets.json
+
+# Local artifacts
+*.log
+dist/
+dumps/
+tests/actual/

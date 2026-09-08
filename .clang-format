@@ -1,0 +1,25 @@
+# clang-format configuration for QuarryAccess (C++23, MSVC).
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: Latest
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 160
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+NamespaceIndentation: All
+PointerAlignment: Left
+SpaceAfterCStyleCast: false
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+FixNamespaceComments: false
+AccessModifierOffset: -4
+LambdaBodyIndentation: Signature
