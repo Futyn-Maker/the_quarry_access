@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Subtitles: each line is read once as it appears, exactly as the game displays it under its subtitle settings (character names, hyphens and closed captions included, nothing when subtitles are off); a subtitle wrapped over two lines is read as one; lines are spoken after whatever the reader is already saying and are never cut short or dropped; F6 reads the lines on screen.
+- Hotkeys: F9 turns subtitle reading off and on during play (`[Subtitles] Read` sets the start value), F4 repeats the last subtitle line even after it has gone, until the main menu is back; on a gamepad, Back with the right or the left stick click.
+
 ## 0.3.0
 
 - Pause menu: opening it announces that the game is paused, the selected tab and its place among the tabs; switching tabs reads the new tab, its objective line, the selected entry and the prompts; clues, evidence, tarot cards and tutorials are read with their descriptions.

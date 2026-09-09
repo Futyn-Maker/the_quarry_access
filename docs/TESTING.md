@@ -32,7 +32,7 @@ The developer always closes the game at the end of an automated session.
 Tester script (Russian UI):
 
 1. Start the game. Within a few seconds after the splash videos you should hear:
-   "The Quarry Access 0.2.0 загружен. Программа чтения экрана: NVDA. Язык: ru_RU."
+   "The Quarry Access <версия> загружен. Программа чтения экрана: NVDA. Язык: ru_RU."
 2. Press F8: the help text is spoken (hotkeys and the gamepad chord).
 3. Press F5: the help text is repeated.
 4. Press F8 again and immediately F7: speech stops.
@@ -95,3 +95,28 @@ Tester script (Russian UI). Start a new game in a free slot and let the prologue
 
 Expected log lines: `pause: opened, tab ...`, `pause: tab ...`, `hud: appeared ...` for each caption
 or notification, one `SAY` per element, and no `ERROR`.
+
+## Subtitles
+
+Tester script (Russian UI). Continue or start a game and let a scene with dialogue play.
+
+1. Every subtitle line is read once, in order, the moment it appears, exactly as the game
+   displays it, including the hyphen or the character name when Настройки → Субтитры → Начало
+   строки asks for one; a subtitle shown on two lines is read as one. Lines never cut each
+   other or anything else off, and when speech falls behind every line is still read to the
+   end.
+2. Press F9: "Озвучивание субтитров выключено" and the dialogue goes silent. Press F4: the
+   last line that appeared is repeated, even though it is gone. Press F9 again: "Озвучивание
+   субтитров включено" and the reading resumes.
+3. Press F5 during a scene: the last message is repeated. Press F6: the lines on screen are
+   read. Press F8: the help names F9 and F4 with their gamepad chords.
+4. Pause the game: F4 still repeats the last line. Leave to the main menu: F4 now says
+   "Субтитров ещё не было", and so it does after starting a game until the first line.
+5. Settings → Субтитры → Субтитры: "Выкл." makes the dialogue silent and F4 repeats only what
+   was displayed before; "Скрытые субтитры" adds sound cues such as "(скрип двери)", read as
+   displayed.
+
+Expected log lines: `subtitles: SubtitleWidgetQuarry_C shown`, `subtitles: setting On`, one
+`subtitles: line "..."` the moment each line appears and one `SAY announce` per line while the
+reading is on, `hotkey: Subtitles` and `hotkey: LastSubtitle`, `subtitles: last line forgotten at
+the main menu`, and no `ERROR`.

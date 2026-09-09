@@ -29,6 +29,8 @@ namespace qa::cfg
         std::wstring keyReadScreen = L"F6";
         std::wstring keyStop = L"F7";
         std::wstring keyHelp = L"F8";
+        std::wstring keySubtitles = L"F9";
+        std::wstring keyLastSubtitle = L"F4";
         std::wstring keyDevDumpTree = L"Ctrl+F9";
         std::wstring keyDevTrace = L"Ctrl+F10";
         std::wstring keyDevLogLevel = L"Ctrl+F11";
@@ -37,10 +39,14 @@ namespace qa::cfg
         std::wstring padReadScreen = L"Gamepad_DPad_Right";
         std::wstring padStop = L"Gamepad_DPad_Down";
         std::wstring padHelp = L"Gamepad_DPad_Left";
+        std::wstring padSubtitles = L"Gamepad_RightThumbstick";
+        std::wstring padLastSubtitle = L"Gamepad_LeftThumbstick";
 
         // [Speech]
         int focusDedupeMs = 150;
-        int maxQueuedSubtitles = 2;
+
+        // [Subtitles]
+        bool readSubtitles = true;
 
         // [Features]
         std::map<std::wstring, bool> features;

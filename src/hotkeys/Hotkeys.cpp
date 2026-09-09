@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Subtitles.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 
@@ -207,6 +208,8 @@ namespace qa::hotkeys
         case Command::ReadScreen: return L"ReadScreen";
         case Command::Stop: return L"Stop";
         case Command::Help: return L"Help";
+        case Command::Subtitles: return L"Subtitles";
+        case Command::LastSubtitle: return L"LastSubtitle";
         case Command::DevDumpTree: return L"DevDumpTree";
         case Command::DevTrace: return L"DevTrace";
         case Command::DevLogLevel: return L"DevLogLevel";
@@ -222,6 +225,8 @@ namespace qa::hotkeys
         Bind(s.keyReadScreen, Command::ReadScreen);
         Bind(s.keyStop, Command::Stop);
         Bind(s.keyHelp, Command::Help);
+        Bind(s.keySubtitles, Command::Subtitles);
+        Bind(s.keyLastSubtitle, Command::LastSubtitle);
         Bind(s.keyDevDumpTree, Command::DevDumpTree);
         Bind(s.keyDevTrace, Command::DevTrace);
         Bind(s.keyDevLogLevel, Command::DevLogLevel);
@@ -234,6 +239,8 @@ namespace qa::hotkeys
             if (!s.padReadScreen.empty()) g_padBindings.push_back({s.padReadScreen, Command::ReadScreen});
             if (!s.padStop.empty()) g_padBindings.push_back({s.padStop, Command::Stop});
             if (!s.padHelp.empty()) g_padBindings.push_back({s.padHelp, Command::Help});
+            if (!s.padSubtitles.empty()) g_padBindings.push_back({s.padSubtitles, Command::Subtitles});
+            if (!s.padLastSubtitle.empty()) g_padBindings.push_back({s.padLastSubtitle, Command::LastSubtitle});
         }
         gamethread::AddPoller(L"hotkeys",
                               [](float)
@@ -252,6 +259,8 @@ namespace qa::hotkeys
         case Command::ReadScreen: speech::Now(diag::ReadScreen()); break;
         case Command::Stop: speech::Stop(); break;
         case Command::Help: speech::Now(diag::Help()); break;
+        case Command::Subtitles: features::ToggleSubtitles(); break;
+        case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
         case Command::DevDumpTree:
             diag::DumpScreen();
             speech::Announce(locale::Mod(L"diag.dumped"));

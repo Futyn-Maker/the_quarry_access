@@ -11,6 +11,7 @@
 #include "features/Hud.hpp"
 #include "features/Menus.hpp"
 #include "features/Pause.hpp"
+#include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -101,9 +102,8 @@ public:
         qa::locale::LoadTables(m_modDir + L"\\lang", forcedLanguage.empty() ? L"en_US" : forcedLanguage);
 
         qa::gamethread::Install();
-        // Queued speech is drained every frame, and what the player presses is watched so
-        // that only their own actions cut an utterance short.
-        qa::gamethread::AddPoller(L"speech", [](float) { qa::speech::Tick(); });
+        // What the player presses is watched so that only their own actions cut an
+        // utterance short.
         qa::input::InstallActivityTracker();
         qa::hooks::Install();
         qa::watch::Install();
@@ -113,6 +113,7 @@ public:
         qa::features::Register(std::make_unique<qa::features::PauseFeature>());
         qa::features::Register(std::make_unique<qa::features::MenusFeature>());
         qa::features::Register(std::make_unique<qa::features::HudFeature>());
+        qa::features::Register(std::make_unique<qa::features::SubtitlesFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};
@@ -131,6 +132,7 @@ public:
                         qa::obj::ResetCaches();
                         qa::watch::Reset();
                         qa::features::ResetMenus();
+                        qa::features::ResetSubtitles();
                         qa::input::InvalidateCache();
                     });
             },

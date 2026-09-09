@@ -162,6 +162,8 @@ namespace qa::cfg
         s.keyReadScreen = ini.Get(L"Hotkeys", L"ReadScreen", s.keyReadScreen);
         s.keyStop = ini.Get(L"Hotkeys", L"Stop", s.keyStop);
         s.keyHelp = ini.Get(L"Hotkeys", L"Help", s.keyHelp);
+        s.keySubtitles = ini.Get(L"Hotkeys", L"Subtitles", s.keySubtitles);
+        s.keyLastSubtitle = ini.Get(L"Hotkeys", L"LastSubtitle", s.keyLastSubtitle);
         s.keyDevDumpTree = ini.Get(L"Hotkeys", L"DevDumpTree", s.keyDevDumpTree);
         s.keyDevTrace = ini.Get(L"Hotkeys", L"DevTrace", s.keyDevTrace);
         s.keyDevLogLevel = ini.Get(L"Hotkeys", L"DevLogLevel", s.keyDevLogLevel);
@@ -170,9 +172,11 @@ namespace qa::cfg
         s.padReadScreen = ini.Get(L"Hotkeys", L"PadReadScreen", s.padReadScreen);
         s.padStop = ini.Get(L"Hotkeys", L"PadStop", s.padStop);
         s.padHelp = ini.Get(L"Hotkeys", L"PadHelp", s.padHelp);
+        s.padSubtitles = ini.Get(L"Hotkeys", L"PadSubtitles", s.padSubtitles);
+        s.padLastSubtitle = ini.Get(L"Hotkeys", L"PadLastSubtitle", s.padLastSubtitle);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
-        s.maxQueuedSubtitles = ini.GetInt(L"Speech", L"MaxQueuedSubtitles", s.maxQueuedSubtitles);
+        s.readSubtitles = ini.GetBool(L"Subtitles", L"Read", s.readSubtitles);
 
         if (const auto* features = ini.Section(L"Features"))
         {
