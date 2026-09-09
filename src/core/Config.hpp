@@ -40,8 +40,6 @@ namespace qa::cfg
 
         // [Speech]
         int focusDedupeMs = 150;
-        int screenArrivalGraceMs = 400;
-        int cascadeDebounceMs = 200;
         int maxQueuedSubtitles = 2;
 
         // [Features]

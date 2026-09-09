@@ -19,4 +19,9 @@ namespace qa::diag
     std::wstring Help();
 
     void SetModDir(const std::wstring& modDir);
+
+    // Developer command file: Mods\QuarryAccess\command.txt is polled twice a second;
+    // each line is executed and the file is deleted. Commands: "trace on|off",
+    // "dump", "loglevel Error|Info|Verbose|Trace", "say <text>", "read", "help".
+    void InstallCommandFile();
 }

@@ -37,6 +37,8 @@ namespace qa::watch
     void AddFocusListener(FocusListener listener);
     UObject* CurrentScreen();
     UObject* CurrentFocused();
+    // The screens the game currently has on display, most useful when nothing is focused.
+    std::vector<UObject*> CurrentScreens();
 
     void Install();
     void Reset(); // after map load

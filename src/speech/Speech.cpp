@@ -2,6 +2,7 @@
 
 #include "core/Config.hpp"
 #include "core/Log.hpp"
+#include "input/InputNames.hpp"
 #include "speech/TolkBridge.hpp"
 
 #include <chrono>
@@ -14,13 +15,14 @@ namespace qa::speech
     {
         using Clock = std::chrono::steady_clock;
 
+        // Input this recent is treated as the reason for the utterance even if it landed
+        // just after the previous one started.
+        constexpr long long kFreshInputMs = 120;
+
         std::mutex g_mutex;
         std::wstring g_lastSpoken;
         Clock::time_point g_lastSpokenAt{};
-        Clock::time_point g_screenArrivalAt{};
-        Clock::time_point g_lastFocusInCascadeAt{};
-        std::wstring g_pending;
-        bool g_hasPending = false;
+        Clock::time_point g_lastOutputAt{}; // when the reader was last given something to say
         std::deque<std::wstring> g_queued;  // bounded subtitle queue
         std::deque<std::wstring> g_history; // for Repeat()
         // Time-based pacing fallback when the reader does not report IsSpeaking.
@@ -59,17 +61,18 @@ namespace qa::speech
             log::Say(policy, text);
             std::wstring copy(text);
             tolk::Output(copy.c_str(), interrupt);
+            g_lastOutputAt = Clock::now();
             EstimateDuration(text);
             Remember(text);
         }
 
-        bool InCascade()
+        // Cutting a sentence short is only right when the player is waiting for the answer
+        // to something they just did: they pressed, held or moved something after the
+        // current utterance began. Everything the game says by itself waits its turn.
+        bool PlayerIsWaiting()
         {
-            const auto& s = cfg::Get();
-            const auto sinceArrival = MsSince(g_screenArrivalAt);
-            if (sinceArrival >= 0 && sinceArrival < s.screenArrivalGraceMs) return true;
-            if (g_lastFocusInCascadeAt.time_since_epoch().count() != 0 && MsSince(g_lastFocusInCascadeAt) < s.cascadeDebounceMs) return true;
-            return false;
+            const long long sinceInput = input::MsSinceInput();
+            return sinceInput < kFreshInputMs || sinceInput <= MsSince(g_lastOutputAt);
         }
     }
 
@@ -77,8 +80,6 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         g_lastSpoken.clear();
-        g_pending.clear();
-        g_hasPending = false;
         g_queued.clear();
     }
 
@@ -91,20 +92,11 @@ namespace qa::speech
             log::Trace(L"speech: focus dedupe \"{}\"", text);
             return;
         }
-        if (InCascade())
+        if (!PlayerIsWaiting())
         {
-            // Collapse the opening cascade into a single pending utterance.
-            g_pending = std::wstring(text);
-            g_hasPending = true;
-            g_lastFocusInCascadeAt = Clock::now();
-            g_lastSpoken = std::wstring(text);
-            g_lastSpokenAt = Clock::now();
-            log::Trace(L"speech: focus held (cascade) \"{}\"", text);
+            OutputNow(text, false, L"focus-after");
             return;
         }
-        g_pending.clear();
-        g_hasPending = false;
-        g_lastFocusInCascadeAt = {};
         g_queued.clear();
         OutputNow(text, true, L"focus");
     }
@@ -138,9 +130,6 @@ namespace qa::speech
     {
         if (text.empty() || !tolk::IsLoaded()) return;
         std::lock_guard lock(g_mutex);
-        g_pending.clear();
-        g_hasPending = false;
-        g_lastFocusInCascadeAt = {};
         g_queued.clear();
         OutputNow(text, true, L"now");
     }
@@ -148,8 +137,6 @@ namespace qa::speech
     void Stop()
     {
         std::lock_guard lock(g_mutex);
-        g_pending.clear();
-        g_hasPending = false;
         g_queued.clear();
         g_estimatedIdleAt = {};
         tolk::Silence();
@@ -158,24 +145,13 @@ namespace qa::speech
 
     void Repeat()
     {
-        std::wstring last;
-        {
-            std::lock_guard lock(g_mutex);
-            if (g_history.empty()) return;
-            last = g_history.back();
-            g_pending.clear();
-            g_hasPending = false;
-        }
         std::lock_guard lock(g_mutex);
+        if (g_history.empty()) return;
+        const std::wstring last = g_history.back();
         log::Say(L"repeat", last);
         tolk::Output(last.c_str(), true);
+        g_lastOutputAt = Clock::now();
         EstimateDuration(last);
-    }
-
-    void NotifyScreenArrival()
-    {
-        std::lock_guard lock(g_mutex);
-        g_screenArrivalAt = Clock::now();
     }
 
     std::wstring Last()
@@ -188,20 +164,6 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         if (!tolk::IsLoaded()) return;
-
-        if (g_hasPending)
-        {
-            if (!InCascade() && !ReaderBusy())
-            {
-                const std::wstring text = g_pending;
-                g_pending.clear();
-                g_hasPending = false;
-                g_lastFocusInCascadeAt = {};
-                OutputNow(text, false, L"focus");
-            }
-            return;
-        }
-
         if (!g_queued.empty() && !ReaderBusy())
         {
             const std::wstring text = g_queued.front();

@@ -28,6 +28,8 @@ set_target_properties(${TARGET} PROPERTIES
 
 if(MSVC)
     target_compile_options(${TARGET} PRIVATE /W4 /utf-8 /permissive-)
+    # A linker map next to main.dll lets crash offsets from minidumps be resolved to functions.
+    target_link_options(${TARGET} PRIVATE /MAP)
 endif()
 
 if(QA_GAME_DIR)

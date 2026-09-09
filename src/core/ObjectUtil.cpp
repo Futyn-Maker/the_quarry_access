@@ -521,6 +521,22 @@ namespace qa::obj
         return Call(target, fn, nullptr, nullptr);
     }
 
+    std::wstring CallForText(UObject* target, std::wstring_view functionName)
+    {
+        auto* fn = FindFunction(target, functionName);
+        if (!fn) return {};
+        std::wstring result;
+        Call(target, fn, nullptr,
+             [&](void* params)
+             {
+                 for (auto* prop : fn->ForEachProperty())
+                 {
+                     if (prop && prop->GetName() == L"ReturnValue") ReadStringAt(params, prop, result);
+                 }
+             });
+        return result;
+    }
+
     // ---- widgets -----------------------------------------------------------
 
     bool IsWidgetVisible(UObject* widget)
@@ -536,10 +552,11 @@ namespace qa::obj
         UObject* cur = widget;
         for (int depth = 0; cur && depth < 48; ++depth)
         {
+            if (!IsLive(cur)) return false;
             if (!IsWidgetVisible(cur)) return false;
             UObject* slot = nullptr;
             UObject* parent = nullptr;
-            if (ReadObject(cur, L"Slot", slot) && slot && ReadObject(slot, L"Parent", parent) && parent)
+            if (ReadObject(cur, L"Slot", slot) && slot && IsLive(slot) && ReadObject(slot, L"Parent", parent) && parent)
             {
                 cur = parent;
                 continue;
@@ -585,35 +602,122 @@ namespace qa::obj
         for (auto* slot : slots)
         {
             UObject* content = nullptr;
-            if (slot && ReadObject(slot, L"Content", content) && content) children.push_back(content);
+            if (slot && IsLive(slot) && ReadObject(slot, L"Content", content) && content && IsLive(content)) children.push_back(content);
         }
         return children;
+    }
+
+    UObject* ParentWidget(UObject* widget)
+    {
+        if (!widget || !IsLive(widget)) return nullptr;
+        UObject* slot = nullptr;
+        UObject* parent = nullptr;
+        if (ReadObject(widget, L"Slot", slot) && slot && IsLive(slot) && ReadObject(slot, L"Parent", parent) && parent && IsLive(parent))
+        {
+            return parent;
+        }
+        UObject* outer = widget->GetOuterPrivate();
+        if (outer && IsLive(outer) && IsA(outer, L"WidgetTree"))
+        {
+            UObject* owner = outer->GetOuterPrivate();
+            if (owner && IsLive(owner) && IsA(owner, L"UserWidget")) return owner;
+        }
+        return nullptr;
+    }
+
+    UObject* NearestAncestorOfClass(UObject* widget, std::wstring_view className, int maxDepth)
+    {
+        UObject* cur = widget;
+        for (int depth = 0; cur && depth < maxDepth; ++depth)
+        {
+            if (IsA(cur, className)) return cur;
+            cur = ParentWidget(cur);
+        }
+        return nullptr;
+    }
+
+    UObject* RootScreen(UObject* widget)
+    {
+        UObject* outermost = nullptr;
+        UObject* cur = widget;
+        for (int depth = 0; cur && depth < 64; ++depth)
+        {
+            if (IsA(cur, L"SMGUIWidget")) outermost = cur;
+            cur = ParentWidget(cur);
+        }
+        return outermost;
+    }
+
+    bool IsDescendantOf(UObject* widget, UObject* ancestor)
+    {
+        if (!widget || !ancestor) return false;
+        UObject* cur = widget;
+        for (int depth = 0; cur && depth < 64; ++depth)
+        {
+            if (cur == ancestor) return true;
+            cur = ParentWidget(cur);
+        }
+        return false;
+    }
+
+    bool SafeInvoke(void (*fn)(void*), void* context) noexcept
+    {
+        __try
+        {
+            fn(context);
+            return true;
+        }
+        __except (1)
+        {
+            return false;
+        }
+    }
+
+    namespace
+    {
+        // Every child widget of one widget: panel slot contents, and a single "Content"
+        // widget for NamedSlot / Border / content widgets that a panel walk would miss
+        // (the menu prompt bar lives in a NamedSlot, for instance).
+        std::vector<UObject*> ChildWidgets(UObject* widget)
+        {
+            std::vector<UObject*> children;
+            if (IsA(widget, L"PanelWidget"))
+            {
+                children = PanelChildren(widget);
+            }
+            else
+            {
+                UObject* content = nullptr;
+                if (FindProperty(widget, L"Content") && ReadObject(widget, L"Content", content) && content && IsLive(content) && IsA(content, L"Widget"))
+                {
+                    children.push_back(content);
+                }
+            }
+            return children;
+        }
     }
 
     namespace
     {
         bool WalkImpl(UObject* widget, int depth, int maxDepth, const std::function<bool(UObject*, int)>& visitor)
         {
-            if (!widget) return true;
+            if (!widget || !IsLive(widget)) return true;
             if (!visitor(widget, depth)) return false;
             if (depth >= maxDepth) return true;
             if (IsA(widget, L"UserWidget"))
             {
                 if (!WalkImpl(WidgetTreeRoot(widget), depth + 1, maxDepth, visitor)) return false;
             }
-            if (IsA(widget, L"PanelWidget"))
+            for (auto* child : ChildWidgets(widget))
             {
-                for (auto* child : PanelChildren(widget))
-                {
-                    if (!WalkImpl(child, depth + 1, maxDepth, visitor)) return false;
-                }
+                if (!WalkImpl(child, depth + 1, maxDepth, visitor)) return false;
             }
             return true;
         }
 
         void CollectTexts(UObject* widget, int depth, int maxDepth, std::vector<std::wstring>& out)
         {
-            if (!widget || depth > maxDepth) return;
+            if (!widget || !IsLive(widget) || depth > maxDepth) return;
             if (!IsWidgetVisible(widget)) return;
             if (IsA(widget, L"TextBlock") || IsA(widget, L"RichTextBlock") || IsA(widget, L"EditableTextBox") || IsA(widget, L"EditableText") ||
                 IsA(widget, L"MultiLineEditableText"))
@@ -625,11 +729,8 @@ namespace qa::obj
             {
                 CollectTexts(WidgetTreeRoot(widget), depth + 1, maxDepth, out);
             }
-            if (IsA(widget, L"PanelWidget"))
-            {
-                for (auto* child : PanelChildren(widget))
-                    CollectTexts(child, depth + 1, maxDepth, out);
-            }
+            for (auto* child : ChildWidgets(widget))
+                CollectTexts(child, depth + 1, maxDepth, out);
         }
     }
 

@@ -8,6 +8,7 @@
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
 #include "features/Feature.hpp"
+#include "features/Menus.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -23,6 +24,7 @@
 #include <windows.h>
 
 #include <filesystem>
+#include <memory>
 
 #ifndef QA_VERSION_STRING
 #define QA_VERSION_STRING "0.0.0"
@@ -96,9 +98,15 @@ public:
         qa::locale::LoadTables(m_modDir + L"\\lang", forcedLanguage.empty() ? L"en_US" : forcedLanguage);
 
         qa::gamethread::Install();
+        // Queued speech is drained every frame, and what the player presses is watched so
+        // that only their own actions cut an utterance short.
+        qa::gamethread::AddPoller(L"speech", [](float) { qa::speech::Tick(); });
+        qa::input::InstallActivityTracker();
         qa::hooks::Install();
         qa::watch::Install();
         qa::hotkeys::Install();
+        qa::diag::InstallCommandFile();
+        qa::features::Register(std::make_unique<qa::features::MenusFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

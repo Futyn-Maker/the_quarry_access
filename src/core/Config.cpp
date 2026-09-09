@@ -172,8 +172,6 @@ namespace qa::cfg
         s.padHelp = ini.Get(L"Hotkeys", L"PadHelp", s.padHelp);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
-        s.screenArrivalGraceMs = ini.GetInt(L"Speech", L"ScreenArrivalGraceMs", s.screenArrivalGraceMs);
-        s.cascadeDebounceMs = ini.GetInt(L"Speech", L"CascadeDebounceMs", s.cascadeDebounceMs);
         s.maxQueuedSubtitles = ini.GetInt(L"Speech", L"MaxQueuedSubtitles", s.maxQueuedSubtitles);
 
         if (const auto* features = ini.Section(L"Features"))

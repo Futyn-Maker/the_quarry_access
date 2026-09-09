@@ -67,6 +67,9 @@ namespace qa::obj
     // Allocates the parameter block, lets `fill` write inputs, calls ProcessEvent, lets `read` read outputs.
     bool Call(UObject* target, UFunction* function, const std::function<void(void* params)>& fill, const std::function<void(void* params)>& read);
     bool CallNoArgs(UObject* target, std::wstring_view functionName);
+    // Result of a no-argument function returning FText/FString/FName. Empty when there is
+    // no such function. Reaches text the game computes on demand instead of storing it.
+    std::wstring CallForText(UObject* target, std::wstring_view functionName);
 
     // Widgets
     bool IsWidgetVisible(UObject* widget);    // Visibility not Collapsed/Hidden (self only)
@@ -78,6 +81,26 @@ namespace qa::obj
     std::vector<std::wstring> DescendantTexts(UObject* userWidget, int maxDepth = 6);
     // Visits every widget in the tree (depth-first). Return false from the visitor to stop.
     void WalkWidgetTree(UObject* userWidget, int maxDepth, const std::function<bool(UObject* widget, int depth)>& visitor);
+
+    // The widget one step up in the live hierarchy: the slot parent, or the owning user
+    // widget when `widget` is the root of a widget tree. Null at the top.
+    UObject* ParentWidget(UObject* widget);
+
+    // Nearest ancestor of the given class, following ParentWidget. Includes `widget` itself.
+    UObject* NearestAncestorOfClass(UObject* widget, std::wstring_view className, int maxDepth = 64);
+
+    // Outermost screen widget above `widget`: the whole screen, so that a control inside a
+    // section still reports the screen that owns the title and the prompt bar.
+    UObject* RootScreen(UObject* widget);
+
+    // True when `widget` is `ancestor` or sits below it in the live widget hierarchy
+    // (slot parents, hopping from a widget-tree root to its owning user widget).
+    bool IsDescendantOf(UObject* widget, UObject* ancestor);
+
+    // Runs `fn(context)` guarded against memory faults from stale game pointers, so a
+    // widget that dies mid-walk costs one skipped frame instead of the process.
+    // `fn` must be a captureless function; keep C++ objects inside it, not around it.
+    bool SafeInvoke(void (*fn)(void*), void* context) noexcept;
 
     // Well-known objects (cached, validated)
     UObject* LocalPlayerController();

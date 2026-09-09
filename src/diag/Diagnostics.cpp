@@ -1,6 +1,7 @@
 #include "diag/Diagnostics.hpp"
 
 #include "core/Config.hpp"
+#include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
@@ -34,6 +35,63 @@ namespace qa::diag
     void SetModDir(const std::wstring& modDir)
     {
         g_modDir = modDir;
+    }
+
+    namespace
+    {
+        void RunCommand(const std::wstring& line)
+        {
+            const std::wstring cmd = str::Trim(line);
+            if (cmd.empty()) return;
+            log::Info(L"command: {}", cmd);
+            const auto lower = str::ToLower(cmd);
+            if (lower == L"trace on")
+                hooks::SetTrace(true);
+            else if (lower == L"trace off")
+                hooks::SetTrace(false);
+            else if (lower == L"dump")
+                DumpScreen();
+            else if (lower == L"read")
+                speech::Now(ReadScreen());
+            else if (lower == L"help")
+                speech::Now(Help());
+            else if (str::StartsWith(lower, L"loglevel "))
+            {
+                log::Level level;
+                if (log::ParseLevel(cmd.substr(9), level)) log::SetLevel(level);
+            }
+            else if (str::StartsWith(lower, L"say "))
+                speech::Announce(cmd.substr(4));
+            else
+                log::Error(L"unknown command: {}", cmd);
+        }
+
+        void PollCommandFile(float)
+        {
+            static double lastCheck = -1.0;
+            const double now = gamethread::NowSeconds();
+            if (now - lastCheck < 0.5) return;
+            lastCheck = now;
+            if (g_modDir.empty()) return;
+            const std::filesystem::path path = std::filesystem::path(g_modDir) / L"command.txt";
+            std::error_code ec;
+            if (!std::filesystem::exists(path, ec)) return;
+            std::string bytes;
+            {
+                std::ifstream raw(path, std::ios::binary);
+                bytes.assign((std::istreambuf_iterator<char>(raw)), std::istreambuf_iterator<char>());
+            }
+            std::filesystem::remove(path, ec);
+            for (const auto& line : str::Split(str::Utf8ToWide(bytes), L'\n'))
+            {
+                RunCommand(line);
+            }
+        }
+    }
+
+    void InstallCommandFile()
+    {
+        gamethread::AddPoller(L"commandfile", &PollCommandFile);
     }
 
     void DumpScreen()
@@ -111,21 +169,20 @@ namespace qa::diag
 
     std::wstring ReadScreen()
     {
+        // Features describe the current screen (menus, HUD, ...). Only when none of them
+        // has anything to say do we fall back to the raw focused-widget text.
         std::vector<std::wstring> parts;
-        UObject* screen = watch::CurrentScreen();
-        UObject* focused = watch::CurrentFocused();
-        if (screen)
-        {
-            parts.push_back(locale::Mod(L"read.screen", obj::ClassName(screen)));
-        }
-        if (focused)
-        {
-            const auto texts = obj::DescendantTexts(focused, 4);
-            std::wstring text = str::Join(texts, L", ");
-            if (text.empty()) text = obj::ObjectName(focused);
-            parts.push_back(locale::Mod(L"read.focused", text));
-        }
         features::DescribeAll(parts);
+        if (parts.empty())
+        {
+            if (UObject* focused = watch::CurrentFocused())
+            {
+                const auto texts = obj::DescendantTexts(focused, 4);
+                std::wstring text = str::Join(texts, L", ");
+                if (text.empty()) text = obj::ObjectName(focused);
+                parts.push_back(locale::Mod(L"read.focused", text));
+            }
+        }
         for (const auto& [name, instance] : watch::LiveHudInstances())
         {
             const auto texts = obj::DescendantTexts(instance, 6);

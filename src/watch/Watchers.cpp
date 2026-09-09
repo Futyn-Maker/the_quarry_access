@@ -5,6 +5,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
@@ -101,8 +102,11 @@ namespace qa::watch
             log::Info(L"hud watcher: {} instance slots on {}", g_slots.size(), obj::ObjectName(controller));
         }
 
-        void PollHud(float)
+        void PollHudImpl()
         {
+            // Only walk the HUD widget pointers when a feature is actually listening for HUD
+            // events. Nothing subscribes during menu navigation, so this stays idle there.
+            if (g_hudListeners.empty()) return;
             UObject* controller = obj::LocalPlayerController();
             if (!controller)
             {
@@ -218,36 +222,118 @@ namespace qa::watch
         }
 
         // ---- focus watcher ----
+        // Focus is taken from what the game itself marks as focused, using two signals:
+        // a control becoming highlighted, and a screen's focused-widget reference changing.
+        // Picking one "current screen" and reading its focused widget is not enough: once a
+        // section opens inside a screen, the outer screen keeps reporting its old selection.
         std::vector<FocusListener> g_focusListeners;
         UObject* g_screen = nullptr;
         UObject* g_focused = nullptr;
         std::vector<UObject*> g_screenCandidates;
+        std::vector<UObject*> g_controlCandidates;
+        std::map<UObject*, UObject*> g_screenFocus;  // screen -> its last seen focused widget
+        std::map<UObject*, bool> g_controlHighlight; // control -> was it highlighted
         unsigned long long g_lastScreenScan = 0;
 
-        void PollFocus(float)
+        std::vector<UObject*> g_currentScreens;
+
+        bool IsHighlighted(UObject* control)
         {
-            const auto frame = gamethread::FrameCount();
-            if (frame % 3 != 0) return;
-            if (frame - g_lastScreenScan > 45 || g_screenCandidates.empty())
+            bool highlighted = false;
+            return obj::ReadBool(control, L"bIsHighlighted", highlighted) && highlighted;
+        }
+
+        // The game marks which of its screens is on display; widgets of every other screen
+        // stay loaded and keep their old highlight, so they must be filtered out.
+        bool ScreenIsCurrent(UObject* screen)
+        {
+            auto* fn = obj::FindFunction(screen, L"IsCurrentScreen");
+            if (!fn) return false;
+            bool result = false;
+            obj::Call(screen, fn, nullptr,
+                      [&](void* params)
+                      {
+                          for (auto* prop : fn->ForEachProperty())
+                          {
+                              if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, result);
+                          }
+                      });
+            return result;
+        }
+
+        bool OnCurrentScreen(UObject* widget)
+        {
+            // With no answer from the game, everything is accepted rather than nothing.
+            if (g_currentScreens.empty()) return true;
+            for (UObject* cur = widget; cur; cur = obj::ParentWidget(cur))
             {
-                g_lastScreenScan = frame;
-                g_screenCandidates = obj::FindAllLive(L"SMGUIWidget");
+                if (std::find(g_currentScreens.begin(), g_currentScreens.end(), cur) != g_currentScreens.end()) return true;
             }
-            UObject* screen = nullptr;
-            UObject* focused = nullptr;
+            return false;
+        }
+
+        void RescanCandidates(bool& screensAreNew)
+        {
+            const auto previous = g_screenCandidates;
+            g_screenCandidates = obj::FindAllLive(L"SMGUIWidget");
+            g_controlCandidates = obj::FindAllLive(L"UIInteractableWidgetBaseSMG026");
+            screensAreNew = g_screenCandidates.size() != previous.size();
+            g_currentScreens.clear();
             for (auto* candidate : g_screenCandidates)
             {
-                if (!obj::IsLive(candidate) || !obj::IsWidgetShown(candidate)) continue;
+                if (obj::IsLive(candidate) && ScreenIsCurrent(candidate)) g_currentScreens.push_back(candidate);
+            }
+            // Forget widgets that are gone so their state cannot be compared against a
+            // recycled pointer later.
+            for (auto it = g_screenFocus.begin(); it != g_screenFocus.end();)
+                it = obj::IsLive(it->first) ? std::next(it) : g_screenFocus.erase(it);
+            for (auto it = g_controlHighlight.begin(); it != g_controlHighlight.end();)
+                it = obj::IsLive(it->first) ? std::next(it) : g_controlHighlight.erase(it);
+        }
+
+        void PollFocusImpl()
+        {
+            const auto frame = gamethread::FrameCount();
+            if (frame % 2 != 0) return;
+            bool screensAreNew = false;
+            if (frame - g_lastScreenScan > 30 || g_screenCandidates.empty())
+            {
+                g_lastScreenScan = frame;
+                RescanCandidates(screensAreNew);
+            }
+
+            // A control that has just become highlighted is the most precise signal.
+            UObject* focused = nullptr;
+            for (auto* control : g_controlCandidates)
+            {
+                if (!obj::IsLive(control) || !obj::IsWidgetVisible(control) || !OnCurrentScreen(control)) continue;
+                const bool highlighted = IsHighlighted(control);
+                const auto previous = g_controlHighlight.find(control);
+                const bool wasHighlighted = previous != g_controlHighlight.end() && previous->second;
+                g_controlHighlight[control] = highlighted;
+                if (highlighted && !wasHighlighted && !focused) focused = control;
+            }
+
+            // Otherwise take a screen whose focused widget changed (covers sections that
+            // manage their own focus, and the arrival at a freshly created screen).
+            for (auto* candidate : g_screenCandidates)
+            {
+                if (!obj::IsLive(candidate)) continue;
                 UObject* last = nullptr;
                 obj::ReadObject(candidate, L"LastFocusedWidget", last);
-                if (last && obj::IsLive(last) && obj::IsWidgetShown(last))
-                {
-                    screen = candidate;
-                    focused = last;
-                    break;
-                }
-                if (!screen) screen = candidate;
+                const auto known = g_screenFocus.find(candidate);
+                const bool first = known == g_screenFocus.end();
+                const bool changed = !first && known->second != last;
+                g_screenFocus[candidate] = last;
+                if (!last || !obj::IsLive(last) || !obj::IsWidgetVisible(last)) continue;
+                if (!OnCurrentScreen(last)) continue;
+                if ((changed || (first && screensAreNew)) && !focused) focused = last;
             }
+
+            // Keep the current selection while it is still highlighted and on screen.
+            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetVisible(g_focused) && OnCurrentScreen(g_focused)) focused = g_focused;
+
+            UObject* screen = focused ? obj::RootScreen(focused) : nullptr;
             if (screen != g_screen || focused != g_focused)
             {
                 g_screen = screen;
@@ -265,6 +351,17 @@ namespace qa::watch
                     }
                 }
             }
+        }
+        // The pollers read live game widgets, which can be torn down between frames.
+        // A fault costs one skipped frame instead of the process.
+        void PollHud(float)
+        {
+            obj::SafeInvoke([](void*) { PollHudImpl(); }, nullptr);
+        }
+
+        void PollFocus(float)
+        {
+            obj::SafeInvoke([](void*) { PollFocusImpl(); }, nullptr);
         }
     }
 
@@ -343,6 +440,16 @@ namespace qa::watch
     UObject* CurrentScreen()
     {
         return obj::IsLive(g_screen) ? g_screen : nullptr;
+    }
+
+    std::vector<UObject*> CurrentScreens()
+    {
+        std::vector<UObject*> screens;
+        for (auto* screen : g_currentScreens)
+        {
+            if (obj::IsLive(screen)) screens.push_back(screen);
+        }
+        return screens;
     }
 
     UObject* CurrentFocused()

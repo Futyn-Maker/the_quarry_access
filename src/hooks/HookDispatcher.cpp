@@ -51,9 +51,13 @@ namespace qa::hooks
         std::wstring g_lastHook;
         bool g_installed = false;
 
-        // tracer rate limit
+        // tracer rate limit: global budget per second plus per-function suppression of
+        // calls that repeat every tick (they would otherwise drown the real events).
         std::chrono::steady_clock::time_point g_traceWindow{};
         int g_traceCount = 0;
+        std::unordered_map<UFunction*, int> g_traceCallsThisWindow;
+        std::unordered_map<UFunction*, bool> g_traceSuppressed;
+        constexpr int kTraceMaxPerFunctionPerSecond = 15;
 
         bool IsSkippedFunctionName(const std::wstring& name)
         {
@@ -115,6 +119,15 @@ namespace qa::hooks
             {
                 g_traceWindow = now;
                 g_traceCount = 0;
+                g_traceCallsThisWindow.clear();
+            }
+            UFunction* node = stack.Node();
+            if (g_traceSuppressed[node]) return;
+            if (++g_traceCallsThisWindow[node] > kTraceMaxPerFunctionPerSecond)
+            {
+                g_traceSuppressed[node] = true;
+                log::Write(log::Level::Info, std::format(L"TRACE suppressed (called every tick): {}:{}", cls, functionName));
+                return;
             }
             if (++g_traceCount > 200) return;
             log::Write(log::Level::Info, std::format(L"TRACE {}:{}({}) self={}", cls, functionName, params::Describe(stack), obj::ObjectName(self)));
@@ -298,6 +311,11 @@ namespace qa::hooks
     void SetTrace(bool enabled)
     {
         g_trace = enabled;
+        if (enabled)
+        {
+            g_traceSuppressed.clear();
+            g_traceCallsThisWindow.clear();
+        }
     }
 
     bool TraceEnabled()

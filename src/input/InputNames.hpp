@@ -29,4 +29,12 @@ namespace qa::input
     std::wstring PointerName();
 
     void InvalidateCache();
+
+    // Watches the keyboard, mouse and gamepad so speech can tell what the player asked for
+    // from what the game said on its own: only the former is allowed to interrupt.
+    void InstallActivityTracker();
+
+    // Milliseconds since the player last pressed, held or moved anything. A large number
+    // when the game does not have the focus or nothing has been touched yet.
+    long long MsSinceInput();
 }

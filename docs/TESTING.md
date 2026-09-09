@@ -32,7 +32,7 @@ The developer always closes the game at the end of an automated session.
 Tester script (Russian UI):
 
 1. Start the game. Within a few seconds after the splash videos you should hear:
-   "The Quarry Access 0.1.0 загружен. Программа чтения экрана: NVDA. Язык: ru_RU."
+   "The Quarry Access 0.2.0 загружен. Программа чтения экрана: NVDA. Язык: ru_RU."
 2. Press F8: the help text is spoken (hotkeys and the gamepad chord).
 3. Press F5: the help text is repeated.
 4. Press F8 again and immediately F7: speech stops.
@@ -42,3 +42,31 @@ Tester script (Russian UI):
 Expected log lines: `Tolk loaded; screen reader: NVDA`, `game locale: ru-RU; mod language: ru_RU`,
 `self-check: SMG_HUD_MENU_BUTTON_NEWGAME_000001 = "Новая игра"`, `self-check: control scheme MouseKeyboard`,
 `ready`, one `hotkey:` line per key press, no `ERROR`.
+
+## Menus
+
+Tester script (Russian UI):
+
+1. Start the game and wait for the title screen: "НАЖМИТЕ Enter, ЧТОБЫ НАЧАТЬ" (the key name
+   follows your control scheme).
+2. Press Enter. When the main menu opens you hear, in this order and without one cutting the
+   other: the screen title, the focused item with its position and description, then the
+   prompts, for example "Главное меню. Новая игра, 1 из 8, Начать новую игру. Отладка Z,
+   Настройки E."
+3. Arrow through the items: each is announced once with its position and description line.
+4. Press E for the settings, then enter a category. The category's own prompts, such as
+   "Сброс R", are announced after the focused row.
+5. On a settings row you hear the row name, the control type, the current value, the position
+   and the description. Press left or right: the new value is spoken together with the
+   description of that value.
+6. Check the "Мышь/клавиатура" and "Обучение" sections: their rows are announced like any other.
+7. Open a section such as "Режим кино" or "На одном экране": the prompts are heard once, after
+   the title and the focused item, never before them and never twice.
+8. Let the mod talk without touching anything: nothing cuts anything else off. Then press a key
+   while it is still speaking: that is answered at once.
+9. Press F6 anywhere: title, focused item and prompts. Press F8: the menu help plus the prompts.
+10. Move between screens (settings, podcasts, back to the main menu) and press F6: it always
+    describes the screen you are actually on.
+
+Expected log lines: verbose `focus: screen=... focused=...` and `menus: screen via ...`, one
+`SAY` per navigation key, and no `ERROR`.

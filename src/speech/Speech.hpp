@@ -1,14 +1,14 @@
 #pragma once
-// Speech policies on top of Tolk (modelled on the Palworld accessibility mod):
+// Speech policies on top of Tolk:
 //
-//   Focus(text)    - interrupting; for focus/navigation. Cascade-aware: right after
-//                    a screen arrives (NotifyScreenArrival) the focus events of the
-//                    opening cascade collapse into a single pending slot that Tick()
-//                    flushes once the cascade settles, so only the final focus is heard.
-//   Announce(text) - ordered, non-interrupting (notifications, popups, choices).
+//   Focus(text)    - for focus and navigation. Interrupts what is being said when the
+//                    player has pressed something since it started, so their own input
+//                    is answered at once while the mod never cuts itself short.
+//   Announce(text) - ordered, non-interrupting (screen arrivals, prompts, notifications).
 //   Queue(text)    - like Announce but bounded (subtitles): when too many are pending
 //                    the oldest is dropped, never the newest.
-//   Now(text)      - hard interrupt (QTE direction, interrupts). No dedupe.
+//   Now(text)      - hard interrupt, for what the player asked for directly and for
+//                    anything with a deadline. No dedupe.
 //   Stop()         - silence everything.
 //   Repeat()       - speak the last utterance again.
 //
@@ -28,7 +28,6 @@ namespace qa::speech
     void Now(std::wstring_view text);
     void Stop();
     void Repeat();
-    void NotifyScreenArrival();
 
     // Text of the last thing spoken (for the read-screen readout).
     std::wstring Last();
