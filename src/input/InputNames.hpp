@@ -37,4 +37,7 @@ namespace qa::input
     // Milliseconds since the player last pressed, held or moved anything. A large number
     // when the game does not have the focus or nothing has been touched yet.
     long long MsSinceInput();
+
+    // True while a key, button or stick is held down.
+    bool InputHeld();
 }

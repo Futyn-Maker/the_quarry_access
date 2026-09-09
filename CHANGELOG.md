@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Choices: a choice is read as a timed or plain choice with its question, each option with its place and its two labels, and the option of not responding when the choice offers it; the key hints are read when the game shows them; the option the player is holding is announced as the game highlights it, the option chosen once the key is released; the seconds left are read once the game shows them.
+- Four-way choices are read option by option with their places; the countdown that warns of a coming choice is read when it appears and when its wording changes; the timer bar announces itself.
+- Button prompts (interactions, interruptions, use locations, combat) are read with their label and key as they appear; prompts for the mouse or the stick name the device.
+- A short tone marks the moment a choice commits (`[Sounds] Volume`), so the key can be released; the chosen option is spoken once the key is released.
+- F6 reads the choice or the prompts on screen; F8 names the keys of a choice.
+
 ## 0.4.0
 
 - Subtitles: each line is read once as it appears, exactly as the game displays it under its subtitle settings (character names, hyphens and closed captions included, nothing when subtitles are off); a subtitle wrapped over two lines is read as one; lines are spoken after whatever the reader is already saying and are never cut short or dropped; F6 reads the lines on screen.

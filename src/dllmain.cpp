@@ -7,16 +7,19 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Choices.hpp"
 #include "features/Feature.hpp"
 #include "features/Hud.hpp"
 #include "features/Menus.hpp"
 #include "features/Pause.hpp"
+#include "features/Prompts.hpp"
 #include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
+#include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
 #include "speech/TolkBridge.hpp"
 #include "ui/Widgets.hpp"
@@ -96,6 +99,7 @@ public:
                           qa::tolk::HasSpeech(), qa::tolk::HasBraille());
         }
         qa::speech::Init();
+        qa::sounds::Init(settings.soundVolume);
 
         // English strings first; the game's language is applied once the frontend reports it.
         const std::wstring forcedLanguage = qa::str::EqualsNoCase(settings.language, L"auto") ? L"" : settings.language;
@@ -114,6 +118,8 @@ public:
         qa::features::Register(std::make_unique<qa::features::MenusFeature>());
         qa::features::Register(std::make_unique<qa::features::HudFeature>());
         qa::features::Register(std::make_unique<qa::features::SubtitlesFeature>());
+        qa::features::Register(std::make_unique<qa::features::PromptsFeature>());
+        qa::features::Register(std::make_unique<qa::features::ChoicesFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

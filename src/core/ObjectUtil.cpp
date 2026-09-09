@@ -9,6 +9,7 @@
 #include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/NameTypes.hpp>
 #include <Unreal/UObjectArray.hpp>
+#include <Unreal/UScriptStruct.hpp>
 #include <Unreal/UnrealFlags.hpp>
 
 #include <algorithm>
@@ -367,6 +368,18 @@ namespace qa::obj
         return ReadObjectAt(object, FindProperty(object, name), out);
     }
 
+    FProperty* StructMember(FProperty* structProperty, std::wstring_view name)
+    {
+        if (!structProperty || PropertyTypeName(structProperty) != L"StructProperty") return nullptr;
+        RC::Unreal::UScriptStruct* scriptStruct = static_cast<RC::Unreal::FStructProperty*>(structProperty)->GetStruct();
+        if (!scriptStruct) return nullptr;
+        for (auto* prop : scriptStruct->ForEachProperty())
+        {
+            if (prop && prop->GetName() == name) return prop;
+        }
+        return nullptr;
+    }
+
     bool ReadObjectArray(UObject* object, std::wstring_view name, std::vector<UObject*>& out)
     {
         auto* prop = FindProperty(object, name);
@@ -569,13 +582,27 @@ namespace qa::obj
         return vis != kVisCollapsed && vis != kVisHidden;
     }
 
-    bool IsWidgetShown(UObject* widget)
+    double WidgetOpacity(UObject* widget)
+    {
+        double opacity = 1.0;
+        double render = 1.0;
+        if (ReadFloat(widget, L"RenderOpacity", render)) opacity *= render;
+        auto* colour = FindProperty(widget, L"ColorAndOpacity");
+        if (colour && PropertyTypeName(colour) == L"StructProperty" && colour->GetSize() == 16)
+        {
+            if (const auto* rgba = static_cast<const float*>(ValuePtr(widget, colour))) opacity *= rgba[3];
+        }
+        return opacity;
+    }
+
+    bool IsWidgetShown(UObject* widget, bool opaque)
     {
         UObject* cur = widget;
         for (int depth = 0; cur && depth < 48; ++depth)
         {
             if (!IsLive(cur)) return false;
             if (!IsWidgetVisible(cur)) return false;
+            if (opaque && WidgetOpacity(cur) <= 0.02) return false;
             UObject* slot = nullptr;
             UObject* parent = nullptr;
             if (ReadObject(cur, L"Slot", slot) && slot && IsLive(slot) && ReadObject(slot, L"Parent", parent) && parent)
@@ -583,18 +610,22 @@ namespace qa::obj
                 cur = parent;
                 continue;
             }
-            // Root of a widget tree: continue with the owning user widget.
+            // Without a slot, only the root of a widget tree (drawn as the content of its
+            // owner) and a user widget added to the viewport are drawn. Anything else has been
+            // taken out of the drawn hierarchy, whatever its flags still say: the game leaves
+            // finished screens and unused options alive that way.
             UObject* outer = cur->GetOuterPrivate();
             if (outer && IsA(outer, L"WidgetTree"))
             {
+                UObject* root = nullptr;
                 UObject* owner = outer->GetOuterPrivate();
-                if (owner && IsA(owner, L"UserWidget"))
+                if (ReadObject(outer, L"RootWidget", root) && root == cur && owner && IsA(owner, L"UserWidget"))
                 {
                     cur = owner;
                     continue;
                 }
             }
-            break;
+            return IsA(cur, L"UserWidget") && CallForBool(cur, L"IsInViewport");
         }
         return true;
     }

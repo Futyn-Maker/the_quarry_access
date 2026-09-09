@@ -93,6 +93,17 @@ namespace qa::ui
     // Text of a prompt widget with "$(prompt)" replaced by its key name.
     std::wstring PromptText(UObject* promptWidget);
 
+    // Displayed text of the widget held in a property of `widget` (a text block, a text
+    // leaf or a user widget), empty unless it is shown and not faded out.
+    std::wstring PropertyText(UObject* widget, std::wstring_view property);
+
+    // Spoken key of a prompt widget: the key its glyph prints, else the key bound to the action.
+    std::wstring PromptKeyName(UObject* promptWidget, std::wstring_view action);
+
+    // The keys an axis-input prompt shows as key caps, in reading order (up, left, down,
+    // right), then its device glyph when it prints one. Empty when it shows neither.
+    std::wstring AxisPromptKeys(UObject* axisPrompt);
+
     // Name of the input action stored in an action-mapping property ("UINavigationCancel").
     std::wstring ActionName(UObject* widget, std::wstring_view property);
 

@@ -48,6 +48,9 @@ namespace qa::obj
     bool ReadObjectArray(UObject* object, std::wstring_view name, std::vector<UObject*>& out);
     bool ReadLocaleKey(UObject* object, std::wstring_view name, std::wstring& outKey); // FLocaleString{Key}
     void* StructPtr(UObject* object, std::wstring_view name);                          // raw pointer to a struct property
+    // A member of a struct-typed property, for reading nested values with the *At readers
+    // (container = ValuePtr of the struct property). Null when there is no such member.
+    FProperty* StructMember(FProperty* structProperty, std::wstring_view name);
 
     // Same readers on raw struct memory (container = struct address).
     bool ReadBoolAt(void* container, FProperty* property, bool& out);
@@ -74,8 +77,11 @@ namespace qa::obj
     bool CallForBool(UObject* target, std::wstring_view functionName);
 
     // Widgets
-    bool IsWidgetVisible(UObject* widget);    // Visibility not Collapsed/Hidden (self only)
-    bool IsWidgetShown(UObject* widget);      // self and all outer user widgets visible
+    bool IsWidgetVisible(UObject* widget); // Visibility not Collapsed/Hidden (self only)
+    // Self and all outer user widgets visible; with `opaque`, none of them faded out either.
+    bool IsWidgetShown(UObject* widget, bool opaque = false);
+    // The opacity a widget is drawn with (its render opacity times its colour alpha).
+    double WidgetOpacity(UObject* widget);
     std::wstring TextOf(UObject* textWidget); // "Text" FText/FString of a text widget, else empty
     UObject* WidgetTreeRoot(UObject* userWidget);
     std::vector<UObject*> PanelChildren(UObject* panelWidget);

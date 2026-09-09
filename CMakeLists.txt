@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 # The Quarry's UI and gameplay prompts through Tolk (NVDA / JAWS / SAPI).
 project(QuarryAccessMod LANGUAGES C CXX)
 
-set(QA_VERSION "0.4.0")
+set(QA_VERSION "0.5.0")
 
 # Where the RE-UE4SS source tree lives. Defaults to the pinned git submodule;
 # developers with an existing checkout (and its UEPseudo submodule) can point

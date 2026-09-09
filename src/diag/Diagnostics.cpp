@@ -94,6 +94,34 @@ namespace qa::diag
         gamethread::AddPoller(L"commandfile", &PollCommandFile);
     }
 
+    // How a widget hangs in the drawn hierarchy: through a slot, as the root of its owner's
+    // tree, in the viewport, or not at all; and a render transform that moves or scales it.
+    std::wstring Attachment(UObject* w)
+    {
+        std::wstring out;
+        UObject* slot = nullptr;
+        bool attached = obj::ReadObject(w, L"Slot", slot) && slot;
+        if (!attached)
+        {
+            UObject* outer = w->GetOuterPrivate();
+            UObject* root = nullptr;
+            if (outer && obj::IsA(outer, L"WidgetTree") && obj::ReadObject(outer, L"RootWidget", root) && root == w) attached = true;
+        }
+        if (!attached)
+        {
+            if (obj::IsA(w, L"UserWidget"))
+                out += obj::CallForBool(w, L"IsInViewport") ? L" viewport=yes" : L" viewport=no";
+            else
+                out += L" detached";
+        }
+        if (const auto* t = static_cast<const float*>(obj::StructPtr(w, L"RenderTransform")))
+        {
+            if (t[0] != 0.0f || t[1] != 0.0f) out += std::format(L" offset={:.0f},{:.0f}", t[0], t[1]);
+            if (t[2] != 1.0f || t[3] != 1.0f) out += std::format(L" scale={:.2f},{:.2f}", t[2], t[3]);
+        }
+        return out;
+    }
+
     void DumpScreen()
     {
         std::vector<std::wstring> lines;
@@ -111,8 +139,8 @@ namespace qa::diag
             ++shown;
             UObject* focused = nullptr;
             obj::ReadObject(widget, L"LastFocusedWidget", focused);
-            lines.push_back(std::format(L"[widget] {} {} focused={} {}", obj::ClassName(widget), obj::ObjectName(widget), obj::ClassName(focused),
-                                        obj::ObjectName(focused)));
+            lines.push_back(std::format(L"[widget] {} {} focused={} {}{}", obj::ClassName(widget), obj::ObjectName(widget), obj::ClassName(focused),
+                                        obj::ObjectName(focused), Attachment(widget)));
             obj::WalkWidgetTree(
                 widget, 14,
                 [&](UObject* w, int depth)
@@ -122,7 +150,9 @@ namespace qa::diag
                     std::wstring pad(static_cast<size_t>(depth) * 2, L' ');
                     if (!text.empty() || obj::IsA(w, L"UserWidget"))
                     {
-                        lines.push_back(std::format(L"{}- {} {}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\""));
+                        const double opacity = obj::WidgetOpacity(w);
+                        lines.push_back(std::format(L"{}- {} {}{}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\"",
+                                                    (opacity < 0.999 ? std::format(L" opacity={:.2f}", opacity) : std::wstring()) + Attachment(w)));
                     }
                     return true;
                 });

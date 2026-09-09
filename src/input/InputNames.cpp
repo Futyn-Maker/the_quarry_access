@@ -300,8 +300,9 @@ namespace qa::input
 
         // Everything the game can be driven with, including rebindable keys. A key that is
         // held down counts too, so holding a direction to scroll a menu stays "activity",
-        // and so does a tap released between two polls (the low bit of the key state).
-        bool AnyKeyDown()
+        // and so does a tap released between two polls (the low bit of the key state) when
+        // the mask asks for it.
+        bool AnyKeyDown(int mask)
         {
             static constexpr std::pair<int, int> kRanges[] = {
                 {VK_LBUTTON, VK_XBUTTON2},
@@ -320,7 +321,7 @@ namespace qa::input
             {
                 for (int vk = first; vk <= last; ++vk)
                 {
-                    if (GetAsyncKeyState(vk) & 0x8001) return true;
+                    if (GetAsyncKeyState(vk) & mask) return true;
                 }
             }
             return false;
@@ -401,7 +402,7 @@ namespace qa::input
         void PollActivity(float)
         {
             if (!GameWindowInForeground()) return;
-            if (AnyKeyDown() || CursorMoved() || AnyPadInput()) g_lastInputAt.store(NowMs(), std::memory_order_relaxed);
+            if (AnyKeyDown(0x8001) || CursorMoved() || AnyPadInput()) g_lastInputAt.store(NowMs(), std::memory_order_relaxed);
         }
     }
 
@@ -415,5 +416,10 @@ namespace qa::input
         const long long last = g_lastInputAt.load(std::memory_order_relaxed);
         if (last == 0) return 1'000'000;
         return NowMs() - last;
+    }
+
+    bool InputHeld()
+    {
+        return GameWindowInForeground() && (AnyKeyDown(0x8000) || AnyPadInput());
     }
 }

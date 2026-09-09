@@ -4,8 +4,8 @@ A mod that makes _The Quarry_ (Supermassive Games, 2022, PC/Steam) playable by b
 It reads the game's screens through your screen reader: NVDA, JAWS and other Tolk-supported
 readers, with a SAPI fallback when no screen reader is running. Speech and braille are both
 supported. The menus, settings and pause menu are covered, with the focused item, its description
-and the available key prompts spoken as you move; captions, notifications, alerts and subtitles
-that the game shows during play are read as they appear.
+and the available key prompts spoken as you move; captions, notifications, alerts, subtitles,
+button prompts and choices that the game shows during play are read as they appear.
 
 The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and [Tolk](https://github.com/dkager/tolk).
 It never changes the game's own settings: everything it says follows what the game displays,
@@ -33,6 +33,9 @@ the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setu
 | Ctrl+F11 |                            | Cycle the log level                     |
 
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
+
+A short tone marks the moment a choice commits, so you know when to release the key; its
+volume is set in the same file, and 0 turns it off.
 
 ## Languages
 

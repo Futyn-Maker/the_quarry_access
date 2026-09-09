@@ -747,6 +747,40 @@ namespace qa::ui
         return str::Join(DisplayTexts(obj::DescendantTexts(instance, kLabelDepthDeep)), L". ");
     }
 
+    std::wstring PropertyText(UObject* widget, std::wstring_view property)
+    {
+        UObject* block = nullptr;
+        if (!obj::ReadObject(widget, property, block) || !obj::IsLive(block) || !obj::IsWidgetShown(block, true)) return {};
+        return str::Join(DisplayTexts(obj::DescendantTexts(block, kLabelDepthDeep)), L" ");
+    }
+
+    std::wstring PromptKeyName(UObject* promptWidget, std::wstring_view action)
+    {
+        return PromptKey(promptWidget, std::wstring(action));
+    }
+
+    std::wstring AxisPromptKeys(UObject* axisPrompt)
+    {
+        std::vector<std::wstring> keys;
+        UObject* caps = nullptr;
+        if (obj::ReadObject(axisPrompt, L"AxisInputKeys", caps) && obj::IsLive(caps) && obj::IsWidgetShown(caps, true))
+        {
+            for (const wchar_t* property : {L"KeyUp", L"KeyLeft", L"KeyDown", L"KeyRight"})
+            {
+                UObject* cap = nullptr;
+                if (!obj::ReadObject(caps, property, cap) || !obj::IsLive(cap) || !obj::IsWidgetShown(cap, true)) continue;
+                const auto key = PromptKey(cap, L"");
+                if (!key.empty()) keys.push_back(key);
+            }
+        }
+        if (keys.empty())
+        {
+            const auto glyph = PromptKey(axisPrompt, L"");
+            if (!glyph.empty()) keys.push_back(glyph);
+        }
+        return str::Join(keys, L", ");
+    }
+
     std::wstring PromptText(UObject* promptWidget)
     {
         const std::wstring action = ActionOf(promptWidget);

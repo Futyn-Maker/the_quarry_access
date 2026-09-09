@@ -120,3 +120,30 @@ Expected log lines: `subtitles: SubtitleWidgetQuarry_C shown`, `subtitles: setti
 `subtitles: line "..."` the moment each line appears and one `SAY announce` per line while the
 reading is on, `hotkey: Subtitles` and `hotkey: LastSubtitle`, `subtitles: last line forgotten at
 the main menu`, and no `ERROR`.
+
+## Choices and prompts
+
+Tester script (Russian UI). Play the prologue from the start.
+
+1. The first button prompt of the drive (an interruption or an interaction) is read with its
+   label and key as it appears, for example "ПЕРЕБИТЬ? A" or "Используйте E, чтобы идти".
+2. At the first choice you hear: "Выбор на время." (or "Выбор." without a timer), then the
+   question if one is shown, "Влево: <label>, <line>", "Вправо: <label>, <line>", and the
+   option of not responding only in a choice that offers it. Nothing cuts anything off. The
+   game shows the keys only in the choices it decides to: when its key caps appear you hear
+   them, "A, D", with the keys as bound.
+3. Hold A or D: the option you are committing is read as it lights up (NVDA cuts speech while
+   a letter key repeats, so it may come out short). Hold until a short two-note tone marks the
+   commit, then release the key: "<option>, выбрано." follows the release.
+4. When the game starts showing the seconds left, each value is read. When the time runs out
+   with nothing held, the game shows nothing more and nothing is said.
+5. Before a choice on the road you may hear "Выбор через 5 с" and then "Скоро придётся сделать
+   выбор!": the countdown is read when it appears and when its wording changes, not every second.
+6. At the tarot or any four-way choice: "Выбор." then each option with its place ("Вверх: ...",
+   "Вправо: ...", "Вниз: ...", "Влево: ..."). Press F8: the keys of the four places.
+7. Press F6 during a choice: the choice is read again; during a prompt: the prompt.
+8. After a choice, pause and return to the game: the choice is not read again.
+
+Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
+ChoiceCommitLeft`, one `SAY announce` per choice and per prompt, `SAY focus` for the option held,
+and no `ERROR`.

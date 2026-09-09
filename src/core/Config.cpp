@@ -176,6 +176,7 @@ namespace qa::cfg
         s.padLastSubtitle = ini.Get(L"Hotkeys", L"PadLastSubtitle", s.padLastSubtitle);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
+        s.soundVolume = ini.GetInt(L"Sounds", L"Volume", s.soundVolume);
         s.readSubtitles = ini.GetBool(L"Subtitles", L"Read", s.readSubtitles);
 
         if (const auto* features = ini.Section(L"Features"))
