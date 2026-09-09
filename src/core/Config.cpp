@@ -1,9 +1,11 @@
 #include "core/Config.hpp"
 #include "core/Strings.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <vector>
 
 namespace qa::cfg
 {
@@ -11,6 +13,7 @@ namespace qa::cfg
     {
         Settings g_settings;
         std::mutex g_mutex;
+        std::wstring g_path; // the ini file the settings came from
 
         std::wstring Key(std::wstring_view s)
         {
@@ -142,6 +145,10 @@ namespace qa::cfg
 
     Settings LoadSettings(const std::wstring& path, std::wstring* error)
     {
+        {
+            std::lock_guard lock(g_mutex);
+            g_path = path;
+        }
         Settings s;
         Ini ini;
         if (!ini.Load(path, error)) return s;
@@ -189,6 +196,76 @@ namespace qa::cfg
 
         s.traceClassPrefixes = ini.GetList(L"Diag", L"TraceClassPrefixes", s.traceClassPrefixes);
         return s;
+    }
+
+    bool Persist(std::wstring_view section, std::wstring_view key, std::wstring_view value)
+    {
+        std::lock_guard lock(g_mutex);
+        if (g_path.empty()) return false;
+        std::ifstream in(g_path, std::ios::binary);
+        if (!in) return false;
+        std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        in.close();
+        std::string bom;
+        if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF && static_cast<unsigned char>(bytes[1]) == 0xBB &&
+            static_cast<unsigned char>(bytes[2]) == 0xBF)
+        {
+            bom = bytes.substr(0, 3);
+            bytes.erase(0, 3);
+        }
+        const std::string newline = bytes.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+        std::vector<std::wstring> lines;
+        for (auto& line : str::Split(str::Utf8ToWide(bytes), L'\n', false))
+        {
+            if (!line.empty() && line.back() == L'\r') line.pop_back();
+            lines.push_back(line);
+        }
+        const std::wstring wanted = std::wstring(key) + L"=" + std::wstring(value);
+        std::wstring current;
+        size_t sectionEnd = lines.size(); // where a missing key is inserted
+        bool inSection = false;
+        bool written = false;
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            const std::wstring line = str::Trim(lines[i]);
+            if (!line.empty() && line.front() == L'[' && line.back() == L']')
+            {
+                if (inSection) break;
+                current = Key(std::wstring_view(line).substr(1, line.size() - 2));
+                inSection = current == Key(section);
+                sectionEnd = i + 1;
+                continue;
+            }
+            if (!inSection) continue;
+            if (!line.empty() && line.front() != L';' && line.front() != L'#') sectionEnd = i + 1;
+            const size_t eq = line.find(L'=');
+            if (eq != std::wstring::npos && Key(std::wstring_view(line).substr(0, eq)) == Key(key))
+            {
+                lines[i] = wanted;
+                written = true;
+                break;
+            }
+        }
+        if (!written)
+        {
+            if (current != Key(section))
+            {
+                if (!lines.empty() && !str::Trim(lines.back()).empty()) lines.push_back(L"");
+                lines.push_back(L"[" + std::wstring(section) + L"]");
+                sectionEnd = lines.size();
+            }
+            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(std::min(sectionEnd, lines.size())), wanted);
+        }
+        std::string out = bom;
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            out += str::WideToUtf8(lines[i]);
+            if (i + 1 < lines.size()) out += newline;
+        }
+        std::ofstream file(g_path, std::ios::binary | std::ios::trunc);
+        if (!file) return false;
+        file << out;
+        return static_cast<bool>(file);
     }
 
     const Settings& Get()

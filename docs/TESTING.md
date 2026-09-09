@@ -107,7 +107,8 @@ Tester script (Russian UI). Continue or start a game and let a scene with dialog
    end.
 2. Press F9: "Озвучивание субтитров выключено" and the dialogue goes silent. Press F4: the
    last line that appeared is repeated, even though it is gone. Press F9 again: "Озвучивание
-   субтитров включено" and the reading resumes.
+   субтитров включено" and the reading resumes. Quit with the reading off and start the game
+   again: it stays off (`subtitles: reading off at start` in the log) until F9 turns it on.
 3. Press F5 during a scene: the last message is repeated. Press F6: the lines on screen are
    read. Press F8: the help names F9 and F4 with their gamepad chords.
 4. Pause the game: F4 still repeats the last line. Leave to the main menu: F4 now says

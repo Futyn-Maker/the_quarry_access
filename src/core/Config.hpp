@@ -78,8 +78,14 @@ namespace qa::cfg
         std::map<std::wstring, std::map<std::wstring, std::wstring>> m_sections;
     };
 
-    // Loads QuarryAccess.ini into Settings (missing keys keep defaults).
+    // Loads QuarryAccess.ini into Settings (missing keys keep defaults) and remembers the
+    // path for Persist.
     Settings LoadSettings(const std::wstring& path, std::wstring* error = nullptr);
+
+    // Writes one value back into the ini file that was loaded, keeping every other line as
+    // it is; the key is added to its section when missing. False when the file cannot be
+    // written.
+    bool Persist(std::wstring_view section, std::wstring_view key, std::wstring_view value);
 
     const Settings& Get();
     void Set(Settings settings);

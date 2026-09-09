@@ -25,6 +25,9 @@ namespace qa::features
     // Switches the reading of subtitle lines off and on, and says which.
     void ToggleSubtitles();
 
+    // Sets the reading of subtitle lines and keeps the choice in the ini for the next start.
+    void SetSubtitles(bool read);
+
     // Repeats the last subtitle line that appeared, even after it has gone and while the
     // reading is switched off.
     void SpeakLastSubtitle();

@@ -170,6 +170,7 @@ namespace qa::features
     void SubtitlesFeature::Install()
     {
         g_read = cfg::Get().readSubtitles;
+        log::Info(L"subtitles: reading {} at start", g_read ? L"on" : L"off");
         watch::AddHudListener(&OnHud);
         hooks::OnScript(L"MenuBaseWidget_C", L"Show", [](UObject* self, FFrame&) { ForgetAtMainMenu(self); });
         gamethread::AddPoller(L"subtitles", &Poll);
@@ -190,9 +191,16 @@ namespace qa::features
 
     void ToggleSubtitles()
     {
-        g_read = !g_read;
-        log::Info(L"subtitles: reading {}", g_read ? L"on" : L"off");
+        SetSubtitles(!g_read);
         speech::Now(locale::Mod(g_read ? L"subtitles.on" : L"subtitles.off"));
+    }
+
+    void SetSubtitles(bool read)
+    {
+        g_read = read;
+        log::Info(L"subtitles: reading {}", g_read ? L"on" : L"off");
+        // Kept in the ini, so that the next start begins the way this one ended.
+        if (!cfg::Persist(L"Subtitles", L"Read", g_read ? L"1" : L"0")) log::Error(L"subtitles: the setting could not be saved to QuarryAccess.ini");
     }
 
     void SpeakLastSubtitle()

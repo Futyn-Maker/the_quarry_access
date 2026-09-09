@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "features/Feature.hpp"
+#include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -62,6 +63,8 @@ namespace qa::diag
             }
             else if (str::StartsWith(lower, L"say "))
                 speech::Announce(cmd.substr(4));
+            else if (lower == L"subtitles on" || lower == L"subtitles off")
+                features::SetSubtitles(lower == L"subtitles on");
             else
                 log::Error(L"unknown command: {}", cmd);
         }

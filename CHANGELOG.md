@@ -6,6 +6,7 @@
 - Four-way choices are read option by option with their places; the countdown that warns of a coming choice is read when it appears and when its wording changes; the timer bar announces itself.
 - Button prompts (interactions, interruptions, use locations, combat) are read with their label and key as they appear; prompts for the mouse or the stick name the device.
 - A short tone marks the moment a choice commits (`[Sounds] Volume`), so the key can be released; the chosen option is spoken once the key is released.
+- The subtitle reading switch (F9) is saved to the ini, so the game starts the way it was left.
 - F6 reads the choice or the prompts on screen; F8 names the keys of a choice.
 
 ## 0.4.0
