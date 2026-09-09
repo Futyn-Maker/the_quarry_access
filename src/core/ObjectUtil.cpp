@@ -6,6 +6,7 @@
 #include <Unreal/Core/Containers/Array.hpp>
 #include <Unreal/FString.hpp>
 #include <Unreal/FText.hpp>
+#include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/NameTypes.hpp>
 #include <Unreal/UObjectArray.hpp>
 #include <Unreal/UnrealFlags.hpp>
@@ -331,6 +332,11 @@ namespace qa::obj
     {
         if (!container || !property) return false;
         const auto type = PropertyTypeName(property);
+        if (type == L"WeakObjectProperty")
+        {
+            out = property->ContainerPtrToValuePtr<RC::Unreal::FWeakObjectPtr>(container)->Get();
+            return true;
+        }
         if (type != L"ObjectProperty" && type != L"ClassProperty") return false;
         out = *property->ContainerPtrToValuePtr<UObject*>(container);
         return true;
@@ -537,6 +543,22 @@ namespace qa::obj
         return result;
     }
 
+    bool CallForBool(UObject* target, std::wstring_view functionName)
+    {
+        auto* fn = FindFunction(target, functionName);
+        if (!fn) return false;
+        bool result = false;
+        Call(target, fn, nullptr,
+             [&](void* params)
+             {
+                 for (auto* prop : fn->ForEachProperty())
+                 {
+                     if (prop && prop->GetName() == L"ReturnValue") ReadBoolAt(params, prop, result);
+                 }
+             });
+        return result;
+    }
+
     // ---- widgets -----------------------------------------------------------
 
     bool IsWidgetVisible(UObject* widget)
@@ -715,10 +737,21 @@ namespace qa::obj
             return true;
         }
 
+        TextLeafReader g_textLeaf = nullptr;
+
         void CollectTexts(UObject* widget, int depth, int maxDepth, std::vector<std::wstring>& out)
         {
             if (!widget || !IsLive(widget) || depth > maxDepth) return;
             if (!IsWidgetVisible(widget)) return;
+            if (g_textLeaf)
+            {
+                std::wstring text;
+                if (g_textLeaf(widget, text))
+                {
+                    if (!text.empty()) out.push_back(text);
+                    return;
+                }
+            }
             if (IsA(widget, L"TextBlock") || IsA(widget, L"RichTextBlock") || IsA(widget, L"EditableTextBox") || IsA(widget, L"EditableText") ||
                 IsA(widget, L"MultiLineEditableText"))
             {
@@ -744,6 +777,11 @@ namespace qa::obj
         std::vector<std::wstring> out;
         CollectTexts(userWidget, 0, maxDepth, out);
         return out;
+    }
+
+    void SetTextLeafReader(TextLeafReader reader)
+    {
+        g_textLeaf = reader;
     }
 
     // ---- well-known objects ------------------------------------------------

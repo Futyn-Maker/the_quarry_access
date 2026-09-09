@@ -70,3 +70,25 @@ Tester script (Russian UI):
 
 Expected log lines: verbose `focus: screen=... focused=...` and `menus: screen via ...`, one
 `SAY` per navigation key, and no `ERROR`.
+
+## Pause menu and HUD
+
+Tester script (Russian UI). Start a new game in a free slot and let the prologue begin.
+
+1. When the scene starts you hear its caption, for example "22:30 - Лора. Хэкеттс Куори | Дорога"
+   (time, character, place), and "Загрузка" while the game loads.
+2. Press Escape: "Пауза. Персонаж, вкладка 1 из 6" followed by what the tab shows and its prompts.
+3. Press ] and [: each tab is announced with its position; on the clues, evidence and tarot tabs
+   the objective line, the selected entry with its description and the prompts follow. The
+   character tab is named after the character it shows; it only displays the character, so
+   nothing but the objective and the prompts is read there and the arrows do nothing.
+4. On a collectables tab arrow through the entries: each is read with its position and
+   description; press right to enter the details list and each entry is read.
+5. Press F6 in the pause menu: paused, the tab, the screen content and the prompts. Press F8: the
+   tab keys and the key that returns to the game.
+6. Return to the game and play until a clue is found: the notification is read with its title,
+   text and the key that opens it. A save shows as "Сохранение".
+7. Open the settings from the pause menu: they read as in the main menu.
+
+Expected log lines: `pause: opened, tab ...`, `pause: tab ...`, `hud: appeared ...` for each caption
+or notification, one `SAY` per element, and no `ERROR`.

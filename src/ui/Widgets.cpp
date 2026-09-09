@@ -1,6 +1,7 @@
 #include "ui/Widgets.hpp"
 
 #include "core/Config.hpp"
+#include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
@@ -37,8 +38,7 @@ namespace qa::ui
             {L"DnaDocumentButton_C", Kind::Button},
             {L"DnaPrimaryButton_C", Kind::Button},
             {L"DnaSecondaryButton_C", Kind::Button},
-            {L"CollectablesButton_C", Kind::Button},
-            {L"TutorialButton_C", Kind::Button},
+            {L"CollectablesButtonBase_C", Kind::Button},
             {L"UIInteractableWidgetSMG026_C", Kind::Other},
             {L"UIInteractableWidgetBaseSMG026", Kind::Other},
         };
@@ -99,12 +99,29 @@ namespace qa::ui
 
         std::wstring ActionOf(UObject* promptWidget)
         {
-            void* ref = obj::StructPtr(promptWidget, L"InputActionName"); // FActionMappingReference { FString Value; }
-            if (!ref) return {};
-            auto* value = static_cast<RC::Unreal::FString*>(ref);
-            if (value->Len() <= 0) return {};
-            const auto* chars = **value;
-            return chars ? std::wstring(chars) : std::wstring();
+            const auto action = ActionName(promptWidget, L"InputActionName");
+            return action.empty() ? ActionName(promptWidget, L"ButtonInputMapping") : action;
+        }
+
+        // Widgets whose text lives in one property while their child text blocks carry
+        // visual layers of it (highlight glow, arrow markers, a partly typed line).
+        bool ReadTextLeaf(UObject* widget, std::wstring& out)
+        {
+            if (obj::IsA(widget, L"ScanlineText_C") || obj::IsA(widget, L"PathChosenTitle_C"))
+            {
+                obj::ReadString(widget, obj::IsA(widget, L"ScanlineText_C") ? L"Text" : L"TitleString", out);
+                out = str::CollapseWhitespace(str::StripMarkup(out));
+                return true;
+            }
+            if (obj::IsA(widget, L"TypeWriterTextBlockSMG026"))
+            {
+                obj::ReadString(widget, L"Text", out);
+                if (str::Trim(out).empty()) out = obj::CallForText(widget, L"GetText");
+                if (str::Trim(out).empty()) out = gametext::ReadLocalized(widget, L"LocaleText");
+                out = str::CollapseWhitespace(str::StripMarkup(out));
+                return true;
+            }
+            return false;
         }
 
         std::wstring PromptKey(UObject* promptWidget, const std::wstring& action)
@@ -171,6 +188,30 @@ namespace qa::ui
         }
     }
 
+    void Install()
+    {
+        obj::SetTextLeafReader(&ReadTextLeaf);
+    }
+
+    std::wstring ActionName(UObject* widget, std::wstring_view property)
+    {
+        void* ref = obj::StructPtr(widget, property); // FActionMappingReference { FString Value; }
+        if (!ref) return {};
+        auto* value = static_cast<RC::Unreal::FString*>(ref);
+        if (value->Len() <= 0) return {};
+        const auto* chars = **value;
+        return chars ? std::wstring(chars) : std::wstring();
+    }
+
+    Kind KindOf(UObject* interactable)
+    {
+        for (const auto& rule : kKinds)
+        {
+            if (obj::IsA(interactable, rule.className)) return rule.kind;
+        }
+        return Kind::Other;
+    }
+
     bool IsInteractable(UObject* widget)
     {
         if (!widget || !obj::IsA(widget, L"UserWidget")) return false;
@@ -197,14 +238,7 @@ namespace qa::ui
         Description d;
         d.widget = interactable;
         if (!interactable) return d;
-        for (const auto& rule : kKinds)
-        {
-            if (obj::IsA(interactable, rule.className))
-            {
-                d.kind = rule.kind;
-                break;
-            }
-        }
+        d.kind = KindOf(interactable);
 
         // Label: the text the game actually renders (already localized), split into a
         // title and a value for selectors and sliders. The internal Text field holds a
@@ -232,17 +266,20 @@ namespace qa::ui
             // Buttons, tabs, save slots: everything the control shows (name, chapter, duration, ...).
             d.label = str::Join(rendered, L", ");
         }
-        // Menu buttons keep their text below the shallow walk but carry the game's own
-        // locale key, which is the cleanest name there is.
+        // Menu buttons and pause tabs keep their text below the shallow walk but carry the
+        // locale key of the game itself, which is the cleanest name there is.
         if (str::Trim(d.label).empty()) d.label = gametext::ReadLocalized(interactable, L"LocalisedText");
-        // Rows with neither (key bindings, tutorials) are read from their whole subtree,
-        // or from their named text blocks.
+        if (str::Trim(d.label).empty()) d.label = gametext::ReadLocalized(interactable, L"ItemTextLoc");
+        // Rows without a key (key bindings, tutorials, the character tab) are read from
+        // their whole subtree, or from their named text blocks.
         if (str::Trim(d.label).empty())
         {
             auto deep = DisplayTexts(obj::DescendantTexts(interactable, kLabelDepthDeep));
             if (deep.empty()) deep = NamedTexts(interactable);
             d.label = str::Join(deep, L", ");
         }
+        // Last of all the unlocalized strings the designers typed in.
+        if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"ItemTextUnloc", d.label);
         if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"Text", d.label);
         d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
 
@@ -260,6 +297,14 @@ namespace qa::ui
         d.index = SiblingPosition(interactable, d.count);
 
         d.tip = gametext::ReadLocalized(interactable, L"LocalizedTipText", L"TipText");
+        // A clue, piece of evidence, tarot card or tutorial carries its own description.
+        UObject* collectable = nullptr;
+        bool unlocked = true;
+        if (str::Trim(d.tip).empty() && obj::ReadObject(interactable, L"Collectable", collectable) && obj::IsLive(collectable) &&
+            (!obj::ReadBool(interactable, L"bIsCollectableUnlocked", unlocked) || unlocked))
+        {
+            d.tip = gametext::ReadLocalized(collectable, L"CollectableDescription");
+        }
         d.tip = str::CollapseWhitespace(str::StripMarkup(d.tip));
         return d;
     }
@@ -291,24 +336,369 @@ namespace qa::ui
         return str::Join(parts, L", ");
     }
 
+    namespace
+    {
+        // The content the tab bar is showing. Contents of tabs visited earlier stay loaded
+        // and shown for a while after leaving them, so being shown is not enough: the tab
+        // widgets are named after their content ("CluesTab" shows PauseTabClues_C), and
+        // failing that the game is asked which screen is current.
+        UObject* PauseContent(UObject* system)
+        {
+            std::vector<UObject*> shown;
+            for (auto* w : obj::FindAllLive(L"PauseScreenBaseSMG026"))
+            {
+                if (obj::IsWidgetShown(w)) shown.push_back(w);
+            }
+            if (shown.empty()) return nullptr;
+            if (shown.size() == 1) return shown.front();
+            const auto tabs = PauseTabsOf(system);
+            if (tabs.tab)
+            {
+                std::wstring name = obj::ObjectName(tabs.tab);
+                if (str::EndsWith(name, L"Tab")) name.resize(name.size() - 3);
+                if (name == L"Camp") name = L"Map";
+                if (name == L"Character") name = L"Relationship";
+                const std::wstring className = L"PauseTab" + name + L"_C";
+                for (auto* w : shown)
+                {
+                    if (obj::ClassName(w) == className) return w;
+                }
+            }
+            for (auto* w : shown)
+            {
+                if (obj::CallForBool(w, L"IsCurrentScreen")) return w;
+            }
+            return shown.front();
+        }
+    }
+
+    std::vector<UObject*> ScreenRoots(UObject* screen)
+    {
+        std::vector<UObject*> roots;
+        UObject* system = PauseTabSystem();
+        bool active = false;
+        const bool pauseActive = system && obj::IsWidgetShown(system) && obj::ReadBool(system, L"bIsActive", active) && active;
+        const bool pauseWidget = !obj::IsLive(screen) || obj::IsA(screen, L"PauseTabSystemSMG026") || obj::IsA(screen, L"PauseScreenBaseSMG026") ||
+                                 obj::IsA(screen, L"CharacterCarousel_C");
+        if (!pauseActive || !pauseWidget)
+        {
+            if (obj::IsLive(screen)) roots.push_back(screen);
+            return roots;
+        }
+        roots.push_back(system);
+        if (UObject* content = PauseContent(system)) roots.push_back(content);
+        for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
+        {
+            if (obj::IsWidgetShown(carousel)) roots.push_back(carousel);
+        }
+        return roots;
+    }
+
+    namespace
+    {
+        bool UnderRoots(UObject* widget, const std::vector<UObject*>& roots)
+        {
+            for (auto* root : roots)
+            {
+                if (obj::IsDescendantOf(widget, root)) return true;
+            }
+            return false;
+        }
+
+        // A widget that is on display: itself and everything above it visible, and part of
+        // the screen being read.
+        bool OnScreen(UObject* widget, const std::vector<UObject*>& roots)
+        {
+            return obj::IsLive(widget) && obj::IsWidgetShown(widget) && UnderRoots(widget, roots);
+        }
+
+        // Lines are joined as sentences, except that a heading ending in a colon keeps
+        // its value on the same line ("Objective: Return to the road").
+        std::wstring JoinLines(const std::vector<std::wstring>& parts)
+        {
+            std::wstring out;
+            for (const auto& part : parts)
+            {
+                if (part.empty()) continue;
+                if (out.empty())
+                    out = part;
+                else if (out.back() == L':' || out.back() == L'：' || out.back() == L'.' || out.back() == L'!' || out.back() == L'?' || out.back() == L'…')
+                    out += L" " + part;
+                else
+                    out += L". " + part;
+            }
+            return out;
+        }
+    }
+
     std::wstring ScreenTitle(UObject* screen)
     {
         if (!screen) return {};
+        const auto roots = ScreenRoots(screen);
         // Like the prompts, the title widget is located by walking up from the live
         // instances rather than down from the screen.
         for (auto* title : obj::FindAllLive(L"MenuTitle_C"))
         {
-            if (!obj::IsWidgetVisible(title) || !obj::IsDescendantOf(title, screen)) continue;
+            if (!OnScreen(title, roots)) continue;
             const auto text = StripTrailingColon(TextProperty(title, L"Title"));
             if (!text.empty()) return text;
         }
         for (auto* content : obj::FindAllLive(L"PopupContent_C"))
         {
-            if (!obj::IsWidgetVisible(content) || !obj::IsDescendantOf(content, screen)) continue;
+            if (!OnScreen(content, roots)) continue;
             const auto text = StripTrailingColon(TextProperty(content, L"PopupTitle"));
             if (!text.empty()) return text;
         }
+        for (auto* title : obj::FindAllLive(L"CollectablesTitle_C"))
+        {
+            if (!OnScreen(title, roots)) continue;
+            std::vector<std::wstring> parts;
+            for (const wchar_t* property : {L"Title", L"Subtitle"})
+            {
+                const auto text = StripTrailingColon(VisibleTextProperty(title, property));
+                if (!text.empty()) parts.push_back(text);
+            }
+            if (!parts.empty()) return str::Join(parts, L", ");
+        }
+        for (auto* title : obj::FindAllLive(L"PathChosenTitle_C"))
+        {
+            if (!OnScreen(title, roots)) continue;
+            std::wstring text;
+            if (!ReadTextLeaf(title, text)) continue;
+            text = StripTrailingColon(text);
+            if (!text.empty()) return text;
+        }
         return {};
+    }
+
+    namespace
+    {
+        // Texts spoken elsewhere: the labels of the controls, the prompts, the tabs.
+        std::vector<std::wstring> SpokenElsewhere(const std::vector<UObject*>& roots)
+        {
+            std::vector<std::wstring> texts;
+            auto collect = [&](UObject* w)
+            {
+                for (const auto& text : obj::DescendantTexts(w, kLabelDepthDeep))
+                    texts.push_back(str::CollapseWhitespace(str::StripMarkup(text)));
+            };
+            for (auto* control : obj::FindAllLive(L"UIInteractableWidgetBaseSMG026"))
+            {
+                if (IsInteractable(control) && OnScreen(control, roots)) collect(control);
+            }
+            for (auto* prompt : obj::FindAllLive(L"MenuPromptWidget_C"))
+            {
+                if (OnScreen(prompt, roots)) collect(prompt);
+            }
+            return texts;
+        }
+    }
+
+    namespace
+    {
+        // "Objective: Return to the road" — heading first, whatever order the widgets have.
+        std::wstring ObjectiveLine(UObject* objective)
+        {
+            std::vector<std::wstring> parts;
+            UObject* heading = nullptr;
+            if (obj::ReadObject(objective, L"CollectablesGroupTitle", heading) && obj::IsLive(heading) && obj::IsWidgetShown(heading))
+            {
+                for (const auto& text : DisplayTexts(obj::DescendantTexts(heading, kLabelDepthDeep)))
+                    parts.push_back(text);
+            }
+            const auto text = str::CollapseWhitespace(VisibleTextProperty(objective, L"ObjectiveText"));
+            if (!text.empty()) parts.push_back(text);
+            return JoinLines(parts);
+        }
+    }
+
+    std::wstring ScreenBody(UObject* screen)
+    {
+        if (!screen) return {};
+        const auto roots = ScreenRoots(screen);
+        const auto title = ScreenTitle(screen);
+        const auto elsewhere = SpokenElsewhere(roots);
+        std::vector<std::wstring> parts;
+        auto add = [&](const std::wstring& text)
+        {
+            if (text.empty() || StripTrailingColon(text) == title) return;
+            if (std::find(elsewhere.begin(), elsewhere.end(), text) != elsewhere.end()) return;
+            if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
+        };
+        for (auto* container : obj::FindAllLive(L"PopupContent_C"))
+        {
+            if (!OnScreen(container, roots)) continue;
+            for (const auto& text : DisplayTexts(obj::DescendantTexts(container, kLabelDepthDeep)))
+                add(text);
+        }
+        for (auto* objective : obj::FindAllLive(L"Objective_C"))
+        {
+            if (OnScreen(objective, roots)) add(ObjectiveLine(objective));
+        }
+        for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
+        {
+            if (OnScreen(carousel, roots)) add(CarouselText(carousel));
+        }
+        return JoinLines(parts);
+    }
+
+    std::wstring ScreenText(UObject* screen)
+    {
+        if (!screen) return {};
+        const auto roots = ScreenRoots(screen);
+        // Prompts close the readout on their own, tabs are its heading, the objective is
+        // composed in its own order, and the bottom bar holds a placeholder behind the
+        // line it really shows.
+        std::vector<std::wstring> skip;
+        for (const wchar_t* className : {L"MenuPromptWidget_C", L"PauseTabWidget_C", L"Objective_C", L"MenuBarBottom_C"})
+        {
+            for (auto* w : obj::FindAllLive(className))
+            {
+                if (!OnScreen(w, roots)) continue;
+                for (const auto& text : obj::DescendantTexts(w, kLabelDepthDeep))
+                    skip.push_back(str::CollapseWhitespace(str::StripMarkup(text)));
+            }
+        }
+        std::vector<std::wstring> parts;
+        size_t length = 0;
+        auto add = [&](const std::wstring& text)
+        {
+            if (text.empty() || std::find(skip.begin(), skip.end(), text) != skip.end()) return;
+            if (std::find(parts.begin(), parts.end(), text) != parts.end()) return;
+            parts.push_back(text);
+            length += text.size();
+        };
+        for (auto* objective : obj::FindAllLive(L"Objective_C"))
+        {
+            if (OnScreen(objective, roots)) add(ObjectiveLine(objective));
+        }
+        for (auto* root : roots)
+        {
+            std::vector<std::wstring> texts;
+            if (obj::IsA(root, L"CharacterCarousel_C"))
+                texts.push_back(CarouselText(root));
+            else
+                texts = DisplayTexts(obj::DescendantTexts(root, 16));
+            for (const auto& text : texts)
+            {
+                if (length > 1500) break;
+                add(text);
+            }
+        }
+        add(ContextLine(screen));
+        return JoinLines(parts);
+    }
+
+    std::wstring CarouselText(UObject* carousel)
+    {
+        if (!obj::IsLive(carousel)) return {};
+        std::vector<std::wstring> parts;
+        UObject* item = nullptr;
+        if (obj::ReadObject(carousel, L"CurrentCarouselItem", item) && obj::IsLive(item))
+        {
+            UObject* info = nullptr;
+            if (obj::ReadObject(item, L"CharacterInfo", info) && obj::IsLive(info))
+            {
+                const auto name = str::CollapseWhitespace(gametext::ReadLocalized(info, L"CharacterName"));
+                if (!name.empty()) parts.push_back(name);
+            }
+            for (const auto& text : DisplayTexts(obj::DescendantTexts(item, 16)))
+            {
+                if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
+            }
+        }
+        return JoinLines(parts);
+    }
+
+    UObject* PauseTabSystem()
+    {
+        // The bar lives as long as the level, so once found it is kept; looking for it
+        // means scanning every object, which is not done more than twice a second.
+        static UObject* known = nullptr;
+        static unsigned long long lastScan = 0;
+        if (obj::IsLive(known)) return known;
+        known = nullptr;
+        const auto frame = gamethread::FrameCount();
+        if (lastScan != 0 && frame - lastScan < 30) return nullptr;
+        lastScan = frame;
+        for (auto* system : obj::FindAllLive(L"PauseTabSystemSMG026"))
+        {
+            known = system;
+            break;
+        }
+        return known;
+    }
+
+    PauseTabs PauseTabsOf(UObject* system)
+    {
+        PauseTabs tabs;
+        bool active = false;
+        if (!obj::IsLive(system) || !obj::IsWidgetVisible(system) || !obj::ReadBool(system, L"bIsActive", active) || !active) return tabs;
+        tabs.system = system;
+        int64_t selected = -1;
+        obj::ReadInt(tabs.system, L"SelectedTab", selected);
+        // The tabs are taken in the order the tab keys walk them; hidden ones (modes
+        // without that tab) do not count.
+        std::vector<std::pair<int64_t, UObject*>> visible;
+        obj::WalkWidgetTree(tabs.system, 12,
+                            [&](UObject* w, int)
+                            {
+                                int64_t index = 0;
+                                if (w != tabs.system && obj::IsA(w, L"PauseTabWidget_C") && obj::IsWidgetShown(w))
+                                {
+                                    obj::ReadInt(w, L"TabIndex", index);
+                                    visible.emplace_back(index, w);
+                                }
+                                return true;
+                            });
+        std::stable_sort(visible.begin(), visible.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        tabs.count = static_cast<int>(visible.size());
+        for (int i = 0; i < tabs.count; ++i)
+        {
+            bool highlighted = false;
+            obj::ReadBool(visible[i].second, L"bIsHighlighted", highlighted);
+            if (visible[i].first == selected || (selected < 0 && highlighted))
+            {
+                tabs.tab = visible[i].second;
+                tabs.index = i + 1;
+                break;
+            }
+        }
+        if (!tabs.tab) return tabs;
+        tabs.label = Describe(tabs.tab).label;
+        return tabs;
+    }
+
+    PauseTabs ActivePauseTabs()
+    {
+        return PauseTabsOf(PauseTabSystem());
+    }
+
+    std::wstring HudText(UObject* instance)
+    {
+        if (!obj::IsLive(instance)) return {};
+        std::vector<std::wstring> parts;
+        if (obj::IsA(instance, L"HotLinkedNotificationBaseSMG026"))
+        {
+            // Title, headline and detail line, then the prompt that opens the pause tab.
+            for (const wchar_t* property : {L"Title", L"PathChosenTitle", L"ShortText1", L"LongText1"})
+            {
+                UObject* block = nullptr;
+                if (!obj::ReadObject(instance, property, block) || !obj::IsLive(block) || !obj::IsWidgetShown(block)) continue;
+                for (const auto& text : DisplayTexts(obj::DescendantTexts(block, kLabelDepthDeep)))
+                {
+                    if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
+                }
+            }
+            bool hotlink = false;
+            if (obj::ReadBool(instance, L"bHotLinkEnabled", hotlink) && hotlink)
+            {
+                const auto prompt = PromptText(instance);
+                if (!prompt.empty()) parts.push_back(prompt);
+            }
+            return str::Join(parts, L". ");
+        }
+        return str::Join(DisplayTexts(obj::DescendantTexts(instance, kLabelDepthDeep)), L". ");
     }
 
     std::wstring PromptText(UObject* promptWidget)
@@ -326,10 +716,10 @@ namespace qa::ui
         // would depend on how deeply the screen nests them.
         std::vector<Prompt> prompts;
         if (!screen) return prompts;
+        const auto roots = ScreenRoots(screen);
         for (auto* w : obj::FindAllLive(L"MenuPromptWidget_C"))
         {
-            if (!obj::IsWidgetVisible(w)) continue;
-            if (!obj::IsDescendantOf(w, screen)) continue;
+            if (!OnScreen(w, roots)) continue;
             Prompt p;
             p.action = ActionOf(w);
             p.key = PromptKey(w, p.action);
@@ -357,9 +747,10 @@ namespace qa::ui
         if (!screen) return {};
         // The bar composes its line as it is drawn; the text block behind it keeps the
         // placeholder from the editor, so the line is asked for rather than read.
+        const auto roots = ScreenRoots(screen);
         for (auto* bar : obj::FindAllLive(L"MenuBarBottom_C"))
         {
-            if (!obj::IsWidgetVisible(bar) || !obj::IsDescendantOf(bar, screen)) continue;
+            if (!OnScreen(bar, roots)) continue;
             const auto text = str::CollapseWhitespace(str::StripMarkup(obj::CallForText(bar, L"GetUnlocalisedMenuContext")));
             if (!text.empty()) return text;
         }

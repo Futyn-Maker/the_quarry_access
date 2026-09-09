@@ -89,7 +89,6 @@ namespace qa::watch
                         if (!looksInstance) continue;
                         if (type == L"ObjectProperty" || type == L"WeakObjectProperty")
                         {
-                            if (type == L"WeakObjectProperty") continue; // not readable as a raw pointer
                             g_slots.push_back(HudSlot{hud, hudClassName, hp, name, false});
                         }
                         else if (type == L"ArrayProperty")

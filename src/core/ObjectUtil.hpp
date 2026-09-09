@@ -70,6 +70,8 @@ namespace qa::obj
     // Result of a no-argument function returning FText/FString/FName. Empty when there is
     // no such function. Reaches text the game computes on demand instead of storing it.
     std::wstring CallForText(UObject* target, std::wstring_view functionName);
+    // Result of a no-argument function returning bool; false when there is no such function.
+    bool CallForBool(UObject* target, std::wstring_view functionName);
 
     // Widgets
     bool IsWidgetVisible(UObject* widget);    // Visibility not Collapsed/Hidden (self only)
@@ -79,6 +81,12 @@ namespace qa::obj
     std::vector<UObject*> PanelChildren(UObject* panelWidget);
     // Visible text of all descendant text widgets, in tree order. Recurses into nested user widgets.
     std::vector<std::wstring> DescendantTexts(UObject* userWidget, int maxDepth = 6);
+    // Lets the game-specific layer declare widgets whose text is held in one property
+    // rather than in their child text blocks (which may repeat it for visual effects).
+    // The reader returns true to claim a widget: its text (possibly empty) is taken as
+    // is and its subtree is not walked.
+    using TextLeafReader = bool (*)(UObject* widget, std::wstring& outText);
+    void SetTextLeafReader(TextLeafReader reader);
     // Visits every widget in the tree (depth-first). Return false from the visitor to stop.
     void WalkWidgetTree(UObject* userWidget, int maxDepth, const std::function<bool(UObject* widget, int depth)>& visitor);
 

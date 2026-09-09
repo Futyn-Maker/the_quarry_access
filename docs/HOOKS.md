@@ -16,10 +16,9 @@ hook firing.
 
 ## Blueprint functions
 
-| Declaring class           | Function | Feature | Meaning                                                        |
-| ------------------------- | -------- | ------- | -------------------------------------------------------------- |
-| `MenuBaseWidget_C`        | `Show`   | Menus   | A frontend or pause screen opened; starts the arrival readout. |
-| `PopupScreenBaseWidget_C` | `Show`   | Menus   | A popup opened; starts the arrival readout.                    |
+| Declaring class                                                                                                                                       | Function | Feature | Meaning                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------------------------------------------------------- |
+| `MenuBaseWidget_C`, `PopupScreenBaseWidget_C`, `CouchCo-opHandover_C`, `PauseTabCollectablesBase_C`, `PauseTabRelationship_C`, `RewindPause_C`, `RewindUnlocked_C` | `Show`   | Menus   | A screen opened; starts the arrival readout. Each class that overrides `Show` declares its own function and is routed on its own. |
 
 ## Pollers
 
@@ -29,8 +28,10 @@ hook firing.
 | `menus.arrival`                                                                                                                           | Menus       | Reads a newly opened screen as title, selection, prompts once it has settled.                 |
 | `menus.prompts`                                                                                                                           | Menus       | Re-reads the prompt bar when it changes, after the selection has stopped moving.              |
 | `menus.value`                                                                                                                             | Menus       | Speaks a changed value of the focused selector or slider with its description.                |
+| `pause`: `bIsActive` and `SelectedTab` of the visible `PauseTabSystemSMG026`                                                              | Pause       | The pause menu opening and its tab changing; both re-read the screen with the tab as heading. |
+| `hud.text`: text of the HUD elements the HUD instance watcher reported                                                                    | Hud         | Speaks a caption, notification, alert or act title once its text has settled.                 |
 | Text watcher                                                                                                                              | Watchers    | Diffs registered text blocks.                                                                 |
-| HUD instance watcher (`*WidgetInstance` pointers on the HUD components)                                                                   | Watchers    | Live HUD widgets for the screen readout and dumps.                                            |
+| HUD instance watcher (`*Instance` pointers, strong and weak, on the HUD components)                                                       | Watchers    | Appearance of HUD widgets: loading screen, saving icon, scene details, notifications, alerts, act display; also the screen readout and dumps. |
 | `input.activity`                                                                                                                          | Speech      | Keyboard, mouse and gamepad activity, so only the player's own input interrupts speech.       |
 | `speech`                                                                                                                                  | Speech      | Drains the bounded queue.                                                                     |
 | `hotkeys`                                                                                                                                 | Hotkeys     | Keyboard hotkeys and the gamepad chord.                                                       |
@@ -48,4 +49,5 @@ The mod hooks no native game functions. It calls these through `ProcessEvent`:
 | `SMGUIUserWidgetBase::GetKeysFromActionMapping`     | Keys bound to an input action.                       |
 | `KismetInputLibrary::Key_GetDisplayName`            | Engine display name of a key.                        |
 | `MenuBarBaseSMG026::GetUnlocalisedMenuContext`      | The description line of the bottom menu bar.         |
+| `TypeWriterTextBlockSMG026::GetText`                | The full text of a message that is typed out.        |
 | `PlayerController::IsInputKeyDown`                  | The gamepad hotkey chord.                            |

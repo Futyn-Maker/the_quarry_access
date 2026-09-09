@@ -21,6 +21,7 @@ namespace qa::speech
 
         std::mutex g_mutex;
         std::wstring g_lastSpoken;
+        std::wstring g_lastMessage; // the last thing said that was not itself a readout
         Clock::time_point g_lastSpokenAt{};
         Clock::time_point g_lastOutputAt{}; // when the reader was last given something to say
         std::deque<std::wstring> g_queued;  // bounded subtitle queue
@@ -64,6 +65,7 @@ namespace qa::speech
             g_lastOutputAt = Clock::now();
             EstimateDuration(text);
             Remember(text);
+            if (std::wstring_view(policy) != L"now") g_lastMessage = std::wstring(text);
         }
 
         // Cutting a sentence short is only right when the player is waiting for the answer
@@ -80,6 +82,7 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         g_lastSpoken.clear();
+        g_lastMessage.clear();
         g_queued.clear();
     }
 
@@ -157,7 +160,7 @@ namespace qa::speech
     std::wstring Last()
     {
         std::lock_guard lock(g_mutex);
-        return g_lastSpoken;
+        return g_lastMessage;
     }
 
     void Tick()

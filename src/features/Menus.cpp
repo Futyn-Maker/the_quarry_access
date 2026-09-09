@@ -25,11 +25,14 @@ namespace qa::features
         std::wstring g_lastPromptText;
         double g_focusChangedAt = -1.0;
 
-        // A screen that has just opened is announced as one ordered sequence — title, then
-        // focused item, then prompts — once it has settled, so the parts do not cut each other.
+        // A screen that has just opened is announced as one ordered sequence — heading,
+        // title, message, focused item, prompts — once it has settled, so the parts do
+        // not cut each other. Only the first part may interrupt, and only when the
+        // player asked for the screen.
         bool g_arrivalPending = false;
         double g_arrivalAt = -1.0;
         UObject* g_focusBeforeArrival = nullptr;
+        std::vector<std::wstring> g_heading;
 
         // The prompt line always comes last, so it is held back until neither the selection
         // nor the prompts themselves have changed for this long.
@@ -41,9 +44,20 @@ namespace qa::features
         UObject* g_valueWidget = nullptr;
         std::wstring g_lastValue;
 
+        // Screens announce themselves when they show. A screen class that overrides Show
+        // declares its own function, so each of these is routed separately.
+        const wchar_t* const kShowingScreens[] = {L"MenuBaseWidget_C",       L"PopupScreenBaseWidget_C", L"CouchCo-opHandover_C", L"PauseTabCollectablesBase_C",
+                                                  L"PauseTabRelationship_C", L"RewindPause_C",           L"RewindUnlocked_C"};
+
+        // Pause tabs are reported as the heading of their screen, not as its selection.
+        bool IsTab(UObject* interactable)
+        {
+            return interactable && ui::KindOf(interactable) == ui::Kind::Tab;
+        }
+
         std::wstring DescribeFocused(UObject* interactable)
         {
-            if (!interactable || !obj::IsWidgetVisible(interactable)) return {};
+            if (!interactable || IsTab(interactable) || !obj::IsWidgetVisible(interactable)) return {};
             auto description = ui::Describe(interactable);
             if (description.label.empty()) return {};
             if (description.tip.empty() && cfg::Get().verbosity == cfg::Verbosity::Full) description.tip = ui::ContextLine(g_screen);
@@ -56,10 +70,8 @@ namespace qa::features
             return ui::SpeakPrompts(ui::Prompts(g_screen));
         }
 
-        void BeginArrival(UObject* screen, const wchar_t* source)
+        void StartArrival()
         {
-            if (!screen || screen == g_screen) return;
-            g_screen = screen;
             g_arrivalPending = true;
             g_arrivalAt = gamethread::NowSeconds();
             g_focusChangedAt = g_arrivalAt;
@@ -68,6 +80,13 @@ namespace qa::features
             g_focusBeforeArrival = g_focused;
             g_lastPromptText.clear();
             g_promptCandidate.clear();
+        }
+
+        void BeginArrival(UObject* screen, const wchar_t* source)
+        {
+            if (!screen || screen == g_screen) return;
+            g_screen = screen;
+            StartArrival();
             log::Verbose(L"menus: screen via {} -> {}", source, obj::ClassName(screen));
         }
 
@@ -75,7 +94,7 @@ namespace qa::features
         {
             if (screen) BeginArrival(screen, L"focus");
             UObject* interactable = ui::Interactable(focused);
-            if (!interactable || interactable == g_focused) return;
+            if (!interactable || IsTab(interactable) || interactable == g_focused) return;
             g_focused = interactable;
             g_focusChangedAt = gamethread::NowSeconds();
             // While a screen is opening the item is spoken by the arrival sequence, in order.
@@ -86,17 +105,48 @@ namespace qa::features
             speech::Focus(text);
         }
 
+        // The first part answers the player, so it may interrupt; the rest follows in order.
+        void SpeakSequence(const std::vector<std::wstring>& parts)
+        {
+            bool first = true;
+            for (const auto& part : parts)
+            {
+                if (part.empty()) continue;
+                if (first)
+                    speech::Focus(part);
+                else
+                    speech::Announce(part);
+                first = false;
+            }
+        }
+
+        // A screen title that only repeats the name of the pause tab is left out.
+        bool RepeatsTab(const std::wstring& title)
+        {
+            const auto tabs = ui::ActivePauseTabs();
+            if (!tabs.tab || tabs.label.empty()) return false;
+            return str::EqualsNoCase(str::Trim(title.substr(0, title.find(L','))), tabs.label);
+        }
+
         void PollArrivalImpl()
         {
             if (!g_arrivalPending) return;
-            if (!obj::IsLive(g_screen))
-            {
-                g_arrivalPending = false;
-                return;
-            }
             const double now = gamethread::NowSeconds();
             const double elapsed = now - g_arrivalAt;
             if (elapsed < 0.3) return;
+            if (!obj::IsLive(g_screen))
+            {
+                // A heading may arrive before the screen it belongs to has been noticed.
+                g_screen = watch::CurrentScreen();
+                if (!obj::IsLive(g_screen))
+                {
+                    if (elapsed < 1.2) return;
+                    g_arrivalPending = false;
+                    SpeakSequence(g_heading);
+                    g_heading.clear();
+                    return;
+                }
+            }
             UObject* interactable = ui::Interactable(watch::CurrentFocused());
             if (interactable == g_focusBeforeArrival) interactable = nullptr;
             const auto focusText = DescribeFocused(interactable);
@@ -105,18 +155,22 @@ namespace qa::features
 
             g_arrivalPending = false;
             g_focusChangedAt = now;
-            if (interactable)
+            if (!focusText.empty())
             {
                 g_focused = interactable;
                 g_lastFocusText = focusText;
             }
+            std::vector<std::wstring> parts = g_heading;
+            g_heading.clear();
             const auto title = ui::ScreenTitle(g_screen);
+            if (!title.empty() && !RepeatsTab(title)) parts.push_back(title);
+            parts.push_back(ui::ScreenBody(g_screen));
+            parts.push_back(focusText);
             const auto prompts = CurrentPromptText();
             g_lastPromptText = prompts;
             g_promptCandidate = prompts;
-            if (!title.empty()) speech::Announce(title);
-            if (!focusText.empty()) speech::Announce(focusText);
-            if (!prompts.empty()) speech::Announce(prompts);
+            parts.push_back(prompts);
+            SpeakSequence(parts);
         }
 
         // Prompts are re-read whenever the set on screen changes, which is how opening a
@@ -150,7 +204,7 @@ namespace qa::features
         {
             if (gamethread::FrameCount() % 4 != 0) return;
             UObject* interactable = ui::Interactable(watch::CurrentFocused());
-            if (!interactable)
+            if (!interactable || IsTab(interactable))
             {
                 g_valueWidget = nullptr;
                 g_lastValue.clear();
@@ -187,11 +241,38 @@ namespace qa::features
         }
     }
 
+    void ArriveWith(std::vector<std::wstring> heading)
+    {
+        g_heading = std::move(heading);
+        StartArrival();
+    }
+
+    bool ArrivalPending()
+    {
+        return g_arrivalPending;
+    }
+
+    void ResetMenus()
+    {
+        g_screen = nullptr;
+        g_focused = nullptr;
+        g_focusBeforeArrival = nullptr;
+        g_valueWidget = nullptr;
+        g_lastFocusText.clear();
+        g_lastPromptText.clear();
+        g_promptCandidate.clear();
+        g_lastValue.clear();
+        g_heading.clear();
+        g_arrivalPending = false;
+    }
+
     void MenusFeature::Install()
     {
         watch::AddFocusListener([](UObject* screen, UObject* focused) { OnFocusChanged(screen, focused); });
-        hooks::OnScript(L"MenuBaseWidget_C", L"Show", [](UObject* self, FFrame&) { BeginArrival(self, L"Show"); });
-        hooks::OnScript(L"PopupScreenBaseWidget_C", L"Show", [](UObject* self, FFrame&) { BeginArrival(self, L"Show"); });
+        for (const wchar_t* screenClass : kShowingScreens)
+        {
+            hooks::OnScript(screenClass, L"Show", [](UObject* self, FFrame&) { BeginArrival(self, L"Show"); });
+        }
         gamethread::AddPoller(L"menus.arrival", &PollArrival);
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);
         gamethread::AddPoller(L"menus.value", &PollValue);
@@ -201,13 +282,22 @@ namespace qa::features
     {
         UObject* screen = watch::CurrentScreen();
         if (!screen) return;
-        const auto title = ui::ScreenTitle(screen);
-        if (!title.empty()) out.push_back(title);
-        if (UObject* interactable = ui::Interactable(watch::CurrentFocused()))
+        UObject* interactable = ui::Interactable(watch::CurrentFocused());
+        if (interactable && !IsTab(interactable))
         {
+            const auto title = ui::ScreenTitle(screen);
+            if (!title.empty() && !RepeatsTab(title)) out.push_back(title);
+            const auto body = ui::ScreenBody(screen);
+            if (!body.empty()) out.push_back(body);
             auto description = ui::Describe(interactable);
             if (description.tip.empty()) description.tip = ui::ContextLine(screen);
             out.push_back(ui::Speak(description));
+        }
+        else
+        {
+            // Nothing is selected: everything the screen shows is read.
+            const auto text = ui::ScreenText(screen);
+            if (!text.empty()) out.push_back(text);
         }
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);

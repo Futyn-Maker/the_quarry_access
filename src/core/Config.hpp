@@ -45,17 +45,6 @@ namespace qa::cfg
         // [Features]
         std::map<std::wstring, bool> features;
 
-        // [Subtitles]
-        bool subtitleInterrupt = false;
-        bool speakClosedCaptions = true;
-
-        // [Mechanics]
-        std::vector<int> choiceCountdownAt{10, 5, 3, 2, 1};
-        bool qteBeep = false;
-        int dontBreatheDangerWarnMs = 300;
-        int radarIntervalMs = 0;
-        bool combatTone = true;
-
         // [Diag]
         std::vector<std::wstring> traceClassPrefixes{L"Menu", L"Pause",   L"Choice", L"Prompt",       L"Subtitle", L"QTE",
                                                      L"Mash", L"Breathe", L"Popup",  L"Notification", L"Reading"};

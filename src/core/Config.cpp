@@ -182,15 +182,6 @@ namespace qa::cfg
             }
         }
 
-        s.subtitleInterrupt = ini.GetBool(L"Subtitles", L"Interrupt", false);
-        s.speakClosedCaptions = ini.GetBool(L"Subtitles", L"SpeakClosedCaptions", true);
-
-        s.choiceCountdownAt = ini.GetIntList(L"Mechanics", L"ChoiceCountdownAt", s.choiceCountdownAt);
-        s.qteBeep = ini.GetBool(L"Mechanics", L"QTEBeep", false);
-        s.dontBreatheDangerWarnMs = ini.GetInt(L"Mechanics", L"DontBreatheDangerWarnMs", s.dontBreatheDangerWarnMs);
-        s.radarIntervalMs = ini.GetInt(L"Mechanics", L"RadarIntervalMs", s.radarIntervalMs);
-        s.combatTone = ini.GetBool(L"Mechanics", L"CombatTone", true);
-
         s.traceClassPrefixes = ini.GetList(L"Diag", L"TraceClassPrefixes", s.traceClassPrefixes);
         return s;
     }

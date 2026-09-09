@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Pause menu: opening it announces that the game is paused, the selected tab and its place among the tabs; switching tabs reads the new tab, its objective line, the selected entry and the prompts; clues, evidence, tarot cards and tutorials are read with their descriptions.
+- Popups and dialogs read their message after the title; rewind and couch co-op screens are covered.
+- HUD: scene captions, notifications with their hot-link prompt, alerts and act titles are read when they appear; loading and saving are announced.
+- Read-screen (F6) reads everything a screen shows when nothing on it is selected.
+
 ## 0.2.0
 
 - Menus: the focused item is announced with its label, control type, state, position and description line; a screen that opens is read as title, selection, then prompt bar, and the prompt line always closes the readout.

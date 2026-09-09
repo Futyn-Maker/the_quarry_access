@@ -8,7 +8,9 @@
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
 #include "features/Feature.hpp"
+#include "features/Hud.hpp"
 #include "features/Menus.hpp"
+#include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -16,6 +18,7 @@
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 #include "speech/TolkBridge.hpp"
+#include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
 
 #include <Mod/CppUserModBase.hpp>
@@ -106,7 +109,10 @@ public:
         qa::watch::Install();
         qa::hotkeys::Install();
         qa::diag::InstallCommandFile();
+        qa::ui::Install();
+        qa::features::Register(std::make_unique<qa::features::PauseFeature>());
         qa::features::Register(std::make_unique<qa::features::MenusFeature>());
+        qa::features::Register(std::make_unique<qa::features::HudFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};
@@ -124,6 +130,7 @@ public:
                         qa::log::Info(L"map loaded; resetting caches");
                         qa::obj::ResetCaches();
                         qa::watch::Reset();
+                        qa::features::ResetMenus();
                         qa::input::InvalidateCache();
                     });
             },

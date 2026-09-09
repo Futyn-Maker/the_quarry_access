@@ -44,9 +44,12 @@ namespace qa::str
 
     std::wstring ToLower(std::wstring_view s)
     {
-        std::wstring out(s);
-        for (auto& c : out)
-            c = static_cast<wchar_t>(std::towlower(c));
+        if (s.empty()) return {};
+        std::wstring out(s.size(), L'\0');
+        const int n = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, s.data(), static_cast<int>(s.size()), out.data(), static_cast<int>(out.size()),
+                                    nullptr, nullptr, 0);
+        if (n <= 0) return std::wstring(s);
+        out.resize(static_cast<size_t>(n));
         return out;
     }
 
@@ -78,11 +81,7 @@ namespace qa::str
     bool EqualsNoCase(std::wstring_view a, std::wstring_view b)
     {
         if (a.size() != b.size()) return false;
-        for (size_t i = 0; i < a.size(); ++i)
-        {
-            if (std::towlower(a[i]) != std::towlower(b[i])) return false;
-        }
-        return true;
+        return ToLower(a) == ToLower(b);
     }
 
     std::wstring ReplaceAll(std::wstring s, std::wstring_view from, std::wstring_view to)
