@@ -34,6 +34,10 @@ namespace qa::str
     // with punctuation gets a period before the next part is appended.
     std::wstring JoinSentences(const std::vector<std::wstring>& parts);
 
+    // Joins non-empty parts with spaces, except before punctuation that continues the
+    // sentence: the words of a prompt around its key.
+    std::wstring JoinWords(const std::vector<std::wstring>& parts);
+
     // Unescapes "\n" and "\t" sequences from INI values.
     std::wstring UnescapeIni(std::wstring_view s);
 }

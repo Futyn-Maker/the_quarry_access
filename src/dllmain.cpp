@@ -7,12 +7,15 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/ButtonMash.hpp"
 #include "features/Choices.hpp"
+#include "features/DontBreathe.hpp"
 #include "features/Feature.hpp"
 #include "features/Hud.hpp"
 #include "features/Menus.hpp"
 #include "features/Pause.hpp"
 #include "features/Prompts.hpp"
+#include "features/Qte.hpp"
 #include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
@@ -120,6 +123,9 @@ public:
         qa::features::Register(std::make_unique<qa::features::SubtitlesFeature>());
         qa::features::Register(std::make_unique<qa::features::PromptsFeature>());
         qa::features::Register(std::make_unique<qa::features::ChoicesFeature>());
+        qa::features::Register(std::make_unique<qa::features::QteFeature>());
+        qa::features::Register(std::make_unique<qa::features::ButtonMashFeature>());
+        qa::features::Register(std::make_unique<qa::features::DontBreatheFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

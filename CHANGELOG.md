@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Quick-time events: the direction the arrow asks for is said the moment the event appears, with the key when the game shows a key cap, and played as a cue at the same time (notes climbing for up, falling for down, a note in the left or the right ear for the sides); both are repeated every second while the arrow stays on screen; a rising tone marks a hit, a falling one a miss.
+- The cues play louder by default (`[Sounds] Volume` 80).
+- Button mash: the button is said the way the game's Button Mash setting wants it pressed (mashed, held, tapped, or automatic); blips of rising and falling pitch follow the ring as it fills and empties; the outcome is said and played.
+- Don't Breathe: the prompt to hold the breath and the prompt to release it are read as the game shows them, with the key; blips follow the breath bars while the breath is held; the outcome is said and played.
+- F6 reads the event, the button or the prompt on screen; F8 names the keys of a quick-time event, the button to mash and the key to hold.
+
 ## 0.5.0
 
 - Choices: a choice is read as a timed or plain choice with its question, each option with its place and its two labels, and the option of not responding when the choice offers it; the key hints are read when the game shows them; the option the player is holding is announced as the game highlights it, the option chosen once the key is released; the seconds left are read once the game shows them.

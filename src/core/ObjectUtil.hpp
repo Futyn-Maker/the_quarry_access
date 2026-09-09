@@ -39,6 +39,8 @@ namespace qa::obj
     FProperty* FindProperty(UClass* cls, std::wstring_view name);
     std::wstring PropertyTypeName(FProperty* property); // "ObjectProperty", "TextProperty", ...
     void* ValuePtr(UObject* object, FProperty* property);
+    // The same inside raw memory: a struct, a parameter block.
+    void* ValuePtrAt(void* container, FProperty* property);
 
     bool ReadBool(UObject* object, std::wstring_view name, bool& out);
     bool ReadInt(UObject* object, std::wstring_view name, int64_t& out); // byte/int/int64/enum
@@ -75,6 +77,10 @@ namespace qa::obj
     std::wstring CallForText(UObject* target, std::wstring_view functionName);
     // Result of a no-argument function returning bool; false when there is no such function.
     bool CallForBool(UObject* target, std::wstring_view functionName);
+    // Calls a no-argument function and hands `read` the parameter block and the property of
+    // the return value (null when the function returns nothing), then releases what the
+    // engine allocated in a returned struct. False when there is no such function.
+    bool CallReturn(UObject* target, std::wstring_view functionName, const std::function<void(void* params, FProperty* returnValue)>& read);
 
     // Widgets
     bool IsWidgetVisible(UObject* widget); // Visibility not Collapsed/Hidden (self only)

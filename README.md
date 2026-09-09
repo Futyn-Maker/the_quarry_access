@@ -5,7 +5,8 @@ It reads the game's screens through your screen reader: NVDA, JAWS and other Tol
 readers, with a SAPI fallback when no screen reader is running. Speech and braille are both
 supported. The menus, settings and pause menu are covered, with the focused item, its description
 and the available key prompts spoken as you move; captions, notifications, alerts, subtitles,
-button prompts and choices that the game shows during play are read as they appear.
+button prompts, choices, quick-time events, button mashes and Don't Breathe prompts that the
+game shows during play are read as they appear, with short tones for what has to be fast.
 
 The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and [Tolk](https://github.com/dkager/tolk).
 It never changes the game's own settings: everything it says follows what the game displays,
@@ -34,8 +35,11 @@ the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setu
 
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
 
-A short tone marks the moment a choice commits, so you know when to release the key; its
-volume is set in the same file, and 0 turns it off.
+Short tones complement speech where speed matters: a rising two-note tone marks a choice
+committing or a challenge won, a falling one a challenge lost; a quick-time event plays its
+direction (notes climbing for up, falling for down, a note in the left or the right ear for
+the sides) at the same moment it is spoken; blips of rising or falling pitch follow the
+button-mash ring and the breath bars. Their volume is set in the same file, and 0 turns them off.
 
 ## Languages
 

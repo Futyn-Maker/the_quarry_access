@@ -104,6 +104,13 @@ namespace qa::ui
     // right), then its device glyph when it prints one. Empty when it shows neither.
     std::wstring AxisPromptKeys(UObject* axisPrompt);
 
+    // Spoken key of a glyph widget: the key it prints, else the key bound to the action.
+    std::wstring GlyphKeyName(UObject* glyphWidget, std::wstring_view action);
+
+    // The current value of one of the game's list settings (`/Game/UI/GameSettings/<name>`)
+    // as the index in its enum; -1 when the setting cannot be read.
+    int64_t GameSettingValue(std::wstring_view assetName);
+
     // Name of the input action stored in an action-mapping property ("UINavigationCancel").
     std::wstring ActionName(UObject* widget, std::wstring_view property);
 

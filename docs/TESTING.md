@@ -148,3 +148,37 @@ Tester script (Russian UI). Play the prologue from the start.
 Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
 ChoiceCommitLeft`, one `SAY announce` per choice and per prompt, `SAY focus` for the option held,
 and no `ERROR`.
+
+## Quick-time events, button mash, Don't Breathe
+
+Tester script (Russian UI). Chapter 1 has the first quick-time events; a button mash and a
+Don't Breathe come later in the story. Settings → Доступность shows the modes in play: Простые
+QTE, Быстрое нажатие, Не дышать.
+
+1. When a quick-time event appears you hear its direction at once, "Вверх, W." on the keyboard
+   (the key cap the game shows; the arrow keys work as bound too) or "Вверх." on a gamepad, and
+   at the same moment a cue: three notes climbing for up, falling for down, one note in the
+   left ear for left, in the right ear for right. Both are repeated every second for as long
+   as the arrow stays on screen. A rising two-note tone marks a hit, a falling one a miss or a
+   timeout; nothing is spoken for the result. The direction is never cut short by anything the
+   mod says on its own, and it does not cut a subtitle short either: the cue is what arrives
+   first when the reader is busy.
+2. Press F6 during an event: the direction is read again. Press F8: the four keys.
+3. At a button mash you hear the button the way Настройки → Доступность → Быстрое нажатие asks:
+   "Быстро нажимайте левая кнопка мыши." by default, "Удерживайте ..." in the Hold mode,
+   "Нажмите ..." in the Tap mode, "..., автоматически" in the Auto mode. While the ring fills
+   with your presses, blips rise in pitch; when you stop they fall as the ring shrinks. The
+   outcome is a tone plus "Успех." or "Неудача.", followed by whatever message the game shows.
+4. At a Don't Breathe you hear the prompt as displayed, "УДЕРЖИВАЙТЕ левая кнопка мыши ЧТОБЫ
+   ЗАДЕРЖАТЬ ДЫХАНИЕ" (the key as bound; a glyph without a printed name is named from the
+   binding). Hold the key: the prompt changes to "ОТПУСТИТЕ ... КОГДА ОКАЖЕТЕСЬ В БЕЗОПАСНОСТИ"
+   and blips follow the breath bars twice a second while you hold. Release: a tone plus
+   "Успех." or "Неудача.", then the game's own message.
+5. Bonus → Обучение: the Don't Breathe and QTE tutorials show the same widgets and are read the
+   same way.
+
+Expected log lines: `qte: ... angle N action "DirectionQTE..." -> dir.... key "..."` for every
+event (the angle and the action must agree: 0 up, 90 right, 180 down, 270 left), `qte: ... hit`
+or `missed`/`timed out`, `mash: ... action "ButtonMash" ... mode N`, `mash: ... succeeded`,
+`breathe: prompt "..."`, `breathe: state 1`, one `breathe: holding at N s, bar X` per blip,
+`breathe: ... succeeded`, and no `ERROR`.

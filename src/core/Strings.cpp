@@ -181,6 +181,20 @@ namespace qa::str
         return out;
     }
 
+    std::wstring JoinWords(const std::vector<std::wstring>& parts)
+    {
+        std::wstring out;
+        for (const auto& part : parts)
+        {
+            if (part.empty()) continue;
+            const wchar_t first = part.front();
+            const bool punctuation = first == L',' || first == L'.' || first == L'!' || first == L'?' || first == L':' || first == L';';
+            if (!out.empty() && !punctuation) out += L' ';
+            out += part;
+        }
+        return CollapseWhitespace(out);
+    }
+
     std::wstring JoinSentences(const std::vector<std::wstring>& parts)
     {
         std::wstring out;

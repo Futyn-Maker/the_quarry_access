@@ -57,21 +57,6 @@ namespace qa::features
             }
         }
 
-        // Parts joined with spaces, except before punctuation that continues the sentence.
-        std::wstring JoinParts(const std::vector<std::wstring>& parts)
-        {
-            std::wstring out;
-            for (const auto& part : parts)
-            {
-                if (part.empty()) continue;
-                const wchar_t first = part.front();
-                const bool punctuation = first == L',' || first == L'.' || first == L'!' || first == L'?' || first == L':' || first == L';';
-                if (!out.empty() && !punctuation) out += L' ';
-                out += part;
-            }
-            return str::CollapseWhitespace(out);
-        }
-
         // A button prompt reads as its labels around the key: "Use E to walk", or the label
         // under the glyph followed by the key: "INTERRUPT? A".
         std::wstring ButtonPromptText(UObject* prompt)
@@ -80,8 +65,8 @@ namespace qa::features
             const auto right = ui::PropertyText(prompt, L"LabelRight");
             const auto bottom = ui::PropertyText(prompt, L"LabelBottom");
             const auto key = ui::PromptKeyName(prompt, PromptAction(prompt));
-            if (!left.empty() || !right.empty()) return JoinParts({left, key, right, bottom});
-            return JoinParts({bottom, key});
+            if (!left.empty() || !right.empty()) return str::JoinWords({left, key, right, bottom});
+            return str::JoinWords({bottom, key});
         }
 
         // A prompt for the keys of an axis, the mouse or the stick reads as its labels around
@@ -93,7 +78,7 @@ namespace qa::features
             auto keys = ui::AxisPromptKeys(prompt);
             if (keys.empty()) keys = input::PointerName();
             if (left.empty() && right.empty()) return keys;
-            return JoinParts({left, keys, right});
+            return str::JoinWords({left, keys, right});
         }
 
         std::wstring SlotText(const Slot& slot)

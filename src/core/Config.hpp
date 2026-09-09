@@ -46,7 +46,7 @@ namespace qa::cfg
         int focusDedupeMs = 150;
 
         // [Sounds]
-        int soundVolume = 30;
+        int soundVolume = 80;
 
         // [Subtitles]
         bool readSubtitles = true;

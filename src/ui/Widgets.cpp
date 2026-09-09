@@ -781,6 +781,42 @@ namespace qa::ui
         return str::Join(keys, L", ");
     }
 
+    std::wstring GlyphKeyName(UObject* glyphWidget, std::wstring_view action)
+    {
+        if (!obj::IsLive(glyphWidget)) return {};
+        const auto printed = str::Trim(TextProperty(glyphWidget, L"KeyTextBlock"));
+        if (!printed.empty()) return input::KeyDisplayName(printed);
+        return action.empty() ? std::wstring() : input::KeyForAction(action);
+    }
+
+    int64_t GameSettingValue(std::wstring_view assetName)
+    {
+        const std::wstring name(assetName);
+        UObject* setting = obj::FindObject(L"/Game/UI/GameSettings/" + name + L"." + name);
+        UObject* context = obj::LocalPlayerController();
+        if (!setting || !context) return -1;
+        auto* fn = obj::FindFunction(setting, L"GetCurrentEnumValueAsInt");
+        if (!fn) return -1;
+        int64_t value = -1;
+        obj::Call(
+            setting, fn,
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && obj::PropertyTypeName(prop) == L"ObjectProperty") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = context;
+                }
+            },
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && prop->GetName() == L"ReturnValue") obj::ReadIntAt(params, prop, value);
+                }
+            });
+        return value;
+    }
+
     std::wstring PromptText(UObject* promptWidget)
     {
         const std::wstring action = ActionOf(promptWidget);

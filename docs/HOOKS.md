@@ -22,6 +22,10 @@ hook firing.
 | `NestedContentMenu_C`                                                                                                                                 | `ShowNestedContent`, `PopNestedContent` | Menus | A section opened or closed inside a screen; the screen is read again (title only if it changed). |
 | `MenuBaseWidget_C` (instances of `MainMenuWidget_C`)                                                                                                  | `Show`   | Subtitles | The main menu is back: the last subtitle line is forgotten. |
 | `InputActionInteractionPromptWidgetSMG026_C`                                                                                                          | `SetButtonPrompt` | Prompts | The input action and style a button prompt is set up with, kept for naming its key. |
+| `DirectionQTEViewportWidgetSMG026_C`                                                                                                                  | `Construct` | Qte | A quick-time event widget is up (the HUD instance watcher reports it too); its direction is read on the next frame. |
+| `DirectionQTEViewportWidgetSMG026_C`                                                                                                                  | `WidgetAnimationEvt_SuccessAnim_K2Node_WidgetAnimationEvent_8`, `WidgetAnimationEvt_FailureAnim_K2Node_WidgetAnimationEvent_9` | Qte | The result animations start: the event was hit or missed. |
+| `ButtonMashWidgetSMG026_C`                                                                                                                            | `Construct` | ButtonMash | A button mash widget is up, in play or in a tutorial. |
+| `DontBreatheWidgetSMG026_C`                                                                                                                           | `Construct` | DontBreathe | A Don't Breathe widget is up, in play or in a tutorial. |
 
 ## Pollers
 
@@ -37,6 +41,9 @@ hook firing.
 | `subtitles`: `ForegroundLines` of the subtitle widget the HUD instance watcher reported, every frame; the focused widget every 30 frames  | Subtitles   | Reads each subtitle line once, the frame it appears, and keeps the last line for its hotkey until the main menu is back. |
 | `prompts`: the prompt slots of the interaction prompt widget the HUD instance watcher reported, every 2 frames                             | Prompts     | Reads a button, mouse or stick prompt once its labels and key have settled, again when it changes. |
 | `choices`: the option widgets the choice HUD elements point at, key hints, highlight and chosen flags, time remaining and countdown message of the choice widgets the HUD instance watcher reported, every 2 frames | Choices | Reads a choice once its options have settled, the key hints when shown, the option held, the option chosen (after the key is released), the seconds left and the countdown. Widgets faded out by their opacity count as not shown. |
+| `qte`: `GetDirectionQTESMG026Info`, `GetActionMappingSuccess` and the result animations of the quick-time event widgets, every frame | Qte | Reads the direction (and the key on the keyboard) and plays its cue when the event appears and every second until it is resolved, then plays the result. A second widget of the same event stays quiet. |
+| `mash`: `GetButtonMashInfo`, the glyph and `InfoDataInstance` (`ButtonMashState`, `CommitFraction`) of the button mash widgets, every 2 frames | ButtonMash | Reads the button with the game's button mash mode once, blips as the ring moves, says and plays the outcome. |
+| `breathe`: the prompt text blocks, the glyph and `InfoDataInstance` (`DontBreatheState`, `HoldingBreathTimeScale`) of the Don't Breathe widgets, every 2 frames | DontBreathe | Reads the prompt once it has settled and again when it changes, blips along the breath bars while the breath is held, says and plays the outcome. |
 | Text watcher                                                                                                                              | Watchers    | Diffs registered text blocks.                                                                 |
 | HUD instance watcher (`*Instance` pointers, strong and weak, on the HUD components)                                                       | Watchers    | Appearance of HUD widgets: loading screen, saving icon, scene details, notifications, alerts, act display, the subtitle widget, the interaction prompt widget, the choice widgets and the timer bar; also the screen readout and dumps. |
 | `input.activity`                                                                                                                          | Speech      | Keyboard, mouse and gamepad activity, so only the player's own input interrupts speech.       |
@@ -57,4 +64,9 @@ The mod hooks no native game functions. It calls these through `ProcessEvent`:
 | `MenuBarBaseSMG026::GetUnlocalisedMenuContext`      | The description line of the bottom menu bar.         |
 | `TypeWriterTextBlockSMG026::GetText`                | The full text of a message that is typed out.        |
 | `GFSubtitleWidget::GetSubtitleSetting`              | The subtitle setting, written to the log.            |
+| `GFDirectionQTEWidgetSMG026::GetDirectionQTESMG026Info`, `GetActionMappingSuccess` | The angle, timer and accepted action of a quick-time event. |
+| `UserWidget::IsAnimationPlaying`                    | Whether a result animation of a quick-time event plays. |
+| `GFButtonMashWidgetSMG026::GetButtonMashInfo`       | The action, type and time limit of a button mash.    |
+| `DontBreatheWidgetSMG026::GetDontBreatheInfo`       | The action that holds the breath.                    |
+| `SMGGameSettingEnum::GetCurrentEnumValueAsInt`      | The game's button mash mode.                         |
 | `PlayerController::IsInputKeyDown`                  | The gamepad hotkey chord.                            |

@@ -198,6 +198,12 @@ namespace qa::obj
         return property->ContainerPtrToValuePtr<void>(object);
     }
 
+    void* ValuePtrAt(void* container, FProperty* property)
+    {
+        if (!container || !property) return nullptr;
+        return property->ContainerPtrToValuePtr<void>(container);
+    }
+
     bool ReadBoolAt(void* container, FProperty* property, bool& out)
     {
         if (!container || !property) return false;
@@ -554,6 +560,69 @@ namespace qa::obj
                  }
              });
         return result;
+    }
+
+    namespace
+    {
+        // Frees what the engine allocated inside a value the mod owns: the strings of a struct
+        // it was handed, the buffer of an array. Arrays of anything that owns memory itself are
+        // released element by element.
+        void ReleaseValue(FProperty* property, void* container)
+        {
+            if (!property || !container) return;
+            const auto type = PropertyTypeName(property);
+            void* ptr = property->ContainerPtrToValuePtr<void>(container);
+            if (type == L"StrProperty")
+            {
+                std::destroy_at(static_cast<FString*>(ptr));
+            }
+            else if (type == L"TextProperty")
+            {
+                std::destroy_at(static_cast<FText*>(ptr));
+            }
+            else if (type == L"StructProperty")
+            {
+                RC::Unreal::UScriptStruct* scriptStruct = static_cast<RC::Unreal::FStructProperty*>(property)->GetStruct();
+                if (!scriptStruct) return;
+                for (auto* member : scriptStruct->ForEachProperty())
+                    ReleaseValue(member, ptr);
+            }
+            else if (type == L"ArrayProperty")
+            {
+                auto* array = static_cast<TArray<uint8_t>*>(ptr);
+                FProperty* inner = static_cast<RC::Unreal::FArrayProperty*>(property)->GetInner();
+                if (inner && array->GetData())
+                {
+                    const auto innerType = PropertyTypeName(inner);
+                    if (innerType == L"StrProperty" || innerType == L"TextProperty" || innerType == L"StructProperty" || innerType == L"ArrayProperty")
+                    {
+                        const auto stride = static_cast<size_t>(inner->GetElementSize());
+                        for (int32_t i = 0; i < array->Num(); ++i)
+                            ReleaseValue(inner, array->GetData() + stride * static_cast<size_t>(i));
+                    }
+                }
+                std::destroy_at(array);
+            }
+        }
+    }
+
+    bool CallReturn(UObject* target, std::wstring_view functionName, const std::function<void(void* params, FProperty* returnValue)>& read)
+    {
+        auto* fn = FindFunction(target, functionName);
+        if (!fn) return false;
+        FProperty* returnValue = nullptr;
+        for (auto* prop : fn->ForEachProperty())
+        {
+            if (prop && prop->HasAnyPropertyFlags(static_cast<uint64_t>(RC::Unreal::EPropertyFlags::CPF_ReturnParm))) returnValue = prop;
+        }
+        return Call(target, fn, nullptr,
+                    [&](void* params)
+                    {
+                        if (read) read(params, returnValue);
+                        // Call releases plain string results itself; a returned struct owns
+                        // strings and arrays of its own.
+                        if (returnValue && PropertyTypeName(returnValue) == L"StructProperty") ReleaseValue(returnValue, params);
+                    });
     }
 
     bool CallForBool(UObject* target, std::wstring_view functionName)
