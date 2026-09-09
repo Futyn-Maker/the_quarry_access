@@ -19,6 +19,7 @@ hook firing.
 | Declaring class                                                                                                                                       | Function | Feature | Meaning                                                    |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------------------------------------------------------- |
 | `MenuBaseWidget_C`, `PopupScreenBaseWidget_C`, `CouchCo-opHandover_C`, `PauseTabCollectablesBase_C`, `PauseTabRelationship_C`, `RewindPause_C`, `RewindUnlocked_C` | `Show`   | Menus   | A screen opened; starts the arrival readout. Each class that overrides `Show` declares its own function and is routed on its own. |
+| `NestedContentMenu_C`                                                                                                                                 | `ShowNestedContent`, `PopNestedContent` | Menus | A section opened or closed inside a screen; the screen is read again (title only if it changed). |
 
 ## Pollers
 
@@ -28,6 +29,7 @@ hook firing.
 | `menus.arrival`                                                                                                                           | Menus       | Reads a newly opened screen as title, selection, prompts once it has settled.                 |
 | `menus.prompts`                                                                                                                           | Menus       | Re-reads the prompt bar when it changes, after the selection has stopped moving.              |
 | `menus.value`                                                                                                                             | Menus       | Speaks a changed value of the focused selector or slider with its description.                |
+| `menus.carousel`: `CurrentCarouselItem` of the shown `CharacterCarousel_C`                                                                | Menus       | Reads the character card when the carousel is turned.                                         |
 | `pause`: `bIsActive` and `SelectedTab` of the visible `PauseTabSystemSMG026`                                                              | Pause       | The pause menu opening and its tab changing; both re-read the screen with the tab as heading. |
 | `hud.text`: text of the HUD elements the HUD instance watcher reported                                                                    | Hud         | Speaks a caption, notification, alert or act title once its text has settled.                 |
 | Text watcher                                                                                                                              | Watchers    | Diffs registered text blocks.                                                                 |

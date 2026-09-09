@@ -114,7 +114,7 @@ namespace qa::diag
             lines.push_back(std::format(L"[widget] {} {} focused={} {}", obj::ClassName(widget), obj::ObjectName(widget), obj::ClassName(focused),
                                         obj::ObjectName(focused)));
             obj::WalkWidgetTree(
-                widget, 8,
+                widget, 14,
                 [&](UObject* w, int depth)
                 {
                     if (!obj::IsWidgetVisible(w)) return true;

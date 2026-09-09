@@ -64,8 +64,11 @@ Tester script (Russian UI):
    the title and the focused item, never before them and never twice.
 8. Let the mod talk without touching anything: nothing cuts anything else off. Then press a key
    while it is still speaking: that is answered at once.
-9. Press F6 anywhere: title, focused item and prompts. Press F8: the menu help plus the prompts.
-10. Move between screens (settings, podcasts, back to the main menu) and press F6: it always
+9. Режим кино → Режиссёрское кресло: the character shown is read, each switch is announced with
+   its title, the current value and its position among the switches, and turning the character
+   carousel reads the next character.
+10. Press F6 anywhere: title, focused item and prompts. Press F8: the menu help plus the prompts.
+11. Move between screens (settings, podcasts, back to the main menu) and press F6: it always
     describes the screen you are actually on.
 
 Expected log lines: verbose `focus: screen=... focused=...` and `menus: screen via ...`, one

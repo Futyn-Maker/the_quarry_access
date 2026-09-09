@@ -170,6 +170,25 @@ namespace qa::ui
             return str::CollapseWhitespace(key.empty() ? label : label + L" " + key);
         }
 
+        // Position of a row widget among the rows of its kind in the same panel.
+        int RowPosition(UObject* row, int& count)
+        {
+            count = 0;
+            UObject* slot = nullptr;
+            UObject* parent = nullptr;
+            if (!obj::ReadObject(row, L"Slot", slot) || !slot) return 0;
+            if (!obj::ReadObject(slot, L"Parent", parent) || !parent) return 0;
+            const auto rowClass = obj::ClassName(row);
+            int index = 0;
+            for (auto* child : obj::PanelChildren(parent))
+            {
+                if (obj::ClassName(child) != rowClass || !obj::IsWidgetVisible(child)) continue;
+                ++count;
+                if (child == row) index = count;
+            }
+            return index;
+        }
+
         int SiblingPosition(UObject* interactable, int& count)
         {
             count = 0;
@@ -249,6 +268,18 @@ namespace qa::ui
             // The row title comes from its own text block: in the rendered order the current
             // value often comes first, so position cannot be used to tell them apart.
             d.label = str::CollapseWhitespace(str::StripMarkup(TextProperty(interactable, L"TitleText")));
+            // A carousel placed inside a row widget (the director's chair settings) is titled
+            // by that row.
+            if (str::Trim(d.label).empty())
+            {
+                if (UObject* row = obj::FindOuterUserWidget(interactable))
+                {
+                    for (const wchar_t* property : {L"Title", L"TitleText"})
+                    {
+                        if (str::Trim(d.label).empty()) d.label = str::CollapseWhitespace(str::StripMarkup(VisibleTextProperty(row, property)));
+                    }
+                }
+            }
             if (d.kind == Kind::Slider) d.value = TextProperty(interactable, L"ValueText");
             if (str::Trim(d.value).empty())
             {
@@ -295,6 +326,19 @@ namespace qa::ui
         }
 
         d.index = SiblingPosition(interactable, d.count);
+        if (d.count <= 1)
+        {
+            if (UObject* row = obj::FindOuterUserWidget(interactable))
+            {
+                int rowCount = 0;
+                const int rowIndex = RowPosition(row, rowCount);
+                if (rowCount > 1)
+                {
+                    d.index = rowIndex;
+                    d.count = rowCount;
+                }
+            }
+        }
 
         d.tip = gametext::ReadLocalized(interactable, L"LocalizedTipText", L"TipText");
         // A clue, piece of evidence, tarot card or tutorial carries its own description.
@@ -593,19 +637,21 @@ namespace qa::ui
     {
         if (!obj::IsLive(carousel)) return {};
         std::vector<std::wstring> parts;
-        UObject* item = nullptr;
-        if (obj::ReadObject(carousel, L"CurrentCarouselItem", item) && obj::IsLive(item))
+        auto add = [&](const std::wstring& text)
         {
-            UObject* info = nullptr;
-            if (obj::ReadObject(item, L"CharacterInfo", info) && obj::IsLive(info))
-            {
-                const auto name = str::CollapseWhitespace(gametext::ReadLocalized(info, L"CharacterName"));
-                if (!name.empty()) parts.push_back(name);
-            }
+            if (!text.empty() && std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
+        };
+        UObject* title = nullptr;
+        if (obj::ReadObject(carousel, L"Title", title) && obj::IsLive(title) && obj::IsWidgetShown(title))
+        {
+            for (const wchar_t* property : {L"Title", L"Subtitle"})
+                add(str::CollapseWhitespace(VisibleTextProperty(title, property)));
+        }
+        UObject* item = nullptr;
+        if (obj::ReadObject(carousel, L"CurrentCarouselItem", item) && obj::IsLive(item) && obj::IsWidgetShown(item))
+        {
             for (const auto& text : DisplayTexts(obj::DescendantTexts(item, 16)))
-            {
-                if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
-            }
+                add(text);
         }
         return JoinLines(parts);
     }

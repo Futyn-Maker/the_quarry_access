@@ -17,13 +17,10 @@ namespace qa::features
 
     namespace
     {
-        UObject* g_system = nullptr;    // the tab bar of the pause menu
-        UObject* g_tab = nullptr;       // its selected tab, while the menu is up
-        UObject* g_carousel = nullptr;  // the character carousel of the character tab
-        UObject* g_character = nullptr; // the card it shows
+        UObject* g_system = nullptr; // the tab bar of the pause menu
+        UObject* g_tab = nullptr;    // its selected tab, while the menu is up
         bool g_active = false;
         unsigned long long g_lastScan = 0;
-        unsigned long long g_lastCarouselScan = 0;
 
         std::wstring TabLine(const ui::PauseTabs& tabs)
         {
@@ -36,36 +33,6 @@ namespace qa::features
         std::wstring PausedText()
         {
             return gametext::Resolve(L"SMG_UI_PAUSED_000001");
-        }
-
-        // The character tab shows one character at a time; left and right turn the
-        // carousel, which does not move the focus, so the card is read on its own.
-        void PollCarousel(unsigned long long frame)
-        {
-            if (!obj::IsLive(g_carousel) || !obj::IsWidgetShown(g_carousel))
-            {
-                if (frame - g_lastCarouselScan < 30) return;
-                g_lastCarouselScan = frame;
-                g_carousel = nullptr;
-                for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
-                {
-                    if (obj::IsWidgetShown(carousel)) g_carousel = carousel;
-                }
-                if (!g_carousel)
-                {
-                    g_character = nullptr;
-                    return;
-                }
-            }
-            UObject* item = nullptr;
-            obj::ReadObject(g_carousel, L"CurrentCarouselItem", item);
-            if (item == g_character) return;
-            const bool first = g_character == nullptr;
-            g_character = item;
-            // On arrival the card is part of the screen readout.
-            if (first || ArrivalPending()) return;
-            const auto text = ui::CarouselText(g_carousel);
-            if (!text.empty()) speech::Focus(text);
         }
 
         void PollImpl()
@@ -95,15 +62,6 @@ namespace qa::features
             }
             g_active = active;
             g_tab = active ? tabs.tab : nullptr;
-            if (active)
-            {
-                PollCarousel(frame);
-            }
-            else
-            {
-                g_carousel = nullptr;
-                g_character = nullptr;
-            }
         }
 
         void Poll(float)

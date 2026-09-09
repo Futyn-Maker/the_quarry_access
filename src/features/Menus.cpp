@@ -44,6 +44,17 @@ namespace qa::features
         UObject* g_valueWidget = nullptr;
         std::wstring g_lastValue;
 
+        // A section opened inside a screen (a settings category, the director's chair) is
+        // read like a screen; its title is repeated only when it changed.
+        UObject* g_titleScreen = nullptr;
+        std::wstring g_lastTitle;
+
+        // The character carousel of a screen (movie mode, couch co-op): turning it does
+        // not move the focus, so the card it shows is read on its own.
+        UObject* g_carousel = nullptr;
+        UObject* g_carouselItem = nullptr;
+        unsigned long long g_lastCarouselScan = 0;
+
         // Screens announce themselves when they show. A screen class that overrides Show
         // declares its own function, so each of these is routed separately.
         const wchar_t* const kShowingScreens[] = {L"MenuBaseWidget_C",       L"PopupScreenBaseWidget_C", L"CouchCo-opHandover_C", L"PauseTabCollectablesBase_C",
@@ -163,7 +174,10 @@ namespace qa::features
             std::vector<std::wstring> parts = g_heading;
             g_heading.clear();
             const auto title = ui::ScreenTitle(g_screen);
-            if (!title.empty() && !RepeatsTab(title)) parts.push_back(title);
+            const bool sameTitle = g_screen == g_titleScreen && title == g_lastTitle;
+            g_titleScreen = g_screen;
+            g_lastTitle = title;
+            if (!title.empty() && !sameTitle && !RepeatsTab(title)) parts.push_back(title);
             parts.push_back(ui::ScreenBody(g_screen));
             parts.push_back(focusText);
             const auto prompts = CurrentPromptText();
@@ -225,9 +239,45 @@ namespace qa::features
             speech::Focus(str::Join(parts, L", "));
         }
 
+        void PollCarouselImpl()
+        {
+            const auto frame = gamethread::FrameCount();
+            if (frame % 4 != 0) return;
+            if (!obj::IsLive(g_carousel) || !obj::IsWidgetShown(g_carousel))
+            {
+                if (frame - g_lastCarouselScan < 30) return;
+                g_lastCarouselScan = frame;
+                g_carousel = nullptr;
+                for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
+                {
+                    if (obj::IsWidgetShown(carousel)) g_carousel = carousel;
+                }
+                if (!g_carousel)
+                {
+                    g_carouselItem = nullptr;
+                    return;
+                }
+            }
+            UObject* item = nullptr;
+            obj::ReadObject(g_carousel, L"CurrentCarouselItem", item);
+            if (item == g_carouselItem) return;
+            const bool first = g_carouselItem == nullptr;
+            g_carouselItem = item;
+            // When the screen is being read the card is part of that readout.
+            if (first || g_arrivalPending) return;
+            g_focusChangedAt = gamethread::NowSeconds();
+            const auto text = ui::CarouselText(g_carousel);
+            if (!text.empty()) speech::Focus(text);
+        }
+
         void PollArrival(float)
         {
             obj::SafeInvoke([](void*) { PollArrivalImpl(); }, nullptr);
+        }
+
+        void PollCarousel(float)
+        {
+            obj::SafeInvoke([](void*) { PollCarouselImpl(); }, nullptr);
         }
 
         void PollPrompts(float)
@@ -264,6 +314,10 @@ namespace qa::features
         g_lastValue.clear();
         g_heading.clear();
         g_arrivalPending = false;
+        g_titleScreen = nullptr;
+        g_lastTitle.clear();
+        g_carousel = nullptr;
+        g_carouselItem = nullptr;
     }
 
     void MenusFeature::Install()
@@ -273,7 +327,12 @@ namespace qa::features
         {
             hooks::OnScript(screenClass, L"Show", [](UObject* self, FFrame&) { BeginArrival(self, L"Show"); });
         }
+        for (const wchar_t* function : {L"ShowNestedContent", L"PopNestedContent"})
+        {
+            hooks::OnScript(L"NestedContentMenu_C", function, [](UObject*, FFrame&) { ArriveWith({}); });
+        }
         gamethread::AddPoller(L"menus.arrival", &PollArrival);
+        gamethread::AddPoller(L"menus.carousel", &PollCarousel);
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);
         gamethread::AddPoller(L"menus.value", &PollValue);
     }

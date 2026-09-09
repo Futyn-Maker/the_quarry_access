@@ -4,6 +4,7 @@
 
 - Pause menu: opening it announces that the game is paused, the selected tab and its place among the tabs; switching tabs reads the new tab, its objective line, the selected entry and the prompts; clues, evidence, tarot cards and tutorials are read with their descriptions.
 - Popups and dialogs read their message after the title; rewind and couch co-op screens are covered.
+- Sections opened inside a screen are read like a screen; a control placed in a titled row (the director's chair switches) takes the row's title and position; the character carousel reads the character it shows.
 - HUD: scene captions, notifications with their hot-link prompt, alerts and act titles are read when they appear; loading and saving are announced.
 - Read-screen (F6) reads everything a screen shows when nothing on it is selected.
 
