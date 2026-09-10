@@ -5,9 +5,11 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "features/Exploration.hpp"
 #include "features/Feature.hpp"
 #include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 #include "watch/Watchers.hpp"
@@ -40,7 +42,7 @@ namespace qa::diag
 
     namespace
     {
-        void RunCommand(const std::wstring& line)
+        void RunCommandImpl(const std::wstring& line)
         {
             const std::wstring cmd = str::Trim(line);
             if (cmd.empty()) return;
@@ -65,8 +67,26 @@ namespace qa::diag
                 speech::Announce(cmd.substr(4));
             else if (lower == L"subtitles on" || lower == L"subtitles off")
                 features::SetSubtitles(lower == L"subtitles on");
+            else if (lower == L"explore")
+                features::DumpExploration();
+            else if (lower == L"walkkeys")
+                log::Info(L"input: {}", input::DescribeWalkKeys());
+            else if (str::StartsWith(lower, L"key "))
+                log::Info(L"{}", input::DescribeAction(cmd.substr(4)));
             else
                 log::Error(L"unknown command: {}", cmd);
+        }
+
+        void RunCommandGuarded(void* context)
+        {
+            RunCommandImpl(*static_cast<const std::wstring*>(context));
+        }
+
+        // A command must never take the game down: a fault abandons it and is logged.
+        void RunCommand(const std::wstring& line)
+        {
+            if (!obj::SafeInvoke(&RunCommandGuarded, const_cast<std::wstring*>(&line)))
+                log::Error(L"command ran into a memory fault and was abandoned: {}", line);
         }
 
         void PollCommandFile(float)

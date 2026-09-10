@@ -25,6 +25,9 @@ namespace qa::sounds
 
         std::array<Wav, 6> g_cues;
         std::array<Wav, kTickSteps> g_ticks;
+        std::array<Wav, 4> g_beacons; // made on demand; a few are kept so a playing one is not overwritten
+        size_t g_beaconIndex = 0;
+        double g_amplitude = 0.0;
         bool g_enabled = false;
 
         void Append(Wav& out, const void* data, size_t size)
@@ -118,6 +121,7 @@ namespace qa::sounds
         }
         // Full volume is half scale: loud enough over the game, never a jolt.
         const double amplitude = 0.5 * volume / 100.0;
+        g_amplitude = amplitude;
         // Two short rising notes: the usual shape of a confirmation; two falling ones for a loss.
         g_cues[static_cast<size_t>(Cue::Confirm)] = Wave({{660.0, 0.055}, {990.0, 0.075}}, amplitude);
         g_cues[static_cast<size_t>(Cue::Fail)] = Wave({{660.0, 0.06}, {440.0, 0.11}}, amplitude);
@@ -146,5 +150,18 @@ namespace qa::sounds
     {
         const int step = static_cast<int>(std::lround(std::clamp(level, 0.0, 1.0) * (kTickSteps - 1)));
         PlayWav(g_ticks[static_cast<size_t>(step)]);
+    }
+
+    void Beacon(double pan, double level, bool muffled)
+    {
+        if (!g_enabled) return;
+        // Two octaves from far to near; an octave lower when the target is behind.
+        double frequency = 330.0 * std::pow(4.0, std::clamp(level, 0.0, 1.0));
+        if (muffled) frequency *= 0.5;
+        // A pan of exactly 0 would make a mono file; the beacon is always stereo.
+        const double placed = std::clamp(pan, -1.0, 1.0);
+        Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
+        wav = Wave({{frequency, muffled ? 0.04 : 0.06}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
+        PlayWav(wav);
     }
 }

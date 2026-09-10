@@ -355,12 +355,12 @@ namespace qa::watch
         // A fault costs one skipped frame instead of the process.
         void PollHud(float)
         {
-            obj::SafeInvoke([](void*) { PollHudImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"watchers.PollHudImpl", [](void*) { PollHudImpl(); }, nullptr);
         }
 
         void PollFocus(float)
         {
-            obj::SafeInvoke([](void*) { PollFocusImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"watchers.PollFocusImpl", [](void*) { PollFocusImpl(); }, nullptr);
         }
     }
 

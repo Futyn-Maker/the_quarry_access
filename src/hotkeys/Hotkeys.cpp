@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Exploration.hpp"
 #include "features/Subtitles.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -149,6 +150,9 @@ namespace qa::hotkeys
             bool wasDown = false;
         };
         std::vector<PadBinding> g_padBindings;
+        // Buttons that need no chord because the game leaves them unused while the player
+        // walks the character freely; they answer only there.
+        std::vector<PadBinding> g_exploreBindings;
         std::wstring g_padHold;
 
         bool IsKeyDown(UObject* controller, const std::wstring& keyName)
@@ -180,23 +184,29 @@ namespace qa::hotkeys
             return result;
         }
 
-        void PollPad()
+        void PollBindings(UObject* controller, std::vector<PadBinding>& bindings, bool live)
         {
-            if (g_padBindings.empty() || gamethread::FrameCount() % 3 != 0) return;
-            UObject* controller = obj::LocalPlayerController();
-            if (!controller) return;
-            if (!IsKeyDown(controller, g_padHold))
+            for (auto& b : bindings)
             {
-                for (auto& b : g_padBindings)
+                if (!live)
+                {
                     b.wasDown = false;
-                return;
-            }
-            for (auto& b : g_padBindings)
-            {
+                    continue;
+                }
                 const bool down = IsKeyDown(controller, b.keyName);
                 if (down && !b.wasDown) Run(b.command);
                 b.wasDown = down;
             }
+        }
+
+        void PollPad()
+        {
+            if ((g_padBindings.empty() && g_exploreBindings.empty()) || gamethread::FrameCount() % 3 != 0) return;
+            UObject* controller = obj::LocalPlayerController();
+            if (!controller) return;
+            const bool chord = !g_padHold.empty() && IsKeyDown(controller, g_padHold);
+            PollBindings(controller, g_padBindings, chord);
+            PollBindings(controller, g_exploreBindings, !chord && features::ExplorationActive());
         }
     }
 
@@ -210,6 +220,11 @@ namespace qa::hotkeys
         case Command::Help: return L"Help";
         case Command::Subtitles: return L"Subtitles";
         case Command::LastSubtitle: return L"LastSubtitle";
+        case Command::NextTarget: return L"NextTarget";
+        case Command::PreviousTarget: return L"PreviousTarget";
+        case Command::Where: return L"Where";
+        case Command::Walk: return L"Walk";
+        case Command::Beacon: return L"Beacon";
         case Command::DevDumpTree: return L"DevDumpTree";
         case Command::DevTrace: return L"DevTrace";
         case Command::DevLogLevel: return L"DevLogLevel";
@@ -227,6 +242,11 @@ namespace qa::hotkeys
         Bind(s.keyHelp, Command::Help);
         Bind(s.keySubtitles, Command::Subtitles);
         Bind(s.keyLastSubtitle, Command::LastSubtitle);
+        Bind(s.keyNextTarget, Command::NextTarget);
+        Bind(s.keyPreviousTarget, Command::PreviousTarget);
+        Bind(s.keyWhere, Command::Where);
+        Bind(s.keyWalk, Command::Walk);
+        Bind(s.keyBeacon, Command::Beacon);
         Bind(s.keyDevDumpTree, Command::DevDumpTree);
         Bind(s.keyDevTrace, Command::DevTrace);
         Bind(s.keyDevLogLevel, Command::DevLogLevel);
@@ -241,6 +261,21 @@ namespace qa::hotkeys
             if (!s.padHelp.empty()) g_padBindings.push_back({s.padHelp, Command::Help});
             if (!s.padSubtitles.empty()) g_padBindings.push_back({s.padSubtitles, Command::Subtitles});
             if (!s.padLastSubtitle.empty()) g_padBindings.push_back({s.padLastSubtitle, Command::LastSubtitle});
+            if (!s.padNextTarget.empty()) g_padBindings.push_back({s.padNextTarget, Command::NextTarget});
+            if (!s.padPreviousTarget.empty()) g_padBindings.push_back({s.padPreviousTarget, Command::PreviousTarget});
+            if (!s.padWhere.empty()) g_padBindings.push_back({s.padWhere, Command::Where});
+            if (!s.padBeacon.empty()) g_padBindings.push_back({s.padBeacon, Command::Beacon});
+            for (const auto& binding : g_padBindings)
+                log::Info(L"gamepad {} + {} = {}", g_padHold, binding.keyName, CommandName(binding.command));
+        }
+        g_exploreBindings.clear();
+        for (const auto& [key, command] :
+             {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},
+              std::pair{s.padExploreWhere, Command::Where}, std::pair{s.padExploreWalk, Command::Walk}, std::pair{s.padExploreBeacon, Command::Beacon}})
+        {
+            if (key.empty()) continue;
+            g_exploreBindings.push_back({key, command});
+            log::Info(L"gamepad while walking: {} = {}", key, CommandName(command));
         }
         gamethread::AddPoller(L"hotkeys",
                               [](float)
@@ -250,23 +285,47 @@ namespace qa::hotkeys
                               });
     }
 
+    namespace
+    {
+        void RunImpl(Command command);
+
+        void RunGuarded(void* context)
+        {
+            RunImpl(*static_cast<Command*>(context));
+        }
+    }
+
     void Run(Command command)
     {
         log::Info(L"hotkey: {}", CommandName(command));
-        switch (command)
+        // A hotkey must never take the game down: a fault abandons the command and is logged.
+        if (!obj::SafeInvoke(&RunGuarded, &command)) log::Error(L"hotkey {} ran into a memory fault and was abandoned", CommandName(command));
+    }
+
+    namespace
+    {
+        void RunImpl(Command command)
         {
-        case Command::Repeat: speech::Repeat(); break;
-        case Command::ReadScreen: speech::Now(diag::ReadScreen()); break;
-        case Command::Stop: speech::Stop(); break;
-        case Command::Help: speech::Now(diag::Help()); break;
-        case Command::Subtitles: features::ToggleSubtitles(); break;
-        case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
-        case Command::DevDumpTree:
-            diag::DumpScreen();
-            speech::Announce(locale::Mod(L"diag.dumped"));
-            break;
-        case Command::DevTrace: diag::ToggleTrace(); break;
-        case Command::DevLogLevel: diag::CycleLogLevel(); break;
+            switch (command)
+            {
+            case Command::Repeat: speech::Repeat(); break;
+            case Command::ReadScreen: speech::Now(diag::ReadScreen()); break;
+            case Command::Stop: speech::Stop(); break;
+            case Command::Help: speech::Now(diag::Help()); break;
+            case Command::Subtitles: features::ToggleSubtitles(); break;
+            case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
+            case Command::NextTarget: features::NextTarget(); break;
+            case Command::PreviousTarget: features::PreviousTarget(); break;
+            case Command::Where: features::WhereIsTarget(); break;
+            case Command::Walk: features::WalkToTarget(); break;
+            case Command::Beacon: features::ToggleBeacon(); break;
+            case Command::DevDumpTree:
+                diag::DumpScreen();
+                speech::Announce(locale::Mod(L"diag.dumped"));
+                break;
+            case Command::DevTrace: diag::ToggleTrace(); break;
+            case Command::DevLogLevel: diag::CycleLogLevel(); break;
+            }
         }
     }
 }

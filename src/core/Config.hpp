@@ -41,6 +41,22 @@ namespace qa::cfg
         std::wstring padHelp = L"Gamepad_DPad_Left";
         std::wstring padSubtitles = L"Gamepad_RightThumbstick";
         std::wstring padLastSubtitle = L"Gamepad_LeftThumbstick";
+        std::wstring keyNextTarget = L"N";
+        std::wstring keyPreviousTarget = L"P";
+        std::wstring keyBeacon = L"T";
+        std::wstring keyWhere = L"H";
+        std::wstring keyWalk = L"G";
+        std::wstring padNextTarget = L"Gamepad_RightShoulder";
+        std::wstring padPreviousTarget = L"Gamepad_LeftShoulder";
+        std::wstring padBeacon = L"Gamepad_FaceButton_Top";
+        std::wstring padWhere = L"Gamepad_FaceButton_Left";
+        // Buttons the game leaves unused while the player walks the character freely, so
+        // exploration answers them on their own there.
+        std::wstring padExploreNext = L"Gamepad_DPad_Right";
+        std::wstring padExplorePrevious = L"Gamepad_DPad_Left";
+        std::wstring padExploreWhere = L"Gamepad_DPad_Up";
+        std::wstring padExploreBeacon = L"Gamepad_DPad_Down";
+        std::wstring padExploreWalk = L"Gamepad_FaceButton_Left";
 
         // [Speech]
         int focusDedupeMs = 150;
@@ -50,6 +66,13 @@ namespace qa::cfg
 
         // [Subtitles]
         bool readSubtitles = true;
+
+        // [Exploration]
+        bool beacon = true;
+        int beaconIntervalMs = 500;
+        int exploreRange = 100; // metres
+        bool autoTarget = true;
+        int walkDelayMs = 500; // between the word and the first step
 
         // [Features]
         std::map<std::wstring, bool> features;

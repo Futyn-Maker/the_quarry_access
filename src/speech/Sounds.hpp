@@ -24,4 +24,9 @@ namespace qa::sounds
     // Plays a short blip whose pitch follows `level` (0 low to 1 high): the audible form of a
     // ring or a bar that fills or empties.
     void Tick(double level);
+
+    // Plays a beacon: `pan` places it from the left ear (-1) to the right (1), `level` raises
+    // its pitch as the target comes closer, and `muffled` drops it an octave for a target
+    // behind the player.
+    void Beacon(double pan, double level, bool muffled);
 }

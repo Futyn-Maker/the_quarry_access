@@ -53,6 +53,9 @@ namespace qa::obj
     // A member of a struct-typed property, for reading nested values with the *At readers
     // (container = ValuePtr of the struct property). Null when there is no such member.
     FProperty* StructMember(FProperty* structProperty, std::wstring_view name);
+    // Visits every element of an array property held in raw memory (an object or a struct):
+    // the element's address, to be read with the inner property as the container.
+    void ForEachArrayElement(void* container, FProperty* arrayProperty, const std::function<void(void* element, FProperty* inner)>& visit);
 
     // Same readers on raw struct memory (container = struct address).
     bool ReadBoolAt(void* container, FProperty* property, bool& out);
@@ -121,6 +124,8 @@ namespace qa::obj
     // widget that dies mid-walk costs one skipped frame instead of the process.
     // `fn` must be a captureless function; keep C++ objects inside it, not around it.
     bool SafeInvoke(void (*fn)(void*), void* context) noexcept;
+    // The same, with a fault written to the log (at most once in five seconds per name).
+    bool SafeInvokeLogged(const wchar_t* name, void (*fn)(void*), void* context);
 
     // Well-known objects (cached, validated)
     UObject* LocalPlayerController();

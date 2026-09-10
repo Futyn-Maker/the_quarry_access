@@ -13,6 +13,8 @@
 #include <Unreal/UnrealFlags.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -63,6 +65,9 @@ namespace qa::obj
         {
             auto* item = object->GetObjectItem();
             if (!item) return false;
+            // The index inside freed memory can still name a slot; only a slot that points
+            // back at the object proves the object is the one in the array.
+            if (item->GetUObject() != object) return false;
             if (!UObjectArray::IsValid(item, false)) return false;
             return object->GetClassPrivate() != nullptr;
         }
@@ -379,11 +384,26 @@ namespace qa::obj
         if (!structProperty || PropertyTypeName(structProperty) != L"StructProperty") return nullptr;
         RC::Unreal::UScriptStruct* scriptStruct = static_cast<RC::Unreal::FStructProperty*>(structProperty)->GetStruct();
         if (!scriptStruct) return nullptr;
-        for (auto* prop : scriptStruct->ForEachProperty())
+        // Members of the base structs count too: the game's mapping references keep their
+        // string in a base struct.
+        for (auto* prop : scriptStruct->ForEachPropertyInChain())
         {
             if (prop && prop->GetName() == name) return prop;
         }
         return nullptr;
+    }
+
+    void ForEachArrayElement(void* container, FProperty* arrayProperty, const std::function<void(void* element, FProperty* inner)>& visit)
+    {
+        if (!container || !arrayProperty || PropertyTypeName(arrayProperty) != L"ArrayProperty") return;
+        auto* arr = arrayProperty->ContainerPtrToValuePtr<TArray<uint8_t>>(container);
+        FProperty* inner = static_cast<RC::Unreal::FArrayProperty*>(arrayProperty)->GetInner();
+        if (!arr || !inner || arr->Num() <= 0 || !arr->GetData()) return;
+        const auto stride = static_cast<size_t>(inner->GetElementSize());
+        if (stride == 0) return;
+        const int32_t n = std::min<int32_t>(arr->Num(), 10000);
+        for (int32_t i = 0; i < n; ++i)
+            visit(arr->GetData() + stride * static_cast<size_t>(i), inner);
     }
 
     bool ReadObjectArray(UObject* object, std::wstring_view name, std::vector<UObject*>& out)
@@ -518,7 +538,7 @@ namespace qa::obj
 
     bool Call(UObject* target, UFunction* function, const std::function<void(void* params)>& fill, const std::function<void(void* params)>& read)
     {
-        if (!target || !function) return false;
+        if (!target || !function || !IsLive(target)) return false;
         const int32_t size = function->GetPropertiesSize();
         if (size < 0 || size > 4096) return false;
         std::vector<uint8_t> buffer(static_cast<size_t>(size) + 32, 0);
@@ -793,6 +813,25 @@ namespace qa::obj
         {
             return false;
         }
+    }
+
+    bool SafeInvokeLogged(const wchar_t* name, void (*fn)(void*), void* context)
+    {
+        if (SafeInvoke(fn, context)) return true;
+        // Faults are counted per site and reported now and then, so that a poller dying on
+        // every frame shows in the log instead of failing in silence.
+        static std::map<std::wstring, std::pair<int, double>> faults;
+        static std::mutex faultsMutex;
+        std::lock_guard lock(faultsMutex);
+        auto& [count, reportedAt] = faults[name];
+        ++count;
+        const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (reportedAt == 0.0 || now - reportedAt > 5.0)
+        {
+            reportedAt = now;
+            log::Error(L"{}: memory fault, skipped ({} so far)", name, count);
+        }
+        return false;
     }
 
     namespace

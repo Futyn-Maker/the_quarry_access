@@ -374,7 +374,7 @@ namespace qa::features
 
         void Poll(float)
         {
-            obj::SafeInvoke([](void*) { PollImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"choices.PollImpl", [](void*) { PollImpl(); }, nullptr);
         }
     }
 

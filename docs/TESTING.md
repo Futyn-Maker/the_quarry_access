@@ -182,3 +182,58 @@ event (the angle and the action must agree: 0 up, 90 right, 180 down, 270 left),
 or `missed`/`timed out`, `mash: ... action "ButtonMash" ... mode N`, `mash: ... succeeded`,
 `breathe: prompt "..."`, `breathe: state 1`, one `breathe: holding at N s, bar X` per blip,
 `breathe: ... succeeded`, and no `ERROR`.
+
+## Exploration
+
+Tester script (Russian UI). Start the prologue: the first scene the player walks in is the
+crashed car at night.
+
+1. When the character comes under your control you hear "Рядом." followed by what can be
+   walked to, nearest first, each as the game names it with its distance in metres and its
+   direction from the camera: "Макс, 3 м, впереди", "Багажник, 6 м, справа". Everything the
+   scene has opened up is there from the start, however far away it is. A use location
+   standing at a place is one entry named "Листовка: Осмотреть"; where the scene gives an
+   interaction no name of its own, the name it carries in the level is read instead
+   ("Camp Map: Взаимодействовать"). The nearest thing not yet
+   reached is targeted by itself and a beacon starts: it sounds in the ear on the side of the
+   next turn of the walkable route, rises in pitch as you get closer and drops an octave when
+   the way is behind you. Walk toward it with W, A, S, D.
+2. Press N: the next thing is said with its distance along the route and the beacon follows
+   it; P goes back; the order stays the same however you move. H says the target again with
+   its current distance and direction. T turns the beacon off ("Маяк выключен.") and on. F6
+   lists everything again; F8 explains the keys. When a scene moves on only by walking
+   somewhere, that somewhere is in the list as "Путь дальше" with its distance and direction,
+   and G walks there. On a gamepad, while the character walks
+   freely, the same keys are the D-pad (right, left, up, down) and X, with no chord, and F8
+   names those instead.
+3. Press G (X on the gamepad): you hear "Иду.", half a second passes, and the character
+   walks the route to the target on its own, past the trees and around the corners, and stops
+   there with the arrival tone. It walks by holding the game's own movement keys, so the game
+   window must be the one in front. Press G again, or push the movement keys or the stick, and
+   it stops at once with "Остановка." A cutscene, a dialogue, a choice, a quick-time event or
+   any screen ends it in the same frame it appears, and the keys are let go of with it.
+4. Reaching a target is announced once, "<name>, на месте", with a tone; a use location then
+   shows the game's own glyph, read as "<name>, левая кнопка мыши" with the same name the list
+   gave it. Where several things stand together, the game offers one of them at a time and the
+   glyph says which; each has its own patch of floor, so walking to another of them with G
+   moves the offer and the glyph says the new one. Walk away and back and the beacon leads again. Things the scene adds later are announced as "Новое: ...". A short
+   exchange in the middle of a scene does not start the list again.
+5. If the game ever offers its own places (a prompt "Осмотреться X" appears), F8 also names
+   X, Z, C and V; in the prologue scenes it did not.
+6. In a scene that asks you to look around (the timer bar with "Используйте мышь, чтобы
+   осмотреться"), the beacon leads the camera toward the nearest glint; when something is
+   found you hear a tone and "Найдено."
+6. Opening a note or a letter reads its title, its page and the page count; the next page is
+   read when it turns. F8 names the page and close keys.
+7. Write `explore` into `Mods\QuarryAccess\command.txt` while standing in a scene: the log
+   receives the character, the camera, every use location and place with its label and
+   position, and the glints. `key DirectionQTEUp` writes where the keys of an action come
+   from and what is spoken.
+8. Press F8 in the main menu after leaving a game, and again while exploring: the help is
+   read both times and the game keeps running.
+
+Expected log lines: `explore: ... under the player's control`, one `explore: use location
+"..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>
+style <n>` for every prompt the game shows (the destination prompts carry the
+`ExporationDestination...` actions), `explore: reached "..."`, `explore: looking around begins`,
+`explore: point of interest found`, `explore: reading pane opened`, and no `ERROR`.

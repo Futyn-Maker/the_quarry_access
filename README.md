@@ -7,6 +7,8 @@ supported. The menus, settings and pause menu are covered, with the focused item
 and the available key prompts spoken as you move; captions, notifications, alerts, subtitles,
 button prompts, choices, quick-time events, button mashes and Don't Breathe prompts that the
 game shows during play are read as they appear, with short tones for what has to be fast.
+While exploring, the things the scene lets the player walk to are listed with their distance
+and direction, and a beacon leads to the chosen one; notes are read page by page.
 
 The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and [Tolk](https://github.com/dkager/tolk).
 It never changes the game's own settings: everything it says follows what the game displays,
@@ -32,6 +34,20 @@ the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setu
 | Ctrl+F9  |                            | Write a screen dump for bug reports     |
 | Ctrl+F10 |                            | Toggle the function tracer (developers) |
 | Ctrl+F11 |                            | Cycle the log level                     |
+
+These guide the exploration while the character walks freely. On the gamepad they need no
+chord there, because the game leaves those buttons unused while you walk.
+
+| Keyboard | Gamepad     | Action                                    |
+| -------- | ----------- | ----------------------------------------- |
+| N        | D-pad right | Next thing to walk to                     |
+| P        | D-pad left  | Previous thing to walk to                 |
+| H        | D-pad up    | Where the target is now                   |
+| G        | X           | Walk there, and press again to stop       |
+| T        | D-pad down  | Beacon on or off                          |
+
+The Back chord above also reaches the first four from anywhere: right bumper for the next
+thing, left bumper for the previous, X for where it is, Y for the beacon.
 
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
 

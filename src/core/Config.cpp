@@ -181,10 +181,29 @@ namespace qa::cfg
         s.padHelp = ini.Get(L"Hotkeys", L"PadHelp", s.padHelp);
         s.padSubtitles = ini.Get(L"Hotkeys", L"PadSubtitles", s.padSubtitles);
         s.padLastSubtitle = ini.Get(L"Hotkeys", L"PadLastSubtitle", s.padLastSubtitle);
+        s.keyNextTarget = ini.Get(L"Hotkeys", L"NextTarget", s.keyNextTarget);
+        s.keyPreviousTarget = ini.Get(L"Hotkeys", L"PreviousTarget", s.keyPreviousTarget);
+        s.keyBeacon = ini.Get(L"Hotkeys", L"Beacon", s.keyBeacon);
+        s.keyWhere = ini.Get(L"Hotkeys", L"Where", s.keyWhere);
+        s.keyWalk = ini.Get(L"Hotkeys", L"Walk", s.keyWalk);
+        s.padNextTarget = ini.Get(L"Hotkeys", L"PadNextTarget", s.padNextTarget);
+        s.padPreviousTarget = ini.Get(L"Hotkeys", L"PadPreviousTarget", s.padPreviousTarget);
+        s.padBeacon = ini.Get(L"Hotkeys", L"PadBeacon", s.padBeacon);
+        s.padWhere = ini.Get(L"Hotkeys", L"PadWhere", s.padWhere);
+        s.padExploreNext = ini.Get(L"Hotkeys", L"ExploreNext", s.padExploreNext);
+        s.padExplorePrevious = ini.Get(L"Hotkeys", L"ExplorePrevious", s.padExplorePrevious);
+        s.padExploreWhere = ini.Get(L"Hotkeys", L"ExploreWhere", s.padExploreWhere);
+        s.padExploreBeacon = ini.Get(L"Hotkeys", L"ExploreBeacon", s.padExploreBeacon);
+        s.padExploreWalk = ini.Get(L"Hotkeys", L"ExploreWalk", s.padExploreWalk);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
         s.soundVolume = ini.GetInt(L"Sounds", L"Volume", s.soundVolume);
         s.readSubtitles = ini.GetBool(L"Subtitles", L"Read", s.readSubtitles);
+        s.beacon = ini.GetBool(L"Exploration", L"Beacon", s.beacon);
+        s.beaconIntervalMs = ini.GetInt(L"Exploration", L"BeaconIntervalMs", s.beaconIntervalMs);
+        s.exploreRange = ini.GetInt(L"Exploration", L"Range", s.exploreRange);
+        s.autoTarget = ini.GetBool(L"Exploration", L"AutoTarget", s.autoTarget);
+        s.walkDelayMs = ini.GetInt(L"Exploration", L"WalkDelayMs", s.walkDelayMs);
 
         if (const auto* features = ini.Section(L"Features"))
         {

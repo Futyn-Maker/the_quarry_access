@@ -5,6 +5,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
+#include "features/Exploration.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "speech/Speech.hpp"
@@ -49,7 +50,8 @@ namespace qa::features
             Setup setup;
             params::String(stack, L"ButtonInputMappingName", setup.action);
             params::Int(stack, L"Style", setup.style);
-            log::Verbose(L"prompts: {} set up with {} style {}", obj::ObjectName(self), setup.action, setup.style);
+            log::Info(L"prompts: {} set up with {} style {}", obj::ObjectName(self), setup.action, setup.style);
+            if (str::StartsWith(setup.action, L"ExporationDestination")) NoteDestinationPrompt();
             g_setups[self] = setup;
             if (g_setups.size() > 64)
             {
@@ -66,7 +68,17 @@ namespace qa::features
             const auto bottom = ui::PropertyText(prompt, L"LabelBottom");
             const auto key = ui::PromptKeyName(prompt, PromptAction(prompt));
             if (!left.empty() || !right.empty()) return str::JoinWords({left, key, right, bottom});
+            if (bottom.empty()) return {}; // a key with no words, once its label has gone
             return str::JoinWords({bottom, key});
+        }
+
+        // The glyph the game floats over a use location carries no words of its own; the
+        // label of the use location the character stands in is said with its key.
+        std::wstring GlyphPromptText(UObject* prompt)
+        {
+            const auto label = CurrentUseLocationLabel();
+            if (label.empty()) return {};
+            return str::JoinWords({label + L",", ui::PromptKeyName(prompt, PromptAction(prompt))});
         }
 
         // A prompt for the keys of an axis, the mouse or the stick reads as its labels around
@@ -88,6 +100,13 @@ namespace qa::features
             const std::wstring_view property = slot.property;
             if (property == L"AxisInputPrompt") return AxisPromptText(widget);
             if (property == L"VotingResultLabel") return ui::PropertyText(g_widget, slot.property);
+            // The glyph keeps the name it was shown with: the character can stand at the edge
+            // of a use location while the game still offers it.
+            if (property == L"ButtonPromptScreenSpace")
+            {
+                const auto text = GlyphPromptText(widget);
+                return text.empty() ? slot.text : text;
+            }
             return ButtonPromptText(widget);
         }
 
@@ -100,7 +119,7 @@ namespace qa::features
                 g_slots.clear();
                 for (const wchar_t* property : kSlots)
                     g_slots.push_back(Slot{property});
-                log::Verbose(L"prompts: {} shown", ev.instanceClass);
+                log::Info(L"prompts: {} shown", ev.instanceClass);
             }
             else if (ev.instance == g_widget)
             {
@@ -134,7 +153,7 @@ namespace qa::features
 
         void Poll(float)
         {
-            obj::SafeInvoke([](void*) { PollImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"prompts.PollImpl", [](void*) { PollImpl(); }, nullptr);
         }
     }
 

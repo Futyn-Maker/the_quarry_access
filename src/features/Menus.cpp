@@ -272,22 +272,22 @@ namespace qa::features
 
         void PollArrival(float)
         {
-            obj::SafeInvoke([](void*) { PollArrivalImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"menus.PollArrivalImpl", [](void*) { PollArrivalImpl(); }, nullptr);
         }
 
         void PollCarousel(float)
         {
-            obj::SafeInvoke([](void*) { PollCarouselImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"menus.PollCarouselImpl", [](void*) { PollCarouselImpl(); }, nullptr);
         }
 
         void PollPrompts(float)
         {
-            obj::SafeInvoke([](void*) { PollPromptsImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"menus.PollPromptsImpl", [](void*) { PollPromptsImpl(); }, nullptr);
         }
 
         void PollValue(float)
         {
-            obj::SafeInvoke([](void*) { PollValueImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"menus.PollValueImpl", [](void*) { PollValueImpl(); }, nullptr);
         }
     }
 

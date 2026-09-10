@@ -10,6 +10,7 @@
 #include "features/ButtonMash.hpp"
 #include "features/Choices.hpp"
 #include "features/DontBreathe.hpp"
+#include "features/Exploration.hpp"
 #include "features/Feature.hpp"
 #include "features/Hud.hpp"
 #include "features/Menus.hpp"
@@ -69,6 +70,7 @@ public:
 
     ~QuarryAccessMod() override
     {
+        qa::input::ReleaseWalkKeys();
         qa::tolk::Unload();
         qa::log::Shutdown();
     }
@@ -126,6 +128,7 @@ public:
         qa::features::Register(std::make_unique<qa::features::QteFeature>());
         qa::features::Register(std::make_unique<qa::features::ButtonMashFeature>());
         qa::features::Register(std::make_unique<qa::features::DontBreatheFeature>());
+        qa::features::Register(std::make_unique<qa::features::ExplorationFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

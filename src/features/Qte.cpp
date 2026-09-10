@@ -100,6 +100,15 @@ namespace qa::features
             return action;
         }
 
+        // The input action of a direction, as the game names them.
+        const wchar_t* ActionOfDirection(std::wstring_view direction)
+        {
+            if (direction == L"dir.down") return L"DirectionQTEDown";
+            if (direction == L"dir.left") return L"DirectionQTELeft";
+            if (direction == L"dir.right") return L"DirectionQTERight";
+            return L"DirectionQTEUp";
+        }
+
         const wchar_t* DirectionOfAction(const std::wstring& action)
         {
             if (str::EndsWith(action, L"Up")) return L"dir.up";
@@ -168,7 +177,7 @@ namespace qa::features
             const wchar_t* direction = DirectionOfAction(action);
             if (!direction) direction = DirectionOfAngle(info.angle);
             std::wstring key;
-            if (!action.empty() && input::CurrentScheme() != input::Scheme::Gamepad) key = input::KeyForAction(action);
+            if (input::CurrentScheme() != input::Scheme::Gamepad) key = input::KeyForAction(action.empty() ? ActionOfDirection(direction) : action);
             std::wstring text = locale::Mod(direction);
             if (!key.empty()) text += L", " + key;
             text += L".";
@@ -281,7 +290,7 @@ namespace qa::features
 
         void Poll(float)
         {
-            obj::SafeInvoke([](void*) { PollImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"qte.PollImpl", [](void*) { PollImpl(); }, nullptr);
         }
     }
 

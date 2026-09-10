@@ -34,7 +34,6 @@ namespace qa::input
         std::mutex g_mutex;
         std::map<std::pair<int, std::wstring>, std::wstring> g_actionCache;
         std::map<std::wstring, std::wstring> g_keyNameCache;
-        UObject* g_widget = nullptr; // any live USMGUIUserWidgetBase for GetKeysFromActionMapping
 
         // Size of one FKey, taken from the engine's own reflection rather than assumed,
         // so the returned key array is walked with the right stride.
@@ -60,33 +59,81 @@ namespace qa::input
             return cached;
         }
 
-        // The widget used to ask the game which keys an action is bound to. Only the screen
-        // currently on display is used: the native helper dereferences the widget's owning
-        // player, which is not safe on pooled or half-torn-down widgets.
-        UObject* AnyUiWidget()
+        // The screen on display, which the game asks for the keys of an action in menus.
+        // Nothing else is used: a widget kept from an earlier screen is torn down with
+        // that screen, and calling into it takes the game down.
+        UObject* ScreenWidget()
         {
             UObject* screen = watch::CurrentScreen();
-            if (screen && obj::IsLive(screen) && obj::FindFunction(screen, L"GetKeysFromActionMapping"))
-            {
-                if (screen != g_widget)
-                {
-                    g_widget = screen;
-                    log::Verbose(L"input: key-mapping widget {} {}", obj::ClassName(g_widget), obj::ObjectName(g_widget));
-                }
-                return g_widget;
-            }
-            // Screens without a focused control (the title screen) still need key names.
+            if (screen && obj::IsLive(screen) && obj::FindFunction(screen, L"GetKeysFromActionMapping")) return screen;
             for (auto* candidate : watch::CurrentScreens())
             {
-                if (obj::FindFunction(candidate, L"GetKeysFromActionMapping"))
-                {
-                    g_widget = candidate;
-                    return g_widget;
-                }
+                if (obj::IsLive(candidate) && obj::FindFunction(candidate, L"GetKeysFromActionMapping")) return candidate;
             }
-            if (g_widget && obj::IsLive(g_widget)) return g_widget;
-            g_widget = nullptr;
             return nullptr;
+        }
+
+        // The keys of a mapping in the engine's input settings, by reflection alone.
+        std::vector<std::wstring> MappingKeys(const wchar_t* table, const wchar_t* nameField, const std::wstring& mappingName)
+        {
+            std::vector<std::wstring> keys;
+            UObject* settings = obj::FindObject(L"/Script/Engine.Default__InputSettings");
+            if (!settings) return keys;
+            obj::ForEachArrayElement(settings, obj::FindProperty(settings, table),
+                                     [&](void* element, RC::Unreal::FProperty* inner)
+                                     {
+                                         std::wstring name;
+                                         if (!obj::ReadStringAt(element, obj::StructMember(inner, nameField), name) || name != mappingName) return;
+                                         auto* keyProp = obj::StructMember(inner, L"Key");
+                                         std::wstring key;
+                                         if (keyProp && obj::ReadStringAt(obj::ValuePtrAt(element, keyProp), obj::StructMember(keyProp, L"KeyName"), key) &&
+                                             !key.empty())
+                                             keys.push_back(key);
+                                     });
+            return keys;
+        }
+
+        // The keys of an action as the game's keyboard remapping shows them: an action listed
+        // in one of the game's remap rows is bound to that row's key (the row's own editable
+        // mapping), plus the row's fixed key when it has one. Actions outside the rows keep
+        // their own mapping.
+        std::vector<std::wstring> KeysFromBindingRows(const std::wstring& action)
+        {
+            std::vector<std::wstring> keys;
+            UObject* ui = obj::FindObject(L"/Script/SMG026Runtime.Default__UISettingsSMG026");
+            UObject* data = nullptr;
+            if (!ui || !obj::ReadObject(ui, L"KeyBindingSettingsData", data) || !obj::IsLive(data)) return keys;
+            bool found = false;
+            std::wstring edit;
+            std::wstring fixedKey;
+            int64_t type = 0;
+            obj::ForEachArrayElement(data, obj::FindProperty(data, L"KeyBindingSettings"),
+                                     [&](void* row, RC::Unreal::FProperty* rowType)
+                                     {
+                                         if (found) return;
+                                         void* rowPtr = obj::ValuePtrAt(row, rowType);
+                                         bool listed = false;
+                                         obj::ForEachArrayElement(
+                                             rowPtr, obj::StructMember(rowType, L"MappingReferences"),
+                                             [&](void* ref, RC::Unreal::FProperty* refType)
+                                             {
+                                                 std::wstring value;
+                                                 if (obj::ReadStringAt(obj::ValuePtrAt(ref, refType), obj::StructMember(refType, L"Value"), value) &&
+                                                     value == action)
+                                                     listed = true;
+                                             });
+                                         if (!listed) return;
+                                         found = true;
+                                         if (auto* editRef = obj::StructMember(rowType, L"UIEditMappingReference"))
+                                             obj::ReadStringAt(obj::ValuePtrAt(rowPtr, editRef), obj::StructMember(editRef, L"Value"), edit);
+                                         obj::ReadIntAt(rowPtr, obj::StructMember(rowType, L"InputMappingType"), type);
+                                         if (auto* fixed = obj::StructMember(rowType, L"FixedKey"))
+                                             obj::ReadStringAt(obj::ValuePtrAt(rowPtr, fixed), obj::StructMember(fixed, L"KeyName"), fixedKey);
+                                     });
+            if (!found || edit.empty()) return keys;
+            keys = type == 0 ? MappingKeys(L"ActionMappings", L"ActionName", edit) : MappingKeys(L"AxisMappings", L"AxisName", edit);
+            if (!fixedKey.empty() && fixedKey != L"None") keys.push_back(fixedKey);
+            return keys;
         }
 
         std::wstring Humanize(std::wstring_view keyName)
@@ -199,48 +246,52 @@ namespace qa::input
             const auto it = g_actionCache.find(cacheKey);
             if (it != g_actionCache.end()) return it->second;
         }
-        auto* widget = AnyUiWidget();
-        if (!widget)
-        {
-            log::Verbose(L"input: no owned UI widget yet; cannot resolve {}", action);
-            return {};
-        }
-        auto* fn = obj::FindFunction(widget, L"GetKeysFromActionMapping");
-        if (!fn) return {};
-        log::Verbose(L"input: resolving {} via {} {} (params {} bytes)", action, obj::ClassName(widget), obj::ObjectName(widget), fn->GetPropertiesSize());
 
         std::vector<std::wstring> keys;
-        obj::Call(
-            widget, fn,
-            [&](void* params)
-            {
-                for (auto* prop : fn->ForEachProperty())
+        const wchar_t* source = L"key binding row";
+        if (scheme != Scheme::Gamepad) keys = KeysFromBindingRows(action);
+        if (keys.empty()) source = L"screen";
+        if (UObject* widget = keys.empty() ? ScreenWidget() : nullptr)
+        {
+            auto* fn = obj::FindFunction(widget, L"GetKeysFromActionMapping");
+            log::Verbose(L"input: resolving {} via {} {} (params {} bytes)", action, obj::ClassName(widget), obj::ObjectName(widget), fn->GetPropertiesSize());
+            obj::Call(
+                widget, fn,
+                [&](void* params)
                 {
-                    if (!prop) continue;
-                    if (obj::PropertyTypeName(prop) == L"StructProperty" &&
-                        !prop->HasAnyPropertyFlags(static_cast<uint64_t>(RC::Unreal::EPropertyFlags::CPF_ReturnParm)))
+                    for (auto* prop : fn->ForEachProperty())
                     {
-                        // FActionMappingReference { FString Value; }
-                        auto* value = prop->ContainerPtrToValuePtr<FString>(params);
-                        std::construct_at(value, action.c_str());
+                        if (!prop) continue;
+                        if (obj::PropertyTypeName(prop) == L"StructProperty" &&
+                            !prop->HasAnyPropertyFlags(static_cast<uint64_t>(RC::Unreal::EPropertyFlags::CPF_ReturnParm)))
+                        {
+                            // FActionMappingReference { FString Value; }
+                            auto* value = prop->ContainerPtrToValuePtr<FString>(params);
+                            std::construct_at(value, action.c_str());
+                        }
                     }
-                }
-            },
-            [&](void* params)
-            {
-                for (auto* prop : fn->ForEachProperty())
+                },
+                [&](void* params)
                 {
-                    if (!prop || prop->GetName() != L"ReturnValue") continue;
-                    auto* arr = prop->ContainerPtrToValuePtr<TArray<uint8_t>>(params);
-                    if (!arr || arr->Num() <= 0 || !arr->GetData()) continue;
-                    const int32_t n = std::min<int32_t>(arr->Num(), 16);
-                    for (int32_t i = 0; i < n; ++i)
+                    for (auto* prop : fn->ForEachProperty())
                     {
-                        auto* key = reinterpret_cast<FName*>(arr->GetData() + static_cast<size_t>(i) * FKeyStride());
-                        keys.push_back(key->ToString());
+                        if (!prop || prop->GetName() != L"ReturnValue") continue;
+                        auto* arr = prop->ContainerPtrToValuePtr<TArray<uint8_t>>(params);
+                        if (!arr || arr->Num() <= 0 || !arr->GetData()) continue;
+                        const int32_t n = std::min<int32_t>(arr->Num(), 16);
+                        for (int32_t i = 0; i < n; ++i)
+                        {
+                            auto* key = reinterpret_cast<FName*>(arr->GetData() + static_cast<size_t>(i) * FKeyStride());
+                            keys.push_back(key->ToString());
+                        }
                     }
-                }
-            });
+                });
+        }
+        if (keys.empty())
+        {
+            keys = MappingKeys(L"ActionMappings", L"ActionName", action);
+            source = L"input settings";
+        }
 
         std::wstring chosen;
         const bool wantPad = scheme == Scheme::Gamepad;
@@ -257,10 +308,24 @@ namespace qa::input
         }
         if (chosen.empty() && !keys.empty()) chosen = keys.front();
         const std::wstring display = KeyDisplayName(chosen);
-        log::Verbose(L"input: action {} -> keys [{}] -> \"{}\" (scheme {})", action, str::Join(keys, L", "), display, SchemeName(scheme));
-        std::lock_guard lock(g_mutex);
-        g_actionCache[cacheKey] = display;
+        log::Verbose(L"input: action {} -> keys [{}] -> \"{}\" (scheme {}, from {})", action, str::Join(keys, L", "), display, SchemeName(scheme), source);
+        // Nothing found is not remembered: the screen or the settings may not be ready yet.
+        if (!display.empty())
+        {
+            std::lock_guard lock(g_mutex);
+            g_actionCache[cacheKey] = display;
+        }
         return display;
+    }
+
+    // Both sources of an action's keys, for the log.
+    std::wstring DescribeAction(std::wstring_view actionName)
+    {
+        const std::wstring action(actionName);
+        std::wstring screen = L"<no screen>";
+        if (UObject* widget = ScreenWidget()) screen = obj::ClassName(widget);
+        return L"action " + action + L": key binding row [" + str::Join(KeysFromBindingRows(action), L", ") + L"], screen " + screen + L", input settings [" +
+               str::Join(MappingKeys(L"ActionMappings", L"ActionName", action), L", ") + L"], spoken \"" + KeyForAction(action) + L"\"";
     }
 
     std::wstring PointerName()
@@ -273,7 +338,6 @@ namespace qa::input
         std::lock_guard lock(g_mutex);
         g_actionCache.clear();
         g_keyNameCache.clear();
-        g_widget = nullptr;
     }
 
     // ---- input activity ----------------------------------------------------
@@ -364,16 +428,20 @@ namespace qa::input
 
         // Asking an empty controller slot for its state is slow, so slots are only
         // re-checked once a second until one answers.
+        bool g_padConnected[4] = {true, true, true, true};
+        long long g_padScanAt = 0;
+        constexpr int16_t kStickDeadZone = 12000;
+
         bool AnyPadInput()
         {
             auto* getState = XInput();
             if (!getState) return false;
-            static bool connected[4] = {true, true, true, true};
-            static long long nextScanAt = 0;
+            bool* connected = g_padConnected;
+            long long& nextScanAt = g_padScanAt;
             const long long now = NowMs();
             const bool scanAll = now >= nextScanAt;
             if (scanAll) nextScanAt = now + 1000;
-            constexpr int16_t kDeadZone = 12000;
+            constexpr int16_t kDeadZone = kStickDeadZone;
             bool active = false;
             for (uint32_t pad = 0; pad < 4; ++pad)
             {
@@ -387,6 +455,99 @@ namespace qa::input
                 if (g.thumbRX > kDeadZone || g.thumbRX < -kDeadZone || g.thumbRY > kDeadZone || g.thumbRY < -kDeadZone) active = true;
             }
             return active;
+        }
+
+        // The left stick, which is what the character walks with.
+        bool LeftStickPushed()
+        {
+            auto* getState = XInput();
+            if (!getState) return false;
+            for (uint32_t pad = 0; pad < 4; ++pad)
+            {
+                if (!g_padConnected[pad]) continue;
+                XInputState state{};
+                if (getState(pad, &state) != ERROR_SUCCESS) continue;
+                const auto& g = state.gamepad;
+                if (g.thumbLX > kStickDeadZone || g.thumbLX < -kStickDeadZone || g.thumbLY > kStickDeadZone || g.thumbLY < -kStickDeadZone) return true;
+            }
+            return false;
+        }
+
+        // The Windows key code of an engine key name, for the few names a character walks with.
+        int VirtualKeyOf(const std::wstring& engineName)
+        {
+            if (engineName.size() == 1)
+            {
+                const wchar_t c = towupper(engineName[0]);
+                if ((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')) return static_cast<int>(c);
+            }
+            static const std::map<std::wstring, int> named = {
+                {L"Up", VK_UP},          {L"Down", VK_DOWN},    {L"Left", VK_LEFT},        {L"Right", VK_RIGHT},
+                {L"SpaceBar", VK_SPACE}, {L"Enter", VK_RETURN}, {L"LeftShift", VK_LSHIFT}, {L"RightShift", VK_RSHIFT}};
+            const auto it = named.find(engineName);
+            return it == named.end() ? 0 : it->second;
+        }
+
+        // One key of the game's for each way the character walks.
+        struct WalkKeys
+        {
+            int forward = 0, back = 0, left = 0, right = 0;
+        };
+
+        bool TypesACharacter(int vk)
+        {
+            return (vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9');
+        }
+
+        // The keys the game itself walks the character with, taken from its axis settings so
+        // a remapped set is followed. Where a way has both a letter and an arrow, the arrow
+        // wins: a screen reader stops speaking whenever a character key goes down.
+        const WalkKeys& MovementKeys()
+        {
+            static WalkKeys keys;
+            static bool resolved = false;
+            if (resolved) return keys;
+            UObject* settings = obj::FindObject(L"/Script/Engine.Default__InputSettings");
+            if (!settings) return keys;
+            resolved = true;
+            obj::ForEachArrayElement(settings, obj::FindProperty(settings, L"AxisMappings"),
+                                     [&](void* element, RC::Unreal::FProperty* inner)
+                                     {
+                                         std::wstring axis;
+                                         if (!obj::ReadStringAt(element, obj::StructMember(inner, L"AxisName"), axis)) return;
+                                         const bool sideways = axis == L"MovementX";
+                                         if (!sideways && axis != L"MovementY") return;
+                                         double scale = 0.0;
+                                         obj::ReadFloatAt(element, obj::StructMember(inner, L"Scale"), scale);
+                                         auto* keyProp = obj::StructMember(inner, L"Key");
+                                         std::wstring name;
+                                         if (!keyProp || !obj::ReadStringAt(obj::ValuePtrAt(element, keyProp), obj::StructMember(keyProp, L"KeyName"), name))
+                                             return;
+                                         const int vk = VirtualKeyOf(name);
+                                         if (vk == 0 || scale == 0.0) return;
+                                         int& slot = sideways ? (scale > 0 ? keys.right : keys.left) : (scale > 0 ? keys.forward : keys.back);
+                                         if (slot == 0 || (TypesACharacter(slot) && !TypesACharacter(vk))) slot = vk;
+                                     });
+            log::Info(L"input: the character walks with keys {} {} {} {}", keys.forward, keys.back, keys.left, keys.right);
+            return keys;
+        }
+
+        int g_walkHeld[4] = {0, 0, 0, 0}; // what the mod is holding down, one for each way
+
+        void SendKey(int vk, bool down)
+        {
+            INPUT event{};
+            event.type = INPUT_KEYBOARD;
+            event.ki.wVk = static_cast<WORD>(vk);
+            event.ki.wScan = static_cast<WORD>(MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC));
+            const bool extended = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
+            event.ki.dwFlags = (extended ? KEYEVENTF_EXTENDEDKEY : 0u) | (down ? 0u : KEYEVENTF_KEYUP);
+            SendInput(1, &event, sizeof(event));
+        }
+
+        bool HoldingWalkKey(int vk)
+        {
+            return vk != 0 && (g_walkHeld[0] == vk || g_walkHeld[1] == vk || g_walkHeld[2] == vk || g_walkHeld[3] == vk);
         }
 
         bool CursorMoved()
@@ -421,5 +582,75 @@ namespace qa::input
     bool InputHeld()
     {
         return GameWindowInForeground() && (AnyKeyDown(0x8000) || AnyPadInput());
+    }
+
+    bool MovementHeld()
+    {
+        // The keys the game itself moves the character with, so a remapped set counts too.
+        static std::vector<int> keys;
+        if (keys.empty())
+        {
+            for (const wchar_t* axis : {L"MovementX", L"MovementY"})
+            {
+                for (const auto& key : MappingKeys(L"AxisMappings", L"AxisName", axis))
+                {
+                    const int vk = VirtualKeyOf(key);
+                    if (vk != 0 && std::find(keys.begin(), keys.end(), vk) == keys.end()) keys.push_back(vk);
+                }
+            }
+        }
+        if (!GameWindowInForeground()) return false;
+        for (const int vk : keys)
+        {
+            if (!HoldingWalkKey(vk) && (GetAsyncKeyState(vk) & 0x8000)) return true;
+        }
+        return LeftStickPushed();
+    }
+
+    bool HoldWalkKeys(double forward, double right)
+    {
+        const WalkKeys& keys = MovementKeys();
+        if (!GameWindowInForeground() || (keys.forward == 0 && keys.right == 0))
+        {
+            ReleaseWalkKeys();
+            return false;
+        }
+        // A key goes down for each way the heading leans far enough toward, which gives the
+        // eight headings a player has with the same keys.
+        constexpr double kLean = 0.38;
+        const int wanted[4] = {forward > kLean ? keys.forward : 0, forward < -kLean ? keys.back : 0, right < -kLean ? keys.left : 0,
+                               right > kLean ? keys.right : 0};
+        for (int i = 0; i < 4; ++i)
+        {
+            if (g_walkHeld[i] == wanted[i]) continue;
+            if (g_walkHeld[i] != 0) SendKey(g_walkHeld[i], false);
+            if (wanted[i] != 0) SendKey(wanted[i], true);
+            g_walkHeld[i] = wanted[i];
+        }
+        return true;
+    }
+
+    std::wstring DescribeWalkKeys()
+    {
+        const WalkKeys& keys = MovementKeys();
+        const auto name = [](int vk)
+        {
+            wchar_t buffer[64] = {};
+            const bool extended = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
+            const LONG code = static_cast<LONG>(MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC)) << 16 | (extended ? (1L << 24) : 0);
+            if (vk != 0 && GetKeyNameTextW(code, buffer, 64) > 0) return std::wstring(buffer);
+            return vk == 0 ? std::wstring(L"<none>") : std::to_wstring(vk);
+        };
+        return L"the character walks with forward " + name(keys.forward) + L", back " + name(keys.back) + L", left " + name(keys.left) + L", right " +
+               name(keys.right);
+    }
+
+    void ReleaseWalkKeys()
+    {
+        for (int& vk : g_walkHeld)
+        {
+            if (vk != 0) SendKey(vk, false);
+            vk = 0;
+        }
     }
 }

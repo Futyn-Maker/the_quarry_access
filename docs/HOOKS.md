@@ -26,6 +26,7 @@ hook firing.
 | `DirectionQTEViewportWidgetSMG026_C`                                                                                                                  | `WidgetAnimationEvt_SuccessAnim_K2Node_WidgetAnimationEvent_8`, `WidgetAnimationEvt_FailureAnim_K2Node_WidgetAnimationEvent_9` | Qte | The result animations start: the event was hit or missed. |
 | `ButtonMashWidgetSMG026_C`                                                                                                                            | `Construct` | ButtonMash | A button mash widget is up, in play or in a tutorial. |
 | `DontBreatheWidgetSMG026_C`                                                                                                                           | `Construct` | DontBreathe | A Don't Breathe widget is up, in play or in a tutorial. |
+| `ReadingPaneWidget_C`                                                                                                                                 | `AddLines` | Exploration | The reading pane filled a page: it is read again once it has settled. |
 
 ## Pollers
 
@@ -44,6 +45,7 @@ hook firing.
 | `qte`: `GetDirectionQTESMG026Info`, `GetActionMappingSuccess` and the result animations of the quick-time event widgets, every frame | Qte | Reads the direction (and the key on the keyboard) and plays its cue when the event appears and every second until it is resolved, then plays the result. A second widget of the same event stays quiet. |
 | `mash`: `GetButtonMashInfo`, the glyph and `InfoDataInstance` (`ButtonMashState`, `CommitFraction`) of the button mash widgets, every 2 frames | ButtonMash | Reads the button with the game's button mash mode once, blips as the ring moves, says and plays the outcome. |
 | `breathe`: the prompt text blocks, the glyph and `InfoDataInstance` (`DontBreatheState`, `HoldingBreathTimeScale`) of the Don't Breathe widgets, every 2 frames | DontBreathe | Reads the prompt once it has settled and again when it changes, blips along the breath bars while the breath is held, says and plays the outcome. |
+| `explore`: the pawn's `AvailableUseLocations` and `OverlappingUseLocations`, `IsInLoco`, the `ExplorationDestinationSMG026` actors (every 2 s), positions through `K2_GetActorLocation` and the camera yaw through `PlayerCameraManager::GetCameraRotation`, every 10 frames; the `StaticExplorationGlintActorSMG` actors while a static exploration widget is up, every 5 frames; the reading pane's title, lines and page count, every 6 frames | Exploration | Lists what can be walked to with label, distance and direction, follows the target with the beacon, leads the camera to the glints, reads the pane. |
 | Text watcher                                                                                                                              | Watchers    | Diffs registered text blocks.                                                                 |
 | HUD instance watcher (`*Instance` pointers, strong and weak, on the HUD components)                                                       | Watchers    | Appearance of HUD widgets: loading screen, saving icon, scene details, notifications, alerts, act display, the subtitle widget, the interaction prompt widget, the choice widgets and the timer bar; also the screen readout and dumps. |
 | `input.activity`                                                                                                                          | Speech      | Keyboard, mouse and gamepad activity, so only the player's own input interrupts speech.       |
@@ -52,14 +54,22 @@ hook firing.
 
 ## Native functions called
 
-The mod hooks no native game functions. It calls these through `ProcessEvent`:
+## Native functions hooked
+
+| Function | Feature | Meaning |
+| --- | --- | --- |
+| `/Script/SMG026Runtime.StaticExplorationSMG026_Replicator:MulticastPOIFound` | Exploration | A point of interest was found while looking around. |
+
+## Native functions called
+
+The mod calls these through `ProcessEvent`:
 
 | Function                                            | Used for                                             |
 | --------------------------------------------------- | ---------------------------------------------------- |
 | `UIStaticsQuarry::FormatLocaleString`               | Resolving the game's locale keys to display text.    |
 | `UIStaticsQuarry::GetCurrentLocaleString`           | The game's text language.                            |
 | `SMGUIWidget::IsCurrentScreen`                      | Which loaded screens are actually on display.        |
-| `SMGUIUserWidgetBase::GetKeysFromActionMapping`     | Keys bound to an input action.                       |
+| `SMGUIUserWidgetBase::GetKeysFromActionMapping`     | Keys bound to an input action, asked of the screen on display when the game's own remap rows (`UISettingsSMG026.KeyBindingSettingsData`, read by reflection) do not list the action; with no screen the engine's `InputSettings` mappings are read by reflection instead. |
 | `KismetInputLibrary::Key_GetDisplayName`            | Engine display name of a key.                        |
 | `MenuBarBaseSMG026::GetUnlocalisedMenuContext`      | The description line of the bottom menu bar.         |
 | `TypeWriterTextBlockSMG026::GetText`                | The full text of a message that is typed out.        |
@@ -69,4 +79,10 @@ The mod hooks no native game functions. It calls these through `ProcessEvent`:
 | `GFButtonMashWidgetSMG026::GetButtonMashInfo`       | The action, type and time limit of a button mash.    |
 | `DontBreatheWidgetSMG026::GetDontBreatheInfo`       | The action that holds the breath.                    |
 | `SMGGameSettingEnum::GetCurrentEnumValueAsInt`      | The game's button mash mode.                         |
+| `NavigationSystemV1::FindPathToLocationSynchronously`, `K2_ProjectPointToNavigation`, `NavigationPath::IsPartial` | The walkable route to the exploration target. |
+| `InputSettings.AxisMappings` (read by reflection)   | The keys the game walks the character with, which the mod holds down while walking to a target. |
+| `UseLocationSMG026::ClientStateChanged`             | The scene turning an interaction on or off, which is what the exploration list follows. |
+| `Actor::K2_GetActorLocation`, `K2_GetActorRotation` | Positions of the character, the use locations, the destinations and the glints. |
+| `PlayerCameraManager::GetCameraRotation`             | The camera's heading, which the movement keys follow. |
+| `CharacterBaseSMG::IsInLoco`                          | Whether the character is under the player's control. |
 | `PlayerController::IsInputKeyDown`                  | The gamepad hotkey chord.                            |

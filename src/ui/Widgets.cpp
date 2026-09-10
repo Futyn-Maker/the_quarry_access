@@ -243,13 +243,21 @@ namespace qa::ui
 
     UObject* Interactable(UObject* focused)
     {
+        // A control can keep a highlighted part inside it (a popup button holds a panel
+        // that lights up on its own); the control with a kind of its own wins over such a
+        // part, which is taken only when nothing above it is known.
+        UObject* generic = nullptr;
         UObject* cur = focused;
         for (int depth = 0; cur && depth < 12; ++depth)
         {
-            if (IsInteractable(cur)) return cur;
+            if (IsInteractable(cur))
+            {
+                if (KindOf(cur) != Kind::Other) return cur;
+                if (!generic) generic = cur;
+            }
             cur = obj::FindOuterUserWidget(cur, 12);
         }
-        return nullptr;
+        return generic;
     }
 
     Description Describe(UObject* interactable)
@@ -662,7 +670,7 @@ namespace qa::ui
         // means scanning every object, which is not done more than twice a second.
         static UObject* known = nullptr;
         static unsigned long long lastScan = 0;
-        if (obj::IsLive(known)) return known;
+        if (obj::IsLive(known) && obj::IsA(known, L"PauseTabSystemSMG026")) return known;
         known = nullptr;
         const auto frame = gamethread::FrameCount();
         if (lastScan != 0 && frame - lastScan < 30) return nullptr;
