@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A Don't Breathe shown by a tutorial is called what it is: the game plays those out on a fixed clock and ends them the same way whatever the player does, so the moment one begins it is said to be a demonstration, and no advice is given during it.
+- Running out of air while the creature is still near is said differently from running out once it has moved off, because the two want opposite things of the player.
+- Don't Breathe says where the danger stands, which is what the game shows in its picture and plays in its sound as the creature draws near: a rising tone when a stretch of danger has passed and the breath may be let go, a falling tone when the next one is about to begin, and a word when the breath is nearly out. The blips still follow what is left of it.
+
 ## 0.7.0
 
 - Exploration: while the character is under the player's control, the things the scene lets the player walk to (its use locations and the places it shows) are listed as they come into reach, each with its label as the game names it, its distance and its direction from the camera's point of view; a use location standing at a place takes the place's name ("Листовка: Осмотреть"), twins are listed once, and the list keeps its order so N and P cycle predictably; the nearest is targeted by itself, N and P move the target and H says it again; a beacon leads along the walkable route from the navigation mesh, sounding on the side of the next turn, rising as the target comes closer and dropping an octave when the way is behind (T turns it off and on, `[Exploration]` in the ini tunes it); the distance said for the target is the length of the route; reaching a target is announced once, and the beacon resumes if the player walks away again.

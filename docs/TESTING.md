@@ -172,15 +172,22 @@ QTE, Быстрое нажатие, Не дышать.
 4. At a Don't Breathe you hear the prompt as displayed, "УДЕРЖИВАЙТЕ левая кнопка мыши ЧТОБЫ
    ЗАДЕРЖАТЬ ДЫХАНИЕ" (the key as bound; a glyph without a printed name is named from the
    binding). Hold the key: the prompt changes to "ОТПУСТИТЕ ... КОГДА ОКАЖЕТЕСЬ В БЕЗОПАСНОСТИ"
-   and blips follow the breath bars twice a second while you hold. Release: a tone plus
-   "Успех." or "Неудача.", then the game's own message.
+   and blips follow the breath bars twice a second while you hold, falling as the breath
+   runs out. A rising tone with "Опасность миновала." says the danger has passed and the key
+   may be let go; a falling tone with "Опасность." says the next stretch is about to begin, and
+   "Дыхание кончается." says the bars are nearly empty. Release in a gap between the stretches:
+   a tone plus "Успех." or "Неудача.", then the game's own message.
 5. Bonus → Обучение: the Don't Breathe and QTE tutorials show the same widgets and are read the
-   same way.
+   same way, except that a Don't Breathe there opens with "Показ: игра проходит его сама." The
+   game runs those on a fixed clock and always ends them the same way, so nothing is asked of
+   you and no advice is given.
 
 Expected log lines: `qte: ... angle N action "DirectionQTE..." -> dir.... key "..."` for every
 event (the angle and the action must agree: 0 up, 90 right, 180 down, 270 left), `qte: ... hit`
 or `missed`/`timed out`, `mash: ... action "ButtonMash" ... mode N`, `mash: ... succeeded`,
-`breathe: prompt "..."`, `breathe: state 1`, one `breathe: holding at N s, bar X` per blip,
+`breathe: prompt "..."`, `breathe: N stretch(es) of danger` with a line per stretch,
+`breathe: state 1`, one `breathe: holding at N s, bar X` per blip, `breathe: the danger has
+passed at N s`,
 `breathe: ... succeeded`, and no `ERROR`.
 
 ## Exploration

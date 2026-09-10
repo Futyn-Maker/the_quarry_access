@@ -34,6 +34,14 @@ namespace qa::features
             int64_t state = -1;     // 0 drawing breath, 1 holding, 2 success, 3 failure
             bool finished = false;
             double lastTickAt = -10.0;
+            // When a breath would be heard. The encounter is played by holding through those
+            // stretches and breathing in the gaps between them.
+            std::vector<std::pair<double, double>> zones;
+            bool zonesRead = false;
+            bool inZone = false;
+            bool warned = false;    // the coming danger has been called
+            bool lowCalled = false; // the breath running out has been called
+            bool demo = false;      // a tutorial playing itself out
         };
         std::vector<Breath> g_breaths;
 
@@ -64,6 +72,46 @@ namespace qa::features
             return str::JoinWords({left, key, right});
         }
 
+        // A tutorial plays the whole thing out by itself: the bars empty and the outcome
+        // arrives on a fixed clock whatever the player does.
+        bool InTutorial()
+        {
+            for (const wchar_t* cls : {L"DontBreatheTutorialOverlay_C", L"TutorialVideo_C"})
+            {
+                for (auto* widget : obj::FindAllLive(cls))
+                {
+                    if (obj::IsWidgetShown(widget, true)) return true;
+                }
+            }
+            return false;
+        }
+
+        // The stretches of the encounter in which a breath would give the character away.
+        void ReadZones(Breath& breath)
+        {
+            if (breath.zonesRead) return;
+            breath.zonesRead = true;
+            obj::CallReturn(breath.widget, L"GetDontBreatheInfo",
+                            [&](void* params, FProperty* returnValue)
+                            {
+                                void* value = obj::ValuePtrAt(params, returnValue);
+                                if (!value) return;
+                                obj::ForEachArrayElement(value, obj::StructMember(returnValue, L"DangerZones"),
+                                                         [&](void* element, FProperty* inner)
+                                                         {
+                                                             void* zone = obj::ValuePtrAt(element, inner);
+                                                             if (!zone) return;
+                                                             double start = 0.0, end = 0.0;
+                                                             obj::ReadFloatAt(zone, obj::StructMember(inner, L"StartTime"), start);
+                                                             obj::ReadFloatAt(zone, obj::StructMember(inner, L"EndTime"), end);
+                                                             breath.zones.push_back({start, end});
+                                                         });
+                            });
+            log::Info(L"breathe: {} stretch(es) of danger", breath.zones.size());
+            for (const auto& [start, end] : breath.zones)
+                log::Info(L"  danger from {:.1f} s to {:.1f} s", start, end);
+        }
+
         void Add(UObject* widget)
         {
             if (!obj::IsLive(widget)) return;
@@ -71,7 +119,10 @@ namespace qa::features
             Breath breath;
             breath.widget = widget;
             breath.action = Action(widget);
-            log::Info(L"breathe: {} {} appeared, action \"{}\"", obj::ClassName(widget), obj::ObjectName(widget), breath.action);
+            breath.demo = InTutorial();
+            log::Info(L"breathe: {} {} appeared, action \"{}\"{}", obj::ClassName(widget), obj::ObjectName(widget), breath.action,
+                      breath.demo ? L", a tutorial playing itself out" : L"");
+            if (breath.demo) speech::Announce(locale::Mod(L"breathe.demo"));
             g_breaths.push_back(std::move(breath));
         }
 
@@ -125,6 +176,39 @@ namespace qa::features
                         log::Info(L"breathe: state {} at {:.2f} s, bar {:.2f}", state, elapsed, 1.0 - scale);
                         breath.state = state;
                     }
+                    ReadZones(breath);
+                    // Where the danger stands in relation to the moment. The game shows this
+                    // in the picture and the sound it plays as the creature draws near.
+                    if (state < 2 && !breath.zones.empty())
+                    {
+                        bool here = false;
+                        bool coming = false;
+                        for (const auto& [start, end] : breath.zones)
+                        {
+                            if (elapsed >= start && elapsed <= end)
+                                here = true;
+                            else if (elapsed < start && start - elapsed <= 1.5)
+                                coming = true;
+                        }
+                        if (here != breath.inZone)
+                        {
+                            breath.inZone = here;
+                            breath.warned = false;
+                            log::Info(L"breathe: the danger {} at {:.1f} s", here ? L"is here" : L"has passed", elapsed);
+                            if (!here)
+                            {
+                                sounds::Play(sounds::Cue::Up);
+                                speech::Announce(locale::Mod(L"breathe.safe"));
+                            }
+                        }
+                        else if (coming && !here && !breath.warned)
+                        {
+                            breath.warned = true;
+                            log::Info(L"breathe: the danger is coming at {:.1f} s", elapsed);
+                            sounds::Play(sounds::Cue::Down);
+                            speech::Announce(locale::Mod(L"breathe.danger"));
+                        }
+                    }
                     if (state == 1)
                     {
                         // The breath bars shrink while the breath is held: a blip follows them.
@@ -134,6 +218,21 @@ namespace qa::features
                             breath.lastTickAt = now;
                             log::Info(L"breathe: holding at {:.1f} s, bar {:.2f}", elapsed, 1.0 - scale);
                         }
+                        // The bars are nearly empty: the character is about to gasp.
+                        // A tutorial gets no such warning: nothing the player does changes it.
+                        // Running out of air and the creature moving off are two different
+                        // things, and they can want opposite things of the player, so the
+                        // warning says which one he is in.
+                        if (!breath.demo && !breath.lowCalled && 1.0 - scale < 0.25)
+                        {
+                            breath.lowCalled = true;
+                            log::Info(L"breathe: the breath is nearly out at {:.1f} s, danger {}", elapsed, breath.inZone ? L"still here" : L"passed");
+                            speech::Announce(locale::Mod(breath.inZone ? L"breathe.low.danger" : L"breathe.low"));
+                        }
+                    }
+                    else if (state == 0)
+                    {
+                        breath.lowCalled = false; // a fresh breath drawn
                     }
                     else if (state >= 2)
                     {
