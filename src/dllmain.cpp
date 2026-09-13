@@ -70,7 +70,7 @@ public:
 
     ~QuarryAccessMod() override
     {
-        qa::input::ReleaseWalkKeys();
+        qa::input::ForgetWalkKeys();
         qa::tolk::Unload();
         qa::log::Shutdown();
     }
@@ -178,6 +178,7 @@ private:
         const auto sample = qa::gametext::Resolve(L"SMG_HUD_MENU_BUTTON_NEWGAME_000001");
         qa::log::Info(L"self-check: SMG_HUD_MENU_BUTTON_NEWGAME_000001 = \"{}\"", sample);
         qa::log::Info(L"self-check: control scheme {}", qa::input::SchemeName(qa::input::CurrentScheme()));
+        qa::input::ShareGamepadReading();
         qa::log::Info(L"self-check: UINavigationCancel = \"{}\"", qa::input::KeyForAction(L"UINavigationCancel"));
         qa::log::Info(L"self-check: script handlers {}", qa::hooks::ScriptHandlerCount());
 

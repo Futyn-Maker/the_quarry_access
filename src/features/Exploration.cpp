@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cwctype>
 #include <map>
 #include <numbers>
@@ -52,6 +53,13 @@ namespace qa::features
             bool inRange = false;   // the character stands in the use location
             double navRadius = 0.0; // the radius a use location counts as reached in, when known
             bool reached = false;
+            // A way on is a volume: the box its collision fills, whether the character stands
+            // inside it, and whether it lies wholly above or below the character.
+            bool hasBox = false;
+            Vec boxLow;
+            Vec boxHigh;
+            bool inside = false;
+            int storey = 0;
             std::wstring verb; // what the game says can be done here, when it says anything
             // The walkable way there, from the navigation mesh: how far it is on foot and
             // the corner to head for now. Everything said about a target uses these when
@@ -70,6 +78,8 @@ namespace qa::features
             bool partial = false; // it stops short of the target
             double length = 0.0;
             Vec next;
+            Vec goal; // the spot on the ground it was asked to reach
+            Vec end;  // where it actually stops
         };
 
         // What the scene last said about one of its use locations. The game can flick one on
@@ -96,6 +106,12 @@ namespace qa::features
         std::vector<UObject*> g_destinations;
         std::vector<UObject*> g_ways;
         double g_waysScannedAt = -10.0;
+        std::vector<UObject*> g_waysHidden; // ways that lie along the road to something named
+        double g_waysFilteredAt = -10.0;
+        std::vector<std::wstring> g_waysSpent; // volumes the scene has moved past, as last logged
+        std::vector<UObject*> g_waysAnnounced; // ways already said while the scene keeps watching them
+        double g_stepHeight = -1.0;            // the step the navigation mesh lets a character climb
+        double g_stepHeightAt = -10.0;
         std::vector<UObject*> g_glints;
         double g_glintsScannedAt = -10.0;
         UObject* g_static = nullptr;
@@ -110,8 +126,10 @@ namespace qa::features
         // Walking to the target by itself.
         bool g_walking = false;
         double g_walkStartedAt = 0.0;
-        double g_walkMovingAt = 0.0; // when the character was last seen actually moving
-        double g_walkLean = 0.0;     // degrees the heading leans while feeling for a way past
+        double g_walkMovingAt = 0.0;  // when the character was last seen actually moving
+        double g_walkLean = 0.0;      // degrees the heading leans while feeling for a way past
+        double g_walkBestWay = 1e9;   // the shortest the way there has been on this walk
+        double g_walkBestWayAt = 0.0; // when it last grew shorter
         double g_walkLeanedAt = 0.0;
         double g_walkLoggedAt = 0.0;
         Vec g_walkLastPosition;
@@ -298,16 +316,101 @@ namespace qa::features
             return ptr && obj::ReadStringAt(ptr, obj::StructMember(prop, L"ActorName"), out);
         }
 
+        enum class Verdict
+        {
+            Holds,
+            Fails,
+            Unknown
+        };
+
+        // Asks the game's blackboard library about one of the scene's variables, handing it the
+        // reference exactly as the condition holds it. False when the library, the function or
+        // a matching parameter is missing, so nothing is called with a reference it cannot use.
+        bool AskBlackboard(UObject* pawn, const wchar_t* function, FProperty* reference, void* source, bool& out)
+        {
+            UObject* library = obj::FindObject(L"/Script/SMGGameFlow.Default__GFBlackboardBlueprintLibrary");
+            auto* fn = library ? obj::FindFunction(library, function) : nullptr;
+            if (!fn) return false;
+            bool fits = false;
+            for (auto* prop : fn->ForEachProperty())
+            {
+                if (prop && prop->GetName() == L"VariableRef" && prop->GetSize() == reference->GetSize()) fits = true;
+            }
+            if (!fits) return false;
+            bool answered = false;
+            obj::Call(
+                library, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"WorldContextObject")
+                            *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = pawn;
+                        else if (name == L"VariableRef")
+                            std::memcpy(obj::ValuePtrAt(params, prop), source, static_cast<size_t>(reference->GetSize()));
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") answered = obj::ReadBoolAt(params, prop, out);
+                    }
+                });
+            return answered;
+        }
+
+        // What one of a scene's own conditions says right now, for the kinds the game lets
+        // anyone read: a value that is true or false, and a flag that is raised or lowered, both
+        // kept on the scene's blackboard. Every other kind is left unjudged. `said` names the
+        // variable and what it holds.
+        Verdict BlackboardCondition(UObject* pawn, UObject* condition, std::wstring& said)
+        {
+            const wchar_t* exists = nullptr;
+            const wchar_t* read = nullptr;
+            if (obj::IsA(condition, L"GFConditionBlackboardBoolCheck"))
+            {
+                exists = L"DoesBlackboardBoolExist";
+                read = L"GetGlobalBlackboardBool";
+            }
+            else if (obj::IsA(condition, L"GFConditionBlackboardFlagCheck"))
+            {
+                exists = L"DoesBlackboardFlagExist";
+                read = L"GetGlobalBlackboardFlag";
+            }
+            if (!read) return Verdict::Unknown;
+            FProperty* reference = obj::FindProperty(condition, L"Variable");
+            void* source = reference ? obj::ValuePtr(condition, reference) : nullptr;
+            if (!source) return Verdict::Unknown;
+            UObject* variable = nullptr;
+            obj::ReadObjectAt(source, obj::StructMember(reference, L"Variable"), variable);
+            if (!obj::IsLive(variable)) return Verdict::Unknown;
+            bool present = false;
+            if (!AskBlackboard(pawn, exists, reference, source, present) || !present) return Verdict::Unknown;
+            bool value = false;
+            if (!AskBlackboard(pawn, read, reference, source, value)) return Verdict::Unknown;
+            bool inverted = false;
+            obj::ReadBool(condition, L"bNot", inverted);
+            said = obj::ObjectName(variable) + (value ? L" is set" : L" is not set");
+            return value != inverted ? Verdict::Holds : Verdict::Fails;
+        }
+
         // The ways on that the scene is watching for right now. A scene often moves only when
         // the character walks into a place its own logic waits on, and those places carry no
         // marker, no glint and no name on screen for anyone. What a player does see is the
         // ground leading to them, so they are offered by where they are and never by what they
         // are called. They are found by asking the flow: the action that turned on a use
         // location the character can see belongs to a state, and that state's transitions say
-        // which volumes it is waiting on.
-        std::vector<UObject*> WayVolumes(const std::vector<UObject*>& availableUses)
+        // which volumes it is waiting on. A transition also carries the scene's own memory of
+        // what has already happened: one whose flag says its moment has passed can no longer
+        // fire, so walking into its volume sets nothing off and the volume is left out.
+        std::vector<UObject*> WayVolumes(UObject* pawn, const std::vector<UObject*>& availableUses)
         {
             std::vector<std::wstring> wanted;
+            std::vector<std::wstring> spent;
+            std::vector<UObject*> statesSeen;
             for (auto* action : obj::FindAllLive(L"GFActionMakeUseLocationAvailable"))
             {
                 std::wstring named;
@@ -317,6 +420,8 @@ namespace qa::features
                 UObject* schema = obj::Outer(action);
                 UObject* state = schema ? obj::Outer(schema) : nullptr;
                 if (!obj::IsLive(state)) continue;
+                if (std::find(statesSeen.begin(), statesSeen.end(), state) != statesSeen.end()) continue;
+                statesSeen.push_back(state);
                 std::vector<UObject*> transitions;
                 obj::ReadObjectArray(state, L"Transitions", transitions);
                 for (auto* transition : transitions)
@@ -324,14 +429,35 @@ namespace qa::features
                     if (!obj::IsLive(transition)) continue;
                     std::vector<UObject*> conditions;
                     obj::ReadObjectArray(transition, L"Conditions", conditions);
+                    std::vector<std::wstring> volumes;
+                    std::wstring closedBy;
                     for (auto* condition : conditions)
                     {
+                        if (!obj::IsLive(condition)) continue;
                         std::wstring volume;
-                        if (obj::IsLive(condition) && obj::IsA(condition, L"GFConditionInVolume") &&
-                            ReadActorReference(condition, L"TriggerVolumeName", volume))
+                        if (obj::IsA(condition, L"GFConditionInVolume"))
+                        {
+                            if (ReadActorReference(condition, L"TriggerVolumeName", volume)) volumes.push_back(volume);
+                            continue;
+                        }
+                        std::wstring said;
+                        if (closedBy.empty() && BlackboardCondition(pawn, condition, said) == Verdict::Fails) closedBy = said;
+                    }
+                    for (const auto& volume : volumes)
+                    {
+                        if (closedBy.empty())
                             wanted.push_back(volume);
+                        else
+                            spent.push_back(volume + L" (" + closedBy + L")");
                     }
                 }
+            }
+            std::sort(spent.begin(), spent.end());
+            spent.erase(std::unique(spent.begin(), spent.end()), spent.end());
+            if (spent != g_waysSpent)
+            {
+                g_waysSpent = spent;
+                if (!spent.empty()) log::Info(L"explore: the scene has moved past {}", str::Join(spent, L", "));
             }
             std::vector<UObject*> out;
             if (wanted.empty()) return out;
@@ -368,6 +494,14 @@ namespace qa::features
             obj::ReadBool(actor, L"bIsDiscovered", discovered);
             return type == 1 || discovered;
         }
+
+        Route FindRoute(UObject* pawn, const Vec& here, const Target& target, std::vector<Vec>* road);
+        bool TriggerBox(UObject* actor, Vec& low, Vec& high);
+        double DistanceToBox(const std::vector<Vec>& road, const Vec& low, const Vec& high);
+        double WalkingRadius(UObject* pawn);
+        bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight);
+        bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high);
+        bool InsideVolume(UObject* pawn, UObject* volume, const Vec& low, const Vec& high, int& storey);
 
         std::vector<Target> Gather(UObject* pawn, const Vec& here, double yaw, double now)
         {
@@ -420,8 +554,9 @@ namespace qa::features
             // when there is nothing left to use.
             if (now - g_waysScannedAt > 3.0)
             {
-                g_ways = WayVolumes(available);
+                g_ways = WayVolumes(pawn, available);
                 g_waysScannedAt = now;
+                std::erase_if(g_waysAnnounced, [](UObject* way) { return std::find(g_ways.begin(), g_ways.end(), way) == g_ways.end(); });
             }
             std::vector<Target> ways;
             for (auto* volume : g_ways)
@@ -431,9 +566,20 @@ namespace qa::features
                 t.actor = volume;
                 t.destination = true;
                 t.way = true;
-                if (!ActorLocation(volume, t.position)) continue;
+                // A volume's pivot can stand metres away from the space it fills, so a way is
+                // where its collision is: the middle of that box.
+                if (TriggerBox(volume, t.boxLow, t.boxHigh))
+                {
+                    t.hasBox = true;
+                    t.position = Vec{(t.boxLow.x + t.boxHigh.x) / 2.0, (t.boxLow.y + t.boxHigh.y) / 2.0, (t.boxLow.z + t.boxHigh.z) / 2.0};
+                }
+                else if (!ActorLocation(volume, t.position))
+                {
+                    continue;
+                }
                 if (Distance(here, t.position) > range) continue;
                 t.label = locale::Mod(L"explore.wayon");
+                if (t.hasBox) t.inside = InsideVolume(pawn, volume, t.boxLow, t.boxHigh, t.storey);
                 ways.push_back(std::move(t));
             }
 
@@ -489,11 +635,55 @@ namespace qa::features
                     continue;
                 out.push_back(p);
             }
-            // A way that the scene already names, with a place marker or something to use
-            // standing on it, is that thing: it is not offered a second time without a name.
+            // A way the character walks through on its road to something the scene already
+            // names is not offered: that journey sets it off anyway, and saying both makes two
+            // entries out of one. The test is the game's own: the road from the navigation
+            // mesh against the box the trigger actually occupies, widened by the character's
+            // own width, so a way is dropped only where walking to something else really does
+            // enter it. A way no road enters, whether it stands to one side of them all or
+            // beyond where every one of them ends, is a journey of its own and is offered.
+            if (!ways.empty() && now - g_waysFilteredAt > 3.0)
+            {
+                g_waysFilteredAt = now;
+                g_waysHidden.clear();
+                std::vector<std::vector<Vec>> roads;
+                size_t asked = 0;
+                for (const auto& t : out)
+                {
+                    if (++asked > 10) break;
+                    std::vector<Vec> road;
+                    FindRoute(pawn, here, t, &road);
+                    if (road.size() >= 2) roads.push_back(std::move(road));
+                }
+                const double radius = WalkingRadius(pawn);
+                for (const auto& way : ways)
+                {
+                    Vec low, high;
+                    if (!TriggerBox(way.actor, low, high))
+                    {
+                        // Without the trigger's own box there is nothing to say a road goes
+                        // through it, so it stays on offer rather than being dropped on a guess.
+                        log::Info(L"explore: a way {:.0f} cm off keeps no box of its own and is offered", Distance(here, way.position));
+                        continue;
+                    }
+                    low = Vec{low.x - radius, low.y - radius, low.z};
+                    high = Vec{high.x + radius, high.y + radius, high.z};
+                    double nearest = 1e9;
+                    for (const auto& road : roads)
+                        nearest = std::min(nearest, DistanceToBox(road, low, high));
+                    // The way the player has chosen stays in the list: taking it out as the
+                    // character moves would end the walk to it halfway.
+                    const bool chosen = way.actor == g_selected;
+                    const bool onRoad = nearest <= 0.0 && !chosen;
+                    if (onRoad) g_waysHidden.push_back(way.actor);
+                    log::Info(L"explore: a way {:.0f} cm off, {:.0f} by {:.0f} cm across, is missed by the nearest road by {:.0f} cm and is {}",
+                              Distance(here, way.position), high.x - low.x, high.y - low.y, nearest,
+                              onRoad ? L"not offered" : (nearest <= 0.0 ? L"kept as the chosen target" : L"offered"));
+                }
+            }
             for (auto& way : ways)
             {
-                if (std::any_of(out.begin(), out.end(), [&](const Target& o) { return FlatDistance(o.position, way.position) < 600.0; })) continue;
+                if (std::find(g_waysHidden.begin(), g_waysHidden.end(), way.actor) != g_waysHidden.end()) continue;
                 out.push_back(std::move(way));
             }
             for (auto& t : out)
@@ -537,10 +727,12 @@ namespace qa::features
         // it is reached once the game offers it, or once the character stands within its
         // trigger. Several of them can sit within arm's length of one another, so no distance
         // of our own choosing could say whether a press would reach this one or its neighbour.
-        // A place of the scene is only a point on the ground with nothing to press, so being
-        // near it is arriving.
+        // A way on is reached once the character stands inside its volume, by the engine's own
+        // test against that volume's collision. A place of the scene is only a point on the
+        // ground with nothing to press, so being near it is arriving.
         bool AtTarget(const Target& t, UObject* offered)
         {
+            if (t.way && t.hasBox) return t.inside;
             if (t.destination) return t.distance < 150.0;
             return t.inRange || t.actor == offered;
         }
@@ -561,8 +753,27 @@ namespace qa::features
             return obj::FindObject(L"/Script/NavigationSystem.Default__NavigationSystemV1");
         }
 
+        // The step the scene's navigation mesh was built to let a character climb, which is also
+        // the most one stretch of floor can rise or fall without becoming another floor.
+        double StepHeight(double now)
+        {
+            if (now - g_stepHeightAt < 5.0) return g_stepHeight;
+            g_stepHeightAt = now;
+            g_stepHeight = -1.0;
+            for (auto* mesh : obj::FindAllLive(L"RecastNavMesh"))
+            {
+                double height = 0.0;
+                if (obj::ReadFloat(mesh, L"AgentMaxStepHeight", height) && height > 0.0)
+                {
+                    g_stepHeight = height;
+                    break;
+                }
+            }
+            return g_stepHeight;
+        }
+
         // The point on the navigation mesh nearest to a point, when there is one close by.
-        bool ProjectToMesh(UObject* pawn, const Vec& point, Vec& out)
+        bool ProjectToMesh(UObject* pawn, const Vec& point, Vec& out, const Vec& extent)
         {
             UObject* nav = NavigationSystem();
             auto* fn = nav ? obj::FindFunction(nav, L"K2_ProjectPointToNavigation") : nullptr;
@@ -581,7 +792,7 @@ namespace qa::features
                         else if (name == L"Point")
                             WriteVec(obj::ValuePtrAt(params, prop), prop, point);
                         else if (name == L"QueryExtent")
-                            WriteVec(obj::ValuePtrAt(params, prop), prop, Vec{250.0, 250.0, 400.0});
+                            WriteVec(obj::ValuePtrAt(params, prop), prop, extent);
                     }
                 },
                 [&](void* params)
@@ -601,7 +812,7 @@ namespace qa::features
             return ok;
         }
 
-        Route FindRoute(UObject* pawn, const Vec& here, const Target& target)
+        Route FindRoute(UObject* pawn, const Vec& here, const Target& target, std::vector<Vec>* road)
         {
             Route route;
             UObject* nav = NavigationSystem();
@@ -609,7 +820,19 @@ namespace qa::features
             if (!fn) return route;
             Vec end = target.position;
             Vec projected;
-            if (ProjectToMesh(pawn, end, projected)) end = projected;
+            // The engine settles on the ground nearest across, whatever its height within the
+            // search, so a search that takes in another floor can hand back that floor: a thing
+            // on a wall above lower ground sends the character to the ground behind the wall.
+            // Things stand on the floor they are used from, so that floor is looked for first,
+            // within the step the mesh lets a character climb, and only then further up and down.
+            const double step = StepHeight(gamethread::NowSeconds());
+            // A way is walked into rather than stood beside, so its ground is looked for inside
+            // the box its collision fills before anywhere else.
+            const Vec half{(target.boxHigh.x - target.boxLow.x) / 2.0, (target.boxHigh.y - target.boxLow.y) / 2.0, (target.boxHigh.z - target.boxLow.z) / 2.0};
+            if ((target.way && target.hasBox && ProjectToMesh(pawn, end, projected, half)) ||
+                (step > 0.0 && ProjectToMesh(pawn, end, projected, Vec{250.0, 250.0, step})) || ProjectToMesh(pawn, end, projected, Vec{250.0, 250.0, 120.0}) ||
+                ProjectToMesh(pawn, end, projected, Vec{250.0, 250.0, 400.0}))
+                end = projected;
             UObject* path = nullptr;
             obj::Call(
                 nav, fn,
@@ -643,7 +866,10 @@ namespace qa::features
                                          if (ReadVec(obj::ValuePtrAt(element, inner), inner, p)) points.push_back(p);
                                      });
             if (points.size() < 2) return route;
+            if (road) *road = points;
             route.valid = true;
+            route.goal = end;
+            route.end = points.back();
             route.partial = obj::CallForBool(path, L"IsPartial");
             for (size_t i = 1; i < points.size(); ++i)
                 route.length += Distance(points[i - 1], points[i]);
@@ -661,12 +887,188 @@ namespace qa::features
             return route;
         }
 
+        double DistanceToSegment(const Vec& p, const Vec& a, const Vec& b)
+        {
+            const double abx = b.x - a.x;
+            const double aby = b.y - a.y;
+            const double length = abx * abx + aby * aby;
+            double along = 0.0;
+            if (length > 1.0) along = std::clamp(((p.x - a.x) * abx + (p.y - a.y) * aby) / length, 0.0, 1.0);
+            return FlatDistance(p, Vec{a.x + abx * along, a.y + aby * along, 0.0});
+        }
+
+        // The box the game keeps for a trigger, in the world's own coordinates. Volumes are
+        // brushes, so their size lives in their collision rather than in any property, and the
+        // engine hands it over whole.
+        bool TriggerBox(UObject* actor, Vec& low, Vec& high)
+        {
+            auto* fn = obj::IsLive(actor) ? obj::FindFunction(actor, L"GetActorBounds") : nullptr;
+            if (!fn) return false;
+            Vec origin{}, extent{};
+            bool read = false;
+            for (const bool collidingOnly : {true, false})
+            {
+                obj::Call(
+                    actor, fn,
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"bOnlyCollidingComponents") *static_cast<bool*>(obj::ValuePtrAt(params, prop)) = collidingOnly;
+                        }
+                    },
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (!prop) continue;
+                            const auto name = prop->GetName();
+                            if (name == L"Origin")
+                                read = ReadVec(obj::ValuePtrAt(params, prop), prop, origin);
+                            else if (name == L"BoxExtent")
+                                ReadVec(obj::ValuePtrAt(params, prop), prop, extent);
+                        }
+                    });
+                if (read && (extent.x > 1.0 || extent.y > 1.0)) break;
+            }
+            if (!read || (extent.x <= 1.0 && extent.y <= 1.0)) return false;
+            low = Vec{origin.x - extent.x, origin.y - extent.y, origin.z - extent.z};
+            high = Vec{origin.x + extent.x, origin.y + extent.y, origin.z + extent.z};
+            return true;
+        }
+
+        // How wide the character is, which is how near a road has to come for the walk to set
+        // a trigger off.
+        double WalkingRadius(UObject* pawn)
+        {
+            UObject* capsule = nullptr;
+            double radius = 0.0;
+            if (obj::ReadObject(pawn, L"CapsuleComponent", capsule) && capsule) obj::ReadFloat(capsule, L"CapsuleRadius", radius);
+            return radius;
+        }
+
+        // Where the character's capsule stands: its middle and how far it reaches up and down.
+        bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight)
+        {
+            UObject* capsule = nullptr;
+            if (!obj::ReadObject(pawn, L"CapsuleComponent", capsule) || !obj::IsLive(capsule)) return false;
+            bool placed = false;
+            bool sized = false;
+            obj::CallReturn(capsule, L"K2_GetComponentLocation",
+                            [&](void* params, FProperty* returnValue) { placed = ReadVec(obj::ValuePtrAt(params, returnValue), returnValue, middle); });
+            obj::CallReturn(capsule, L"GetScaledCapsuleHalfHeight",
+                            [&](void* params, FProperty* returnValue) { sized = obj::ReadFloatAt(params, returnValue, halfHeight); });
+            return placed && sized;
+        }
+
+        // Whether a point lies inside a volume, by the engine's measure of the distance from a
+        // point to the volume's collision, which is zero inside. Where the engine cannot measure
+        // it, the collision's box stands in.
+        bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high)
+        {
+            UObject* body = nullptr;
+            obj::ReadObject(volume, L"BrushComponent", body);
+            auto* fn = obj::IsLive(body) ? obj::FindFunction(body, L"GetClosestPointOnCollision") : nullptr;
+            double distance = -1.0;
+            if (fn)
+            {
+                obj::Call(
+                    body, fn,
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"Point") WriteVec(obj::ValuePtrAt(params, prop), prop, point);
+                        }
+                    },
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"ReturnValue") obj::ReadFloatAt(params, prop, distance);
+                        }
+                    });
+            }
+            if (distance >= 0.0) return distance == 0.0;
+            return point.x >= low.x && point.x <= high.x && point.y >= low.y && point.y <= high.y && point.z >= low.z && point.z <= high.z;
+        }
+
+        // Whether the character stands inside a way's volume. The point measured is on the
+        // character's own upright line, at the height of the volume's middle kept within the
+        // capsule, so a volume counts as entered wherever the capsule reaches into it. `storey`
+        // says whether the box lies wholly above or below the capsule instead.
+        bool InsideVolume(UObject* pawn, UObject* volume, const Vec& low, const Vec& high, int& storey)
+        {
+            storey = 0;
+            Vec middle;
+            double halfHeight = 0.0;
+            if (!CapsuleSpan(pawn, middle, halfHeight)) return false;
+            const double bottom = middle.z - halfHeight;
+            const double top = middle.z + halfHeight;
+            if (low.z > top)
+                storey = 1;
+            else if (high.z < bottom)
+                storey = -1;
+            if (storey != 0) return false;
+            return PointInVolume(volume, Vec{middle.x, middle.y, std::clamp((low.z + high.z) / 2.0, bottom, top)}, low, high);
+        }
+
+        // Whether a stretch of road crosses a box laid out along the world's axes, by the
+        // fraction of it that stays inside every pair of sides.
+        bool SegmentCrossesBox(const Vec& a, const Vec& b, const Vec& low, const Vec& high)
+        {
+            double from = 0.0, to = 1.0;
+            const double step[2] = {b.x - a.x, b.y - a.y};
+            const double start[2] = {a.x, a.y};
+            const double least[2] = {low.x, low.y};
+            const double most[2] = {high.x, high.y};
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                if (std::abs(step[axis]) < 1e-6)
+                {
+                    if (start[axis] < least[axis] || start[axis] > most[axis]) return false;
+                    continue;
+                }
+                double nearSide = (least[axis] - start[axis]) / step[axis];
+                double farSide = (most[axis] - start[axis]) / step[axis];
+                if (nearSide > farSide) std::swap(nearSide, farSide);
+                from = std::max(from, nearSide);
+                to = std::min(to, farSide);
+                if (from > to) return false;
+            }
+            return true;
+        }
+
+        // How far a road stays from a box: zero once it goes through. Two shapes with straight
+        // sides that miss each other are nearest at a corner of one, so the corners of each are
+        // measured against the sides of the other.
+        double DistanceToBox(const std::vector<Vec>& road, const Vec& low, const Vec& high)
+        {
+            double best = 1e9;
+            const Vec corners[4] = {Vec{low.x, low.y, 0.0}, Vec{high.x, low.y, 0.0}, Vec{high.x, high.y, 0.0}, Vec{low.x, high.y, 0.0}};
+            for (size_t i = 1; i < road.size(); ++i)
+            {
+                const Vec& a = road[i - 1];
+                const Vec& b = road[i];
+                if (SegmentCrossesBox(a, b, low, high)) return 0.0;
+                for (const Vec& end : {a, b})
+                {
+                    const double dx = std::max({low.x - end.x, 0.0, end.x - high.x});
+                    const double dy = std::max({low.y - end.y, 0.0, end.y - high.y});
+                    best = std::min(best, std::sqrt(dx * dx + dy * dy));
+                }
+                for (const Vec& corner : corners)
+                    best = std::min(best, DistanceToSegment(corner, a, b));
+            }
+            return best;
+        }
+
         // Asks the mesh again when the answer has aged or the character has walked on. A
         // maximum age of zero asks every time.
         void EnsureRoute(UObject* pawn, const Vec& here, Target& t, double now, double maxAge)
         {
             if (t.hasRoute && now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0) return;
-            const Route route = FindRoute(pawn, here, t);
+            const Route route = FindRoute(pawn, here, t, nullptr);
             t.routeAt = now;
             t.routeFrom = here;
             t.hasRoute = route.valid;
@@ -688,10 +1090,10 @@ namespace qa::features
                 {
                     Vec point{here.x + std::cos(radians) * reach, here.y + std::sin(radians) * reach, here.z};
                     Vec ground;
-                    if (!ProjectToMesh(pawn, point, ground) || FlatDistance(ground, point) > 400.0) continue;
+                    if (!ProjectToMesh(pawn, point, ground, Vec{250.0, 250.0, 400.0}) || FlatDistance(ground, point) > 400.0) continue;
                     Target probe;
                     probe.position = ground;
-                    const Route route = FindRoute(pawn, here, probe);
+                    const Route route = FindRoute(pawn, here, probe, nullptr);
                     if (!route.valid || route.partial) continue;
                     ways.push_back({bearing, FlatDistance(here, ground) / 100.0});
                     break;
@@ -733,10 +1135,30 @@ namespace qa::features
 
         // ---- what is said -------------------------------------------------------------------
 
+        // Where a target is: how far, which way, and whether it stands above or below the
+        // character, which a scene of two storeys needs and a flat one never mentions.
+        std::wstring Bearings(const Target& t, const Vec& here, double yaw)
+        {
+            std::vector<std::wstring> where{locale::Mod(SectorKey(SpokenBearing(t, here, yaw)))};
+            const double rise = t.position.z - here.z;
+            // A way's box says for itself whether it lies wholly above or below the character.
+            const int storey = t.way && t.hasBox ? t.storey : (rise > 150.0 ? 1 : (rise < -150.0 ? -1 : 0));
+            if (storey > 0)
+                where.push_back(locale::Mod(L"explore.higher"));
+            else if (storey < 0)
+                where.push_back(locale::Mod(L"explore.lower"));
+            return str::Join(where, L", ");
+        }
+
+        std::wstring TargetLine(const wchar_t* key, const Target& t, const Vec& here, double yaw)
+        {
+            return locale::Mod(key, {t.label, Metres(SpokenDistance(t)), Bearings(t, here, yaw)});
+        }
+
         std::wstring TargetText(const Target& t, const Vec& here, double yaw)
         {
             if (t.reached) return locale::Mod(L"explore.reached", t.label);
-            return locale::Mod(L"explore.target", {t.label, Metres(SpokenDistance(t)), locale::Mod(SectorKey(SpokenBearing(t, here, yaw)))});
+            return TargetLine(L"explore.target", t, here, yaw);
         }
 
         std::wstring ListText()
@@ -866,6 +1288,20 @@ namespace qa::features
             // a corner, so the walk turns with it instead of heading straight for the target.
             EnsureRoute(pawn, here, *target, now, 0.5);
             if (target->hasRoute && FlatDistance(here, target->routeNext) < 80.0) EnsureRoute(pawn, here, *target, now, 0.0);
+            // The way there should keep growing shorter. When it stops, the character has come
+            // as near as the ground allows and is only circling the spot.
+            const double way = target->hasRoute ? target->routeLength : target->distance;
+            if (way < g_walkBestWay - 30.0)
+            {
+                g_walkBestWay = way;
+                g_walkBestWayAt = now;
+            }
+            else if (now - g_walkBestWayAt > 6.0)
+            {
+                log::Info(L"explore: the way to \"{}\" stopped growing shorter at {:.0f} cm", target->label, way);
+                StopWalk(L"explore.walk.blocked", false);
+                return;
+            }
             const Vec goal = target->hasRoute ? target->routeNext : target->position;
             // The heading the beacon gives, in the camera's frame, which is the frame the
             // character's own keys work in. When the way ahead yields nothing for a moment the
@@ -934,9 +1370,29 @@ namespace qa::features
             g_walkMovingAt = g_walkStartedAt;
             g_walkLeanedAt = g_walkStartedAt;
             g_walkLean = 0.0;
+            g_walkBestWay = 1e9;
+            g_walkBestWayAt = g_walkStartedAt;
             g_walkLoggedAt = g_walkStartedAt;
             g_walkLastPosition = here;
             log::Info(L"explore: walking to \"{}\"", target->label);
+            const Route route = FindRoute(pawn, here, *target, nullptr);
+            if (route.valid)
+                log::Info(L"explore: the ground for \"{}\" is {:.0f} cm across from it and {:+.0f} cm in height; the way there is {} and ends {:.0f} cm from "
+                          L"that ground",
+                          target->label, FlatDistance(route.goal, target->position), route.goal.z - target->position.z,
+                          route.partial ? L"partial" : L"complete", Distance(route.end, route.goal));
+            if (route.valid && target->way && target->hasBox)
+            {
+                Vec middle;
+                double halfHeight = 0.0;
+                if (CapsuleSpan(pawn, middle, halfHeight))
+                {
+                    const Vec probe{route.goal.x, route.goal.y,
+                                    std::clamp((target->boxLow.z + target->boxHigh.z) / 2.0, route.goal.z, route.goal.z + 2.0 * halfHeight)};
+                    log::Info(L"explore: that ground is {} the volume of the way",
+                              PointInVolume(target->actor, probe, target->boxLow, target->boxHigh) ? L"inside" : L"outside");
+                }
+            }
             speech::Now(locale::Mod(L"explore.walk.start"));
         }
 
@@ -989,6 +1445,7 @@ namespace qa::features
                 g_pawn = pawn;
                 g_targets.clear();
                 g_selected = nullptr;
+                g_waysAnnounced.clear();
             }
             // A short exchange in the middle of a scene leaves everything where it was, so
             // the list is not said again; only what the scene has added is.
@@ -1023,7 +1480,7 @@ namespace qa::features
                         sounds::Play(sounds::Cue::Confirm);
                     }
                 }
-                else if (!there && t.reached && t.distance > 350.0)
+                else if (!there && t.reached && ((t.way && t.hasBox) || t.distance > 350.0))
                 {
                     t.reached = false;
                 }
@@ -1032,6 +1489,18 @@ namespace qa::features
             for (const auto& t : added)
                 log::Info(L"explore: {} \"{}\" {} at {:.0f} cm, {:.0f} deg", t.destination ? L"place" : L"use location", t.label, obj::ObjectName(t.actor),
                           t.distance, t.bearing);
+
+            // A way the road filter hid for a moment and shows again is not new: it is said the
+            // first time the scene watches it, and afterwards only returns to the list.
+            std::vector<UObject*> silent;
+            for (const auto& t : g_targets)
+            {
+                if (!t.way) continue;
+                if (std::find(g_waysAnnounced.begin(), g_waysAnnounced.end(), t.actor) != g_waysAnnounced.end())
+                    silent.push_back(t.actor);
+                else
+                    g_waysAnnounced.push_back(t.actor);
+            }
 
             if (!g_exploring)
             {
@@ -1051,6 +1520,7 @@ namespace qa::features
                 for (auto& t : g_targets)
                 {
                     if (std::none_of(added.begin(), added.end(), [&](const Target& a) { return a.actor == t.actor; })) continue;
+                    if (std::find(silent.begin(), silent.end(), t.actor) != silent.end()) continue;
                     EnsureRoute(pawn, here, t, now, 3.0);
                     speech::Announce(locale::Mod(L"explore.new", {t.label, Metres(SpokenDistance(t)), locale::Mod(SectorKey(SpokenBearing(t, here, yaw)))}));
                 }
@@ -1348,7 +1818,7 @@ namespace qa::features
             }
             for (const auto& t : g_targets)
             {
-                const Route route = FindRoute(pawn, here, t);
+                const Route route = FindRoute(pawn, here, t, nullptr);
                 log::Info(L"explore dump: target \"{}\" {:.0f} cm straight {:.0f} deg; way {} {:.0f} cm, corner {:.0f} cm at {:.0f} deg", t.label, t.distance,
                           t.bearing, route.valid ? (route.partial ? L"partial" : L"whole") : L"none", route.length, FlatDistance(here, route.next),
                           BearingDegrees(here, route.next, camYaw));

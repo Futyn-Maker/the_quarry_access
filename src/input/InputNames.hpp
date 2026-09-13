@@ -48,12 +48,19 @@ namespace qa::input
     // not count.
     bool MovementHeld();
 
+    // Points the game's own reading of the gamepad through the mod, so that a walk can push
+    // the stick the game already reads instead of pressing keys, which would make the game
+    // treat the keyboard as the device in hand and redraw every prompt for it.
+    void ShareGamepadReading();
+
     // Holds down the game's own movement keys for a heading given in the camera's frame,
     // both from -1 to 1, exactly as a player pressing them would. False when the keys cannot
     // be held, which is the case whenever the game is not the window in front.
     bool HoldWalkKeys(double forward, double right);
     // Lets go of whatever HoldWalkKeys is holding.
     void ReleaseWalkKeys();
+    // Lets go and gives the game's own gamepad reading back to it, for shutdown.
+    void ForgetWalkKeys();
     // The four keys the character walks with, for the log.
     std::wstring DescribeWalkKeys();
 }

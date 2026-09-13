@@ -457,6 +457,103 @@ namespace qa::input
             return active;
         }
 
+        // ---- pushing the stick the game reads --------------------------------------------
+        //
+        // The game reads its gamepad through XInput, and it decides which prompts to draw from
+        // whichever device last spoke. Walking the character with the movement keys therefore
+        // makes it announce itself as a keyboard in the middle of a walk and then turn back,
+        // which is worth nothing to anyone. So on a gamepad the walk pushes the stick the game
+        // itself reads: its import of XInputGetState is redirected here, and while a walk is on
+        // the left stick of whichever pad answered is filled in. The mod's own reading of the
+        // pad goes to the real function, so the player's hands are still told apart from ours.
+        std::atomic<bool> g_injecting{false};
+        std::atomic<int> g_injectX{0};
+        std::atomic<int> g_injectY{0};
+        std::atomic<long long> g_askedAt{0};
+        std::atomic<bool> g_padAnswered{false};
+        XInputGetStateFn g_realGetState = nullptr;
+        void** g_importSlot = nullptr;
+
+        uint32_t __stdcall GetStateDetour(uint32_t index, XInputState* state)
+        {
+            const uint32_t result = g_realGetState ? g_realGetState(index, state) : 1167u;
+            g_askedAt.store(NowMs(), std::memory_order_relaxed);
+            if (result == 0)
+                g_padAnswered.store(true, std::memory_order_relaxed);
+            else if (index == 0)
+                g_padAnswered.store(false, std::memory_order_relaxed);
+            if (result == 0 && state && g_injecting.load(std::memory_order_relaxed))
+            {
+                state->gamepad.thumbLX = static_cast<int16_t>(g_injectX.load(std::memory_order_relaxed));
+                state->gamepad.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
+                state->packetNumber += 1;
+            }
+            return result;
+        }
+
+        // Finds the game's own import of XInputGetState and points it here.
+        bool InstallPadInjection()
+        {
+            static bool tried = false;
+            if (tried) return g_importSlot != nullptr;
+            tried = true;
+            auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+            if (!base) return false;
+            auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+            auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+            const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+            if (directory.VirtualAddress == 0) return false;
+            auto* import = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + directory.VirtualAddress);
+            for (; import->Name; ++import)
+            {
+                const char* name = reinterpret_cast<const char*>(base + import->Name);
+                if (_strnicmp(name, "xinput", 6) != 0) continue;
+                // The game carries its own copy of XInput, which is not the one Windows ships,
+                // so the function to match against has to come from the very module it names.
+                HMODULE module = GetModuleHandleA(name);
+                if (!module) module = LoadLibraryA(name);
+                auto* real = module ? reinterpret_cast<XInputGetStateFn>(GetProcAddress(module, "XInputGetState")) : nullptr;
+                if (!real) continue;
+                auto* thunk = reinterpret_cast<void**>(base + import->FirstThunk);
+                for (; *thunk; ++thunk)
+                {
+                    if (*thunk != reinterpret_cast<void*>(real)) continue;
+                    DWORD old = 0;
+                    if (!VirtualProtect(thunk, sizeof(void*), PAGE_READWRITE, &old)) return false;
+                    g_realGetState = real;
+                    *thunk = reinterpret_cast<void*>(&GetStateDetour);
+                    VirtualProtect(thunk, sizeof(void*), old, &old);
+                    g_importSlot = thunk;
+                    log::Info(L"input: the gamepad the game reads through {} is shared with the mod", str::Utf8ToWide(name));
+                    return true;
+                }
+            }
+            log::Info(L"input: the game's gamepad reading could not be shared; the walk will use the movement keys");
+            return false;
+        }
+
+        // True while the game is reading a connected pad through the reading the mod shares.
+        // A pad it never asks about, or asks about and is told nothing is there, is a pad the
+        // stick cannot be pushed on, and the walk falls back to the movement keys.
+        bool PadLeadsTheWalk()
+        {
+            if (!InstallPadInjection()) return false;
+            return g_padAnswered.load(std::memory_order_relaxed) && NowMs() - g_askedAt.load(std::memory_order_relaxed) < 500;
+        }
+
+        // How the walk stands with the gamepad, for the log.
+        std::wstring WalkDevice()
+        {
+            if (!InstallPadInjection()) return L"the game's gamepad reading is not shared, so a walk uses those keys";
+            const long long at = g_askedAt.load(std::memory_order_relaxed);
+            if (at == 0) return L"the game never asks about a gamepad, so a walk uses those keys";
+            const long long ago = NowMs() - at;
+            if (!g_padAnswered.load(std::memory_order_relaxed))
+                return L"the game asked about its gamepad " + std::to_wstring(ago) + L" ms ago and was told none is there, so a walk uses those keys";
+            if (ago >= 500) return L"the game last asked about its gamepad " + std::to_wstring(ago) + L" ms ago, so a walk uses those keys";
+            return L"the game asked about its gamepad " + std::to_wstring(ago) + L" ms ago, so a walk pushes its stick instead";
+        }
+
         // The left stick, which is what the character walks with.
         bool LeftStickPushed()
         {
@@ -609,8 +706,28 @@ namespace qa::input
 
     bool HoldWalkKeys(double forward, double right)
     {
+        if (!GameWindowInForeground())
+        {
+            ReleaseWalkKeys();
+            return false;
+        }
+        // On a gamepad the stick is pushed instead, so the game keeps showing gamepad prompts.
+        if (CurrentScheme() == Scheme::Gamepad && PadLeadsTheWalk())
+        {
+            for (int& vk : g_walkHeld)
+            {
+                if (vk != 0) SendKey(vk, false);
+                vk = 0;
+            }
+            constexpr double kFull = 30000.0;
+            g_injectX.store(static_cast<int>(std::clamp(right, -1.0, 1.0) * kFull), std::memory_order_relaxed);
+            g_injectY.store(static_cast<int>(std::clamp(forward, -1.0, 1.0) * kFull), std::memory_order_relaxed);
+            g_injecting.store(true, std::memory_order_relaxed);
+            return true;
+        }
+        g_injecting.store(false, std::memory_order_relaxed);
         const WalkKeys& keys = MovementKeys();
-        if (!GameWindowInForeground() || (keys.forward == 0 && keys.right == 0))
+        if (keys.forward == 0 && keys.right == 0)
         {
             ReleaseWalkKeys();
             return false;
@@ -630,6 +747,11 @@ namespace qa::input
         return true;
     }
 
+    void ShareGamepadReading()
+    {
+        InstallPadInjection();
+    }
+
     std::wstring DescribeWalkKeys()
     {
         const WalkKeys& keys = MovementKeys();
@@ -642,15 +764,30 @@ namespace qa::input
             return vk == 0 ? std::wstring(L"<none>") : std::to_wstring(vk);
         };
         return L"the character walks with forward " + name(keys.forward) + L", back " + name(keys.back) + L", left " + name(keys.left) + L", right " +
-               name(keys.right);
+               name(keys.right) + L"; " + WalkDevice();
     }
 
     void ReleaseWalkKeys()
     {
+        g_injecting.store(false, std::memory_order_relaxed);
         for (int& vk : g_walkHeld)
         {
             if (vk != 0) SendKey(vk, false);
             vk = 0;
         }
+    }
+
+    void ForgetWalkKeys()
+    {
+        ReleaseWalkKeys();
+        // The game must not be left calling into a module that is going away.
+        if (!g_importSlot || !g_realGetState) return;
+        DWORD old = 0;
+        if (VirtualProtect(g_importSlot, sizeof(void*), PAGE_READWRITE, &old))
+        {
+            *g_importSlot = reinterpret_cast<void*>(g_realGetState);
+            VirtualProtect(g_importSlot, sizeof(void*), old, &old);
+        }
+        g_importSlot = nullptr;
     }
 }

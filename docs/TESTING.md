@@ -215,10 +215,13 @@ crashed car at night.
    names those instead.
 3. Press G (X on the gamepad): you hear "Иду.", half a second passes, and the character
    walks the route to the target on its own, past the trees and around the corners, and stops
-   there with the arrival tone. It walks by holding the game's own movement keys, so the game
-   window must be the one in front. Press G again, or push the movement keys or the stick, and
-   it stops at once with "Остановка." A cutscene, a dialogue, a choice, a quick-time event or
-   any screen ends it in the same frame it appears, and the keys are let go of with it.
+   there with the arrival tone. On a keyboard it walks by holding the game's own movement
+   keys, so the game window must be the one in front; on a gamepad it pushes the left stick
+   the game reads, and the prompts keep naming gamepad buttons all the way there rather than
+   turning into mouse and keyboard prompts halfway. Press G again, or push the movement keys
+   or the stick, and it stops at once with "Остановка." A cutscene, a dialogue, a choice, a
+   quick-time event or any screen ends it in the same frame it appears, and the keys are let
+   go of with it.
 4. Reaching a target is announced once, "<name>, на месте", with a tone; a use location then
    shows the game's own glyph, read as "<name>, левая кнопка мыши" with the same name the list
    gave it. Where several things stand together, the game offers one of them at a time and the
@@ -235,12 +238,36 @@ crashed car at night.
 7. Write `explore` into `Mods\QuarryAccess\command.txt` while standing in a scene: the log
    receives the character, the camera, every use location and place with its label and
    position, and the glints. `key DirectionQTEUp` writes where the keys of an action come
-   from and what is spoken.
-8. Press F8 in the main menu after leaving a game, and again while exploring: the help is
+   from and what is spoken. `walkkeys` writes the four movement keys and says whether a walk
+   would push the gamepad stick or press those keys.
+8. "Путь дальше" is offered only where the walk to something else does not already go through
+   it. Collecting firewood in chapter 2 and following Abigail into the woods in chapter 3 each
+   offer one. On the treehouse scene and on the walk to the radio hut the ways sit on the route
+   to things already in the list, so they drop out. The log gives the measurement for each way,
+   in centimetres, so a way that is offered or dropped unexpectedly can be read rather than
+   argued about.
+9. A way the scene has already used drops out. In the Chapter 7 police station, walking into
+   the way that sets off the creature's scare plays the scare, and when exploring resumes that
+   "Путь дальше" is no longer in the list. The log says
+   `explore: the scene has moved past T_Maxscare (b_maxscaredone is set)`.
+10. A thing on a wall is reached from the floor it hangs over. In the same police station, in
+    the office, the beacon and the walk both lead to the board and the game offers it. Each walk
+    logs `explore: the ground for "..." is N cm across from it and +0 cm in height; the way
+    there is complete`, and a way that says partial or a large height is worth sending in.
+11. A way on is entered, not approached. At the Chapter 9 scrapyard, after the gate, walking to
+    "Путь дальше" at the crane goes into the trigger, "на месте" is said once the character is
+    inside it, and the scene moves on. Each walk to a way logs
+    `explore: that ground is inside the volume of the way`.
+12. A chosen "Путь дальше" stays in the list while it is walked to, and a way that comes back
+    to the list after being hidden is not announced as new again.
+9. Press F8 in the main menu after leaving a game, and again while exploring: the help is
    read both times and the game keeps running.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>
 style <n>` for every prompt the game shows (the destination prompts carry the
 `ExporationDestination...` actions), `explore: reached "..."`, `explore: looking around begins`,
-`explore: point of interest found`, `explore: reading pane opened`, and no `ERROR`.
+`explore: point of interest found`, `explore: reading pane opened`,
+`input: the gamepad the game reads through ... is shared with the mod`, one
+`explore: a way ... is missed by the nearest road by ... cm and is offered/not offered` per
+way, and no `ERROR`.
