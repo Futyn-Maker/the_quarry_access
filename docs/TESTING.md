@@ -233,35 +233,36 @@ crashed car at night.
 6. In a scene that asks you to look around (the timer bar with "Используйте мышь, чтобы
    осмотреться"), the beacon leads the camera toward the nearest glint; when something is
    found you hear a tone and "Найдено."
-6. Opening a note or a letter reads its title, its page and the page count; the next page is
+7. Opening a note or a letter reads its title, its page and the page count; the next page is
    read when it turns. F8 names the page and close keys.
-7. Write `explore` into `Mods\QuarryAccess\command.txt` while standing in a scene: the log
+8. Write `explore` into `Mods\QuarryAccess\command.txt` while standing in a scene: the log
    receives the character, the camera, every use location and place with its label and
    position, and the glints. `key DirectionQTEUp` writes where the keys of an action come
    from and what is spoken. `walkkeys` writes the four movement keys and says whether a walk
    would push the gamepad stick or press those keys.
-8. "Путь дальше" is offered only where the walk to something else does not already go through
+9. "Путь дальше" is offered only where the walk to something else does not already go through
    it. Collecting firewood in chapter 2 and following Abigail into the woods in chapter 3 each
    offer one. On the treehouse scene and on the walk to the radio hut the ways sit on the route
    to things already in the list, so they drop out. The log gives the measurement for each way,
    in centimetres, so a way that is offered or dropped unexpectedly can be read rather than
    argued about.
-9. A way the scene has already used drops out. In the Chapter 7 police station, walking into
-   the way that sets off the creature's scare plays the scare, and when exploring resumes that
-   "Путь дальше" is no longer in the list. The log says
-   `explore: the scene has moved past T_Maxscare (b_maxscaredone is set)`.
-10. A thing on a wall is reached from the floor it hangs over. In the same police station, in
+10. A way the scene has already used drops out. In the Chapter 7 police station, walking into
+    the way that sets off the creature's scare plays the scare, and when exploring resumes that
+    "Путь дальше" is no longer in the list. The log says
+    `explore: the scene has moved past T_Maxscare (b_maxscaredone is set)`.
+11. A thing on a wall is reached from the floor it hangs over. In the same police station, in
     the office, the beacon and the walk both lead to the board and the game offers it. Each walk
-    logs `explore: the ground for "..." is N cm across from it and +0 cm in height; the way
-    there is complete`, and a way that says partial or a large height is worth sending in.
-11. A way on is entered, not approached. At the Chapter 9 scrapyard, after the gate, walking to
+    logs
+    `explore: the ground for "..." is N cm across from it and +0 cm in height; the way there is complete`,
+    and a way that says partial or a large height is worth sending in.
+12. A way on is entered, not approached. At the Chapter 9 scrapyard, after the gate, walking to
     "Путь дальше" at the crane goes into the trigger, "на месте" is said once the character is
     inside it, and the scene moves on. Each walk to a way logs
     `explore: that ground is inside the volume of the way`.
-12. A chosen "Путь дальше" stays in the list while it is walked to, and a way that comes back
+13. A chosen "Путь дальше" stays in the list while it is walked to, and a way that comes back
     to the list after being hidden is not announced as new again.
-9. Press F8 in the main menu after leaving a game, and again while exploring: the help is
-   read both times and the game keeps running.
+14. Press F8 in the main menu after leaving a game, and again while exploring: the help is
+    read both times and the game keeps running.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>
@@ -271,3 +272,25 @@ style <n>` for every prompt the game shows (the destination prompts carry the
 `input: the gamepad the game reads through ... is shared with the mod`, one
 `explore: a way ... is missed by the nearest road by ... cm and is offered/not offered` per
 way, and no `ERROR`.
+
+## Credits
+
+Tester script (Russian UI).
+
+1. Start the prologue: over the drive the opening credits show the cast's names one at a time.
+   Each name is said the moment it appears, and the last one after the game's word for "and"
+   above it: "И Grace Zabriskie". F6 while a name is on screen reads it.
+2. At the end of the game, after the podcast, the credits roll. When a roll begins you hear
+   "Титры." The first roll, the studio's, has no section titles: press F6 at any moment and every
+   line on screen is read from top to bottom, a role and its name together ("Director: Will
+   Byles") and a name alone as it is.
+3. The second roll begins with "Титры." and "Cast", and every section title is said as it comes up
+   from the bottom ("For SoundCuts", "Original Score", ...). For each licensed song only the first
+   line of its block is said, the song's name in quotes; F6 reads the whole block. Near the end F6
+   reads the logos as "Логотип WWISE", "Логотип SPEEDTREE" and "Логотип UNREAL".
+4. Nothing the credits say cuts anything off, and F6 during a roll reads the roll, never the last
+   message.
+
+Expected log lines: `credits: MainCredits_C ... shown`, `credits: the roll of CreditsStudio begins`,
+`credits: the roll of CreditsOthers begins`, one `credits: section "..."` per title, one
+`credits: opening credit "..."` per name, and no `ERROR`.

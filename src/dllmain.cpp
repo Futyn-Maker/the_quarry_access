@@ -9,6 +9,7 @@
 #include "diag/Diagnostics.hpp"
 #include "features/ButtonMash.hpp"
 #include "features/Choices.hpp"
+#include "features/Credits.hpp"
 #include "features/DontBreathe.hpp"
 #include "features/Exploration.hpp"
 #include "features/Feature.hpp"
@@ -129,6 +130,7 @@ public:
         qa::features::Register(std::make_unique<qa::features::ButtonMashFeature>());
         qa::features::Register(std::make_unique<qa::features::DontBreatheFeature>());
         qa::features::Register(std::make_unique<qa::features::ExplorationFeature>());
+        qa::features::Register(std::make_unique<qa::features::CreditsFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};
