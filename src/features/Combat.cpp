@@ -424,44 +424,81 @@ namespace qa::features
             return name;
         }
 
-        // The level's actors by the names the flow uses.
+        bool ActorLocation(UObject* actor, Vec& out)
+        {
+            return obj::IsLive(actor) && CallForVec(actor, L"K2_GetActorLocation", out);
+        }
+
+        // The level's actors by the names the flow uses. A name can belong to more than one
+        // actor (a second Silas_Wolf stood two hundred metres off in another part of the
+        // level), so of several the one nearest the character is taken.
         struct Actors
         {
-            std::map<std::wstring, UObject*> registered; // by their register entry
-            std::map<std::wstring, UObject*> named;      // by their own name
-            std::map<std::wstring, UObject*> stemmed;    // by their own name without its number
+            std::multimap<std::wstring, UObject*> registered; // by their register entry
+            std::multimap<std::wstring, UObject*> named;      // by their own name
+            std::multimap<std::wstring, UObject*> stemmed;    // by their own name without its number
+            Vec here;                                         // where the character stands
 
-            UObject* Find(const std::wstring& name, const wchar_t*& how) const
+            UObject* Nearest(const std::multimap<std::wstring, UObject*>& table, const std::wstring& name, std::wstring& note) const
             {
-                if (const auto it = registered.find(name); it != registered.end())
+                UObject* best = nullptr;
+                UObject* bestHidden = nullptr;
+                double bestDistance = 0.0, bestHiddenDistance = 0.0;
+                std::vector<std::wstring> seen;
+                const auto [begin, end] = table.equal_range(name);
+                for (auto it = begin; it != end; ++it)
                 {
-                    how = L"by its register";
-                    return it->second;
+                    Vec at;
+                    if (!ActorLocation(it->second, at)) continue;
+                    bool hidden = false;
+                    obj::ReadBool(it->second, L"bHidden", hidden);
+                    const double distance = Distance(here, at);
+                    seen.push_back(std::format(L"{} at {:.0f} m{}", obj::ObjectName(it->second), distance / 100.0, hidden ? L", hidden" : L""));
+                    UObject*& slot = hidden ? bestHidden : best;
+                    double& slotDistance = hidden ? bestHiddenDistance : bestDistance;
+                    if (!slot || distance < slotDistance)
+                    {
+                        slot = it->second;
+                        slotDistance = distance;
+                    }
                 }
-                if (const auto it = named.find(name); it != named.end())
+                if (seen.size() > 1) note = L", the nearest of " + str::Join(seen, L"; ");
+                return best ? best : bestHidden;
+            }
+
+            UObject* Find(const std::wstring& name, std::wstring& how) const
+            {
+                std::wstring note;
+                if (UObject* actor = Nearest(registered, name, note))
                 {
-                    how = L"by its name";
-                    return it->second;
+                    how = L"by its register" + note;
+                    return actor;
                 }
-                if (const auto it = stemmed.find(name); it != stemmed.end())
+                if (UObject* actor = Nearest(named, name, note))
                 {
-                    how = L"by its name without its number";
-                    return it->second;
+                    how = L"by its name" + note;
+                    return actor;
                 }
-                how = L"";
+                if (UObject* actor = Nearest(stemmed, name, note))
+                {
+                    how = L"by its name without its number" + note;
+                    return actor;
+                }
+                how.clear();
                 return nullptr;
             }
 
             bool Has(const std::wstring& name) const
             {
-                const wchar_t* how = L"";
+                std::wstring how;
                 return Find(name, how) != nullptr;
             }
         };
 
-        Actors LevelActors()
+        Actors LevelActors(UObject* pawn)
         {
             Actors actors;
+            ActorLocation(pawn, actors.here);
             for (UObject* actor : obj::FindAllLive(L"Actor"))
             {
                 const auto registered = RegisteredName(actor);
@@ -714,6 +751,34 @@ namespace qa::features
             speech::Announce(locale::Mod(L"combat.miss"));
         }
 
+        // Where the beam points against every target, and where the game's own aim point lies
+        // against the beam.
+        void LogAim(Combat& c, const wchar_t* when)
+        {
+            const Beam beam = AimLine(Pawn());
+            if (!beam.placed) return;
+            std::vector<std::wstring> parts;
+            for (const Target* t : Standing(c))
+            {
+                const Sight s = Look(beam, t->actor);
+                if (!s.placed) continue;
+                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {}", t->index, std::fabs(s.horizontal),
+                                            s.horizontal >= 0 ? L"right" : L"left", std::fabs(s.vertical), s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres,
+                                            s.onTarget ? L"on target" : L"off target"));
+            }
+            std::wstring aim = L"no aim point";
+            Vec pos;
+            if (obj::IsLive(c.replicator) && ReadVecProperty(c.replicator, L"TargetPos", pos) && (pos.x != 0.0 || pos.y != 0.0 || pos.z != 0.0))
+            {
+                const Vec f = Forward(beam.pitch, beam.yaw);
+                const double d = Distance(beam.from, pos);
+                const double along = d > 0.0 ? ((pos.x - beam.from.x) * f.x + (pos.y - beam.from.y) * f.y + (pos.z - beam.from.z) * f.z) / d : 1.0;
+                aim = std::format(L"aim point ({:.0f}, {:.0f}, {:.0f}) {:.1f} m from the {}, {:.1f} deg off its beam", pos.x, pos.y, pos.z, d / 100.0,
+                                  beam.source, std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi);
+            }
+            log::Info(L"combat: {}: {} yaw {:.1f} pitch {:.1f}; {}; {}", when, beam.source, beam.yaw, beam.pitch, str::Join(parts, L"; "), aim);
+        }
+
         void Shot(Combat& c, int64_t number, const wchar_t* how)
         {
             if (number <= c.shots) return;
@@ -723,6 +788,7 @@ namespace qa::features
             c.activeAt = c.shotAt;
             log::Info(L"combat: shot {} ({}) at {:.2f} s{}", number, how, c.shotAt - c.startedAt,
                       obj::IsLive(c.status) ? L", " + HealthText(c.status) : std::wstring());
+            LogAim(c, L"at the shot");
         }
 
         // A shot is judged by the targets' health: a hit takes some, a miss leaves it.
@@ -770,7 +836,7 @@ namespace qa::features
             UObject* pawn = Pawn();
 
             // The level's actors by the names the flow uses, to find the targets it names.
-            const Actors actors = LevelActors();
+            const Actors actors = LevelActors(pawn);
             // The replicator's path ends in the state of the fight: "...|doublewerewolf_combat".
             std::wstring path;
             c.replicator = FindReplicator(path);
@@ -788,7 +854,7 @@ namespace qa::features
                     Target t;
                     t.index = index++;
                     t.name = name;
-                    const wchar_t* how = L"";
+                    std::wstring how;
                     t.actor = actors.Find(name, how);
                     t.kind = KindOf(t.actor);
                     names.push_back(
@@ -838,18 +904,33 @@ namespace qa::features
             if (c.automatic || !g_aimSound) return;
             const Beam beam = AimLine(Pawn());
             if (!beam.placed) return;
+            // The sound leads to the target nearest the beam, and keeps to it until another is
+            // nearer by a clear margin, so that two targets side by side do not take the sound
+            // in turns.
             const Target* led = nullptr;
             Sight best;
+            const Target* kept = nullptr;
+            Sight keptSight;
             for (const Target* t : Standing(c))
             {
                 if (c.chosen >= 0 && t->index != c.chosen) continue;
                 const Sight s = Look(beam, t->actor);
                 if (!s.placed) continue;
+                if (t->index == c.leading)
+                {
+                    kept = t;
+                    keptSight = s;
+                }
                 if (!led || s.angle < best.angle)
                 {
                     led = t;
                     best = s;
                 }
+            }
+            if (kept && led != kept && best.angle > keptSight.angle - 5.0)
+            {
+                led = kept;
+                best = keptSight;
             }
             if (!led)
             {
@@ -857,18 +938,13 @@ namespace qa::features
                 c.sight = Sight{};
                 return;
             }
+            if (led->index != c.leading) log::Info(L"combat: the sound leads to target {}", led->index);
             c.leading = led->index;
             c.sight = best;
             if (now - c.loggedAt >= 0.5)
             {
                 c.loggedAt = now;
-                Vec pos;
-                if (obj::IsLive(c.replicator)) ReadVecProperty(c.replicator, L"TargetPos", pos);
-                log::Info(
-                    L"combat: {} yaw {:.1f} pitch {:.1f}; target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {}; game aim point ({:.0f}, {:.0f}, {:.0f})",
-                    beam.source, beam.yaw, beam.pitch, led->index, std::fabs(best.horizontal), best.horizontal >= 0 ? L"right" : L"left",
-                    std::fabs(best.vertical), best.vertical >= 0 ? L"up" : L"down", best.angle, best.onTarget ? L"on target" : L"off target", pos.x, pos.y,
-                    pos.z);
+                LogAim(c, L"aim");
             }
             if (now < c.quietUntil) return;
             const double interval = best.onTarget ? 0.12 : 0.09 + 0.4 * std::clamp(best.angle / 25.0, 0.0, 1.0);

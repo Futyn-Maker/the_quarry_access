@@ -305,10 +305,11 @@ Expected log lines: `combat: replicator ... path "...|<state>"`, `combat: begins
 prompt for <character> (<name>) with <weapon> ...; aiming setting N; state "<state>"; K
 target(s): <name> (<class> <actor>, by its register) ...; time limit ...; aim read from the
 torch`, one `combat: action ... in state "..."` per loaded fight action, the one of the fight
-marked `<- the replicator's state`, and `combat: status ...` per status object,
-`combat: aim assist strength ...`, `combat: replicator ... path "..."`, `combat: the fight's
-camera modifier is on` and later `off`, a `combat: torch yaw ... target ... on target/off
-target; game aim point (...)` line twice a second, `combat: shot N (counted by the game)`,
+marked `<- the replicator's state` (a name carried by several actors lists them with their
+distances and the nearest is taken), and `combat: status ...` per status object,
+`combat: aim assist strength ...`, `combat: replicator ... path "..."`, a `combat: aim: torch yaw ...; target 0 ... on target/off target ...; aim point (...) N m
+from the torch, N deg off its beam` line twice a second and one more `combat: at the shot:
+...` at every shot, `combat: the sound leads to target N` when the sound changes target, `combat: shot N (counted by the game)`,
 `combat: the weapon fires`, `combat: hit (...)` or `combat: miss on shot N`, `combat: over
 (the fight's replicator is gone)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
