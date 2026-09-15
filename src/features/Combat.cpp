@@ -402,6 +402,77 @@ namespace qa::features
             return label;
         }
 
+        // The name the flow knows an actor by: the entry in its actor register when it has one,
+        // else its own name. An actor's own name can carry a number the flow's name does not
+        // ("Ryan_2" for the flow's "Ryan").
+        std::wstring RegisteredName(UObject* actor)
+        {
+            std::wstring name;
+            auto* prop = obj::IsLive(actor) ? obj::FindProperty(actor, L"ActorRegister") : nullptr;
+            if (prop && obj::PropertyTypeName(prop) == L"StructProperty")
+                obj::ReadStringAt(obj::ValuePtr(actor, prop), obj::StructMember(prop, L"ActorName"), name);
+            return name;
+        }
+
+        std::wstring Stem(std::wstring name)
+        {
+            const size_t underscore = name.find_last_of(L'_');
+            if (underscore == std::wstring::npos || underscore + 1 >= name.size()) return name;
+            for (size_t i = underscore + 1; i < name.size(); ++i)
+                if (name[i] < L'0' || name[i] > L'9') return name;
+            name.erase(underscore);
+            return name;
+        }
+
+        // The level's actors by the names the flow uses.
+        struct Actors
+        {
+            std::map<std::wstring, UObject*> registered; // by their register entry
+            std::map<std::wstring, UObject*> named;      // by their own name
+            std::map<std::wstring, UObject*> stemmed;    // by their own name without its number
+
+            UObject* Find(const std::wstring& name, const wchar_t*& how) const
+            {
+                if (const auto it = registered.find(name); it != registered.end())
+                {
+                    how = L"by its register";
+                    return it->second;
+                }
+                if (const auto it = named.find(name); it != named.end())
+                {
+                    how = L"by its name";
+                    return it->second;
+                }
+                if (const auto it = stemmed.find(name); it != stemmed.end())
+                {
+                    how = L"by its name without its number";
+                    return it->second;
+                }
+                how = L"";
+                return nullptr;
+            }
+
+            bool Has(const std::wstring& name) const
+            {
+                const wchar_t* how = L"";
+                return Find(name, how) != nullptr;
+            }
+        };
+
+        Actors LevelActors()
+        {
+            Actors actors;
+            for (UObject* actor : obj::FindAllLive(L"Actor"))
+            {
+                const auto registered = RegisteredName(actor);
+                if (!registered.empty()) actors.registered.emplace(registered, actor);
+                const auto name = obj::ObjectName(actor);
+                actors.named.emplace(name, actor);
+                actors.stemmed.emplace(Stem(name), actor);
+            }
+            return actors;
+        }
+
         // The targets' health added up, and which of them have none left.
         int64_t Health(Combat& c)
         {
@@ -453,24 +524,30 @@ namespace qa::features
         // The flow action running this fight. Every loaded action of the kind is a candidate;
         // the one for the character in the player's hands whose targets stand in the level
         // wins, and every one is written to the log with its state.
-        UObject* FindAction(UObject* pawn, const std::map<std::wstring, UObject*>& actors)
+        // The flow action running this fight. The fight's replicator carries the path of the
+        // state it runs in, which settles it; without one, the action for the character in the
+        // player's hands whose targets stand in the level. Every candidate goes to the log.
+        UObject* FindAction(UObject* pawn, const Actors& actors, const std::wstring& wantedState)
         {
-            const std::wstring pawnName = pawn ? obj::ObjectName(pawn) : std::wstring();
+            std::wstring pawnName = RegisteredName(pawn);
+            if (pawnName.empty() && pawn) pawnName = Stem(obj::ObjectName(pawn));
             UObject* best = nullptr;
             int bestScore = -1;
             for (UObject* action : obj::FindAllLive(L"GFActionRealtimeCombatSMG026"))
             {
                 const auto character = ActorNameOf(action, L"CharacterRef");
                 const auto names = TargetNames(action);
+                const auto state = StateLabel(action);
                 int standing = 0;
                 for (const auto& name : names)
-                    if (actors.contains(name)) ++standing;
+                    if (actors.Has(name)) ++standing;
                 int score = 0;
-                if (!pawnName.empty() && character == pawnName) score += 4;
+                if (!wantedState.empty() && str::EqualsNoCase(state, wantedState)) score += 8;
+                if (!pawnName.empty() && str::EqualsNoCase(character, pawnName)) score += 4;
                 if (!names.empty() && standing == static_cast<int>(names.size())) score += 2;
                 if (standing > 0) score += 1;
-                log::Info(L"combat: action {} in state \"{}\" for {} with {}: {} of {} targets standing ({})", obj::ObjectName(action), StateLabel(action),
-                          character, ActorNameOf(action, L"WeaponRef"), standing, names.size(), str::Join(names, L", "));
+                log::Info(L"combat: action {} in state \"{}\" for {} with {}: {} of {} targets standing ({}){}", obj::ObjectName(action), state, character,
+                          ActorNameOf(action, L"WeaponRef"), standing, names.size(), str::Join(names, L", "), score >= 8 ? L" <- the replicator's state" : L"");
                 // A later action wins a tie: the flow's sub-assets load in their order.
                 if (score >= bestScore)
                 {
@@ -498,17 +575,20 @@ namespace qa::features
             return best;
         }
 
-        UObject* FindReplicator()
+        // The fight's replicator, and the path of the flow state it serves.
+        UObject* FindReplicator(std::wstring& path)
         {
             UObject* last = nullptr;
             for (UObject* replicator : obj::FindAllLive(L"RealtimeCombatSMG026_Replicator"))
             {
-                std::wstring path;
+                if (obj::CallForBool(replicator, L"IsActorBeingDestroyed")) continue;
+                std::wstring here;
                 Vec pos;
-                obj::ReadString(replicator, L"Path", path);
+                obj::ReadString(replicator, L"Path", here);
                 ReadVecProperty(replicator, L"TargetPos", pos);
-                log::Info(L"combat: replicator {} path \"{}\" target pos ({:.0f}, {:.0f}, {:.0f})", obj::ObjectName(replicator), path, pos.x, pos.y, pos.z);
+                log::Info(L"combat: replicator {} path \"{}\" target pos ({:.0f}, {:.0f}, {:.0f})", obj::ObjectName(replicator), here, pos.x, pos.y, pos.z);
                 last = replicator;
+                path = here;
             }
             return last;
         }
@@ -689,12 +769,15 @@ namespace qa::features
             c.automatic = setting == 2;
             UObject* pawn = Pawn();
 
-            // The level's actors by name, to find the targets the flow names.
-            std::map<std::wstring, UObject*> actors;
-            for (UObject* actor : obj::FindAllLive(L"Actor"))
-                actors.emplace(obj::ObjectName(actor), actor);
-
-            c.action = FindAction(pawn, actors);
+            // The level's actors by the names the flow uses, to find the targets it names.
+            const Actors actors = LevelActors();
+            // The replicator's path ends in the state of the fight: "...|doublewerewolf_combat".
+            std::wstring path;
+            c.replicator = FindReplicator(path);
+            const size_t bar = path.find_last_of(L'|');
+            const std::wstring wantedState = bar == std::wstring::npos ? path : path.substr(bar + 1);
+            c.action = FindAction(pawn, actors, wantedState);
+            std::vector<std::wstring> names;
             if (c.action)
             {
                 obj::ReadBool(c.action, L"bHasTimeLimit", c.hasTimeLimit);
@@ -705,9 +788,11 @@ namespace qa::features
                     Target t;
                     t.index = index++;
                     t.name = name;
-                    const auto it = actors.find(name);
-                    t.actor = it != actors.end() ? it->second : nullptr;
+                    const wchar_t* how = L"";
+                    t.actor = actors.Find(name, how);
                     t.kind = KindOf(t.actor);
+                    names.push_back(
+                        name + (obj::IsLive(t.actor) ? std::format(L" ({} {}, {})", obj::ClassName(t.actor), obj::ObjectName(t.actor), how) : L" (not found)"));
                     c.targets.push_back(t);
                 }
                 double strength = 0.0, magnetism = 0.0, lockNear = 0.0, lockFar = 0.0, aimDistance = 0.0;
@@ -725,16 +810,13 @@ namespace qa::features
             c.status = FindStatus(c.targets.size());
             c.shots = ShotsFired(c.status);
             c.healthSum = Health(c);
-            c.replicator = FindReplicator();
             c.modifierSeen = g_modifierOn;
-            std::vector<std::wstring> names;
-            for (const auto& t : c.targets)
-                names.push_back(t.name + (obj::IsLive(t.actor) ? std::format(L" ({})", obj::ClassName(t.actor)) : L" (not found)"));
             const Beam beam = AimLine(pawn);
-            log::Info(L"combat: begins on {} for {} with {}; aiming setting {}; {} target(s): {}; time limit {}; status {} at {} shot(s); aim read from the {}",
-                      sign, pawn ? obj::ObjectName(pawn) : L"<no pawn>", WeaponText(pawn), setting, c.targets.size(), str::Join(names, L", "),
-                      c.hasTimeLimit ? std::format(L"{:.1f} s", c.timeLimit) : L"none", c.status ? obj::ObjectName(c.status) : L"<none>", c.shots,
-                      beam.placed ? beam.source : L"nothing");
+            log::Info(L"combat: begins on {} for {} ({}) with {}; aiming setting {}; state \"{}\"; {} target(s): {}; time limit {}; status {} at {} shot(s); "
+                      L"aim read from the {}",
+                      sign, pawn ? obj::ObjectName(pawn) : L"<no pawn>", RegisteredName(pawn), WeaponText(pawn), setting, wantedState, c.targets.size(),
+                      str::Join(names, L", "), c.hasTimeLimit ? std::format(L"{:.1f} s", c.timeLimit) : L"none",
+                      c.status ? obj::ObjectName(c.status) : L"<none>", c.shots, beam.placed ? beam.source : L"nothing");
             speech::Announce(locale::Mod(c.automatic ? L"combat.auto" : L"combat.aim"));
             // What is there to shoot at, as it is seen: the creatures and the things by their
             // kind, a person only as a target, each with its distance and its side.
@@ -827,6 +909,16 @@ namespace qa::features
             {
                 End(L"the camera modifier went off");
                 return;
+            }
+            // The fight's replicator lives as long as the fight: a new one is spawned for each.
+            if (c.replicator)
+            {
+                if (!obj::IsLive(c.replicator) || obj::CallForBool(c.replicator, L"IsActorBeingDestroyed"))
+                {
+                    End(L"the fight's replicator is gone");
+                    return;
+                }
+                c.activeAt = now;
             }
             if (!Pawn() || watch::CurrentScreen())
             {

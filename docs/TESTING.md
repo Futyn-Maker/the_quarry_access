@@ -301,14 +301,16 @@ between 1.6 and 8 seconds each. Settings → Доступность → Помо
 5. With the aiming setting on "Автоматический" you hear only "Прицеливание, автоматически."
    and the game plays the fight.
 
-Expected log lines: `combat: begins on the fire prompt for <character> with <weapon> ...;
-aiming setting N; K target(s): ...; time limit ...; aim read from the torch`, one `combat:
-action ... in state "..."` per loaded fight action and `combat: status ...` per status object,
+Expected log lines: `combat: replicator ... path "...|<state>"`, `combat: begins on the fire
+prompt for <character> (<name>) with <weapon> ...; aiming setting N; state "<state>"; K
+target(s): <name> (<class> <actor>, by its register) ...; time limit ...; aim read from the
+torch`, one `combat: action ... in state "..."` per loaded fight action, the one of the fight
+marked `<- the replicator's state`, and `combat: status ...` per status object,
 `combat: aim assist strength ...`, `combat: replicator ... path "..."`, `combat: the fight's
 camera modifier is on` and later `off`, a `combat: torch yaw ... target ... on target/off
 target; game aim point (...)` line twice a second, `combat: shot N (counted by the game)`,
 `combat: the weapon fires`, `combat: hit (...)` or `combat: miss on shot N`, `combat: over
-(...)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
+(the fight's replicator is gone)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
 above name what the game held.
 
