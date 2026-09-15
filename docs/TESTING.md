@@ -327,10 +327,11 @@ vision; choose "УВИДЕТЬ БОЛЬШЕ" (or the card, when two were found).
 4. The Hermit after chapter 5, Death, the Sun and Judgement after chapter 9 have several
    visions; the one described is the one the game plays, named by its film.
 
-Expected log lines: `tarot: player 0 holds "Tarot/TheFool/TheFool.bk2"`, `tarot: vision
-"Tarot/TheFool/TheFool.bk2" plays on player 0 (described)`, one `SAY announce` with the
-description, and no `ERROR`. A `(no description)` in that line names a film the tables do
-not know: send the log.
+Expected log lines: `tarot: 2 film player(s): ...`, `tarot: Tarot_BinkMediaPlayer holds
+"Tarot/TheFool/TheFool.bk2"` (`BinkMediaPlayer holds ...` for a replay from the pause menu),
+`tarot: vision "Tarot/TheFool/TheFool.bk2" plays on Tarot_BinkMediaPlayer (described)`, one
+`SAY announce` with the description, and no `ERROR`. A `(no description)` in that line names
+a film the tables do not know: send the log.
 
 ## Credits
 
