@@ -18,10 +18,13 @@ namespace qa::features
 
     namespace
     {
-        // HUD elements whose text stands on its own. Elements the player acts on (choices,
-        // prompts, quick-time events, subtitles) belong to their own features.
-        const wchar_t* const kReadableHuds[] = {L"ActionHUDSceneDetails", L"ActionHUDNotification", L"ActionHUDAlertSMG026",     L"ActionHUDActDisplaySMG026",
-                                                L"ActionHUDSingleLine",   L"ActionHUDTitleIntro",   L"ActionHUDCharacterIntros", L"ActionHUDBigTitlesDP"};
+        // HUD elements whose text stands on its own, among them the fate cards the epilogue
+        // lays over its scenes (a character's name and state, and a line on how the night
+        // ended for them). Elements the player acts on (choices, prompts, quick-time events,
+        // subtitles) belong to their own features.
+        const wchar_t* const kReadableHuds[] = {L"ActionHUDSceneDetails",     L"ActionHUDNotification", L"ActionHUDAlertSMG026",
+                                                L"ActionHUDActDisplaySMG026", L"ActionHUDSingleLine",   L"ActionHUDTitleIntro",
+                                                L"ActionHUDCharacterIntros",  L"ActionHUDBigTitlesDP",  L"ActionHUDAftermathTextSMG026"};
 
         struct Tracked
         {

@@ -340,6 +340,23 @@ Expected log lines: `tarot: 2 film player(s): ...`, `tarot: Tarot_BinkMediaPlaye
 `SAY announce` with the description, and no `ERROR`. A `(no description)` in that line names
 a film the tables do not know: send the log.
 
+## Fate cards
+
+Tester script (Russian UI). Play the last chapter to its end.
+
+1. After the closing words of the last chapter the epilogue shows where each character ended
+   up: a sunrise, then a scene at each place the night ended for someone (the island, the
+   scrapyard, the Hackett house, the woods, outside the lodge, the lodge, its kitchen, the
+   roadside, the freak show site), and then the arrival of the police. A card lies over each
+   scene, and each card is read as it appears: the name and state in capitals, as the game
+   writes them ("ЭБИГЕЙЛ БЛИГ: ЖИВА", "ДЖЕЙКОБ КАСТОС: МЁРТВ"), and the line beneath on how
+   it went for that character. One scene can show several cards in turn; each is read once.
+2. F6 while a card is on screen reads it again.
+3. The podcast and the credits follow, as before.
+
+Expected log lines: `hud: appeared ActionHUDAftermathTextSMG026.AftermathTextInstance ->
+AftermathText_C ...` (at the verbose log level), one `SAY announce` per card, and no `ERROR`.
+
 ## Credits
 
 Tester script (Russian UI).
