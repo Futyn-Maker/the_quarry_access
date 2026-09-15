@@ -34,6 +34,16 @@ namespace qa::features
             double x = 0.0, y = 0.0, z = 0.0;
         };
 
+        // What a target looks like on screen: the creature (a character wearing the werewolf),
+        // a thing that is not a character, or a person. A person is never named, because the
+        // game hides who it is in more than one fight.
+        enum class Kind
+        {
+            Creature,
+            Object,
+            Person,
+        };
+
         // Something the scene counts a shot against: an actor the fight's flow action names.
         // Its name is the level's and is never spoken.
         struct Target
@@ -41,7 +51,9 @@ namespace qa::features
             int index = 0;
             std::wstring name;
             UObject* actor = nullptr;
+            Kind kind = Kind::Person;
             bool dead = false;
+            double metres = 0.0; // from the aim at the last look
         };
 
         // The line a shot would take: the game shows it as the torch beam on the weapon, so the
@@ -62,6 +74,7 @@ namespace qa::features
             double horizontal = 0.0; // degrees to the right of the beam
             double vertical = 0.0;   // degrees above it
             double angle = 0.0;      // degrees off the beam altogether
+            double metres = 0.0;     // from the aim
             bool onTarget = false;   // the beam meets the target's body
         };
 
@@ -223,6 +236,28 @@ namespace qa::features
             return b;
         }
 
+        // The werewolves are the characters built on the wolf blueprints; everything that is not
+        // a character is a thing.
+        Kind KindOf(UObject* actor)
+        {
+            if (!obj::IsLive(actor)) return Kind::Person;
+            if (!obj::IsA(actor, L"Pawn")) return Kind::Object;
+            const auto cls = str::ToLower(obj::FullName(actor));
+            const auto name = str::ToLower(obj::ObjectName(actor));
+            if (cls.find(L"wolf") != std::wstring::npos || name.find(L"wolf") != std::wstring::npos) return Kind::Creature;
+            return Kind::Person;
+        }
+
+        const wchar_t* KindKey(Kind kind)
+        {
+            switch (kind)
+            {
+            case Kind::Creature: return L"combat.kind.creature";
+            case Kind::Object: return L"combat.kind.object";
+            default: return L"combat.kind.target";
+            }
+        }
+
         // The middle of what the target's collision fills.
         bool Centre(UObject* actor, Vec& out)
         {
@@ -323,6 +358,7 @@ namespace qa::features
             s.vertical = NormalizeDegrees(elevation - beam.pitch);
             const Vec f = Forward(beam.pitch, beam.yaw);
             const double d = Distance(eye, centre);
+            s.metres = d / 100.0;
             const double along = d > 0.0 ? ((centre.x - eye.x) * f.x + (centre.y - eye.y) * f.y + (centre.z - eye.z) * f.z) / d : 1.0;
             s.angle = std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi;
             const Vec far{eye.x + f.x * 20000.0, eye.y + f.y * 20000.0, eye.z + f.z * 20000.0};
@@ -521,9 +557,14 @@ namespace qa::features
             return out;
         }
 
-        std::wstring WhereText(const Sight& s)
+        std::wstring Metres(double metres)
         {
-            if (!s.placed) return locale::Mod(L"explore.notarget");
+            return std::to_wstring(std::max<long>(1, std::lround(metres)));
+        }
+
+        // The side of the beam a target stands on, in words.
+        std::wstring PlaceText(const Sight& s)
+        {
             if (s.onTarget) return locale::Mod(L"combat.on");
             std::vector<std::wstring> words;
             if (std::fabs(s.horizontal) > 90.0)
@@ -533,7 +574,20 @@ namespace qa::features
             if (std::fabs(s.vertical) >= 2.0 && std::fabs(s.horizontal) <= 90.0)
                 words.push_back(locale::Mod(s.vertical > 0 ? L"combat.above" : L"combat.below"));
             if (words.empty()) words.push_back(locale::Mod(L"combat.ahead"));
-            return locale::Mod(L"combat.where", str::Join(words, L" "));
+            return str::Join(words, L" ");
+        }
+
+        std::wstring WhereText(const Sight& s)
+        {
+            if (!s.placed) return locale::Mod(L"explore.notarget");
+            if (s.onTarget) return locale::Mod(L"combat.on");
+            return locale::Mod(L"combat.where", Metres(s.metres) + L" " + locale::Mod(L"combat.m") + L", " + PlaceText(s));
+        }
+
+        // A target as it is listed: what it is, how far, on which side.
+        std::wstring ItemText(const Target& t, const Sight& s)
+        {
+            return locale::Mod(L"combat.item", std::vector<std::wstring>{locale::Mod(KindKey(t.kind)), Metres(s.metres), PlaceText(s)});
         }
 
         std::wstring TargetText(const Combat& c, const Target& t)
@@ -543,7 +597,8 @@ namespace qa::features
             int place = 0;
             for (size_t i = 0; i < standing.size(); ++i)
                 if (standing[i] == &t) place = static_cast<int>(i) + 1;
-            return locale::Mod(L"combat.target", std::to_wstring(place), std::to_wstring(standing.size()));
+            return locale::Mod(L"combat.target",
+                               std::vector<std::wstring>{locale::Mod(KindKey(t.kind)), std::to_wstring(place), std::to_wstring(standing.size())});
         }
 
         const Target* Led(const Combat& c)
@@ -652,6 +707,7 @@ namespace qa::features
                     t.name = name;
                     const auto it = actors.find(name);
                     t.actor = it != actors.end() ? it->second : nullptr;
+                    t.kind = KindOf(t.actor);
                     c.targets.push_back(t);
                 }
                 double strength = 0.0, magnetism = 0.0, lockNear = 0.0, lockFar = 0.0, aimDistance = 0.0;
@@ -673,15 +729,23 @@ namespace qa::features
             c.modifierSeen = g_modifierOn;
             std::vector<std::wstring> names;
             for (const auto& t : c.targets)
-                names.push_back(t.name + (obj::IsLive(t.actor) ? L"" : L" (not found)"));
+                names.push_back(t.name + (obj::IsLive(t.actor) ? std::format(L" ({})", obj::ClassName(t.actor)) : L" (not found)"));
             const Beam beam = AimLine(pawn);
             log::Info(L"combat: begins on {} for {} with {}; aiming setting {}; {} target(s): {}; time limit {}; status {} at {} shot(s); aim read from the {}",
                       sign, pawn ? obj::ObjectName(pawn) : L"<no pawn>", WeaponText(pawn), setting, c.targets.size(), str::Join(names, L", "),
                       c.hasTimeLimit ? std::format(L"{:.1f} s", c.timeLimit) : L"none", c.status ? obj::ObjectName(c.status) : L"<none>", c.shots,
                       beam.placed ? beam.source : L"nothing");
             speech::Announce(locale::Mod(c.automatic ? L"combat.auto" : L"combat.aim"));
+            // What is there to shoot at, as it is seen: the creatures and the things by their
+            // kind, a person only as a target, each with its distance and its side.
             const auto standing = Standing(c);
             if (standing.size() > 1) speech::Announce(locale::Mod(L"combat.targets", std::to_wstring(standing.size())));
+            for (const Target* t : standing)
+            {
+                if (standing.size() == 1 && t->kind == Kind::Person) break;
+                const Sight s = Look(beam, t->actor);
+                if (s.placed) speech::Announce(ItemText(*t, s));
+            }
         }
 
         // The aim sound: a blip in the ear on the side of the target, higher when it is above

@@ -281,18 +281,21 @@ between 1.6 and 8 seconds each. Settings → Доступность → Помо
 "Вкл." both leave the aiming to you, "Автоматический" lets the game aim and fire.
 
 1. When the fight begins you hear the game's own prompt "ВЫСТРЕЛИТЬ, левая кнопка мыши",
-   then "Прицеливание." (with "Целей: 2." when the scene offers two) and, in the story fights,
-   "Таймер." for the timer bar. The game draws no crosshair: your aim is the torch beam on the
+   then "Прицеливание." and what there is to shoot at as it is seen: "Существо, 4 м, слева." for
+   a werewolf, "Объект, 6 м, впереди." for a bottle or a table, "Цель, ..." for a person, who is
+   never named; with two, "Целей: 2." comes first. In the story fights "Таймер." follows for the
+   timer bar. The game draws no crosshair: your aim is the torch beam on the
    weapon. A blip sounds in the ear on the side of the target: higher when the target is above
    the beam, lower when below, faster as the beam nears it. Move the mouse (or the right stick)
    toward the sound. When the beam is on the target's body the blip becomes a quick double ping
    in both ears: fire.
 2. Each shot is answered: a rising tone with "Попадание." or a falling one with "Промах." When
    a timed fight ends without a hit you hear a falling tone and "Время вышло."
-3. Press H during a fight: "Цель: справа выше." or "На цели." Press N or P when the scene
-   offers two targets: "Цель 2 из 2. Цель: слева." and the sound follows that one. Press T:
-   "Звук прицела выключен." and the blips stop; T again brings them back. On a gamepad the
-   D-pad right, left, up and down do the same without a chord.
+3. Press H during a fight: "Цель: 6 м, справа выше." or "На цели." Press N or P when the
+   scene offers two targets: "Существо 2 из 2. Цель: 3 м, слева." and the sound follows that
+   one. Press T: "Звук прицела выключен." and the blips stop; T again brings them back. On a
+   gamepad the D-pad right, left, up and down do the same without a chord. Outside a fight
+   and outside walking the character, N, P, H, G and T do nothing.
 4. Press F6 during a fight: aiming and where the target stands. Press F8: the sound explained
    and the fire key.
 5. With the aiming setting on "Автоматический" you hear only "Прицеливание, автоматически."

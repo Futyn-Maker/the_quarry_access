@@ -315,12 +315,35 @@ namespace qa::hotkeys
             case Command::Help: speech::Now(diag::Help()); break;
             case Command::Subtitles: features::ToggleSubtitles(); break;
             case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
-            // While a fight's crosshair is up the target keys serve the fight.
-            case Command::NextTarget: features::CombatActive() ? features::NextCombatTarget() : features::NextTarget(); break;
-            case Command::PreviousTarget: features::CombatActive() ? features::PreviousCombatTarget() : features::PreviousTarget(); break;
-            case Command::Where: features::CombatActive() ? features::WhereIsCombatTarget() : features::WhereIsTarget(); break;
-            case Command::Walk: features::WalkToTarget(); break;
-            case Command::Beacon: features::CombatActive() ? features::ToggleAimSound() : features::ToggleBeacon(); break;
+            // The target keys serve the fight while one is on, exploration while the player
+            // walks the character, and nothing anywhere else.
+            case Command::NextTarget:
+                if (features::CombatActive())
+                    features::NextCombatTarget();
+                else if (features::ExplorationActive())
+                    features::NextTarget();
+                break;
+            case Command::PreviousTarget:
+                if (features::CombatActive())
+                    features::PreviousCombatTarget();
+                else if (features::ExplorationActive())
+                    features::PreviousTarget();
+                break;
+            case Command::Where:
+                if (features::CombatActive())
+                    features::WhereIsCombatTarget();
+                else if (features::ExplorationActive())
+                    features::WhereIsTarget();
+                break;
+            case Command::Walk:
+                if (features::ExplorationActive()) features::WalkToTarget();
+                break;
+            case Command::Beacon:
+                if (features::CombatActive())
+                    features::ToggleAimSound();
+                else if (features::ExplorationActive())
+                    features::ToggleBeacon();
+                break;
             case Command::DevDumpTree:
                 diag::DumpScreen();
                 speech::Announce(locale::Mod(L"diag.dumped"));

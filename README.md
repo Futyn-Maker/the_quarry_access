@@ -50,7 +50,8 @@ The Back chord above also reaches the first four from anywhere: right bumper for
 thing, left bumper for the previous, X for where it is, Y for the beacon.
 
 During a fight the same keys serve the fight: N and P switch between its targets, H says
-where the current one stands against the aim, and T switches the aim sound off and on.
+where the current one stands against the aim, and T switches the aim sound off and on. Outside
+a fight and outside walking the character they do nothing.
 
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
 
