@@ -512,16 +512,29 @@ namespace qa::features
             std::vector<UObject*> overlapping;
             obj::ReadObjectArray(pawn, L"AvailableUseLocations", available);
             obj::ReadObjectArray(pawn, L"OverlappingUseLocations", overlapping);
-            // The character's own list holds only what is a few steps away; the rest of what
-            // the scene has turned on comes from what it told the client.
+            UObject* offered = nullptr;
+            obj::ReadObject(pawn, L"CurrentUseLocation", offered);
+            // What the scene has turned on is what it told the client, and only that is
+            // listed, since that is what the glints show. The character's own list holds
+            // whatever stands within reach, turned on or not: the ticket stub in the lodge,
+            // which its scene never turned on, came into it whenever the character stood on
+            // it, and the way out of a room comes into it seconds before the scene turns it
+            // on. Which of several things standing together the game is offering counts as
+            // on as well.
+            const auto on = [&](UObject* actor)
+            {
+                if (actor == offered) return true;
+                const auto it = g_useLocationState.find(actor);
+                if (it == g_useLocationState.end()) return false;
+                return it->second.state == 1 || now - it->second.availableAt < 2.0;
+            };
             for (const auto& [actor, state] : g_useLocationState)
             {
-                const bool on = state.state == 1 || now - state.availableAt < 2.0;
-                if (on && obj::IsLive(actor) && std::find(available.begin(), available.end(), actor) == available.end()) available.push_back(actor);
+                if (on(actor) && obj::IsLive(actor) && std::find(available.begin(), available.end(), actor) == available.end()) available.push_back(actor);
             }
             for (auto* actor : available)
             {
-                if (!obj::IsLive(actor)) continue;
+                if (!obj::IsLive(actor) || !on(actor)) continue;
                 Target t;
                 t.actor = actor;
                 if (!ActorLocation(actor, t.position)) continue;
@@ -725,16 +738,20 @@ namespace qa::features
 
         // Being there. For a use location this is the game's own answer and nothing else:
         // it is reached once the game offers it, or once the character stands within its
-        // trigger. Several of them can sit within arm's length of one another, so no distance
-        // of our own choosing could say whether a press would reach this one or its neighbour.
-        // A way on is reached once the character stands inside its volume, by the engine's own
-        // test against that volume's collision. A place of the scene is only a point on the
-        // ground with nothing to press, so being near it is arriving.
+        // trigger while the game offers nothing there. Two of them can share a patch of
+        // floor (the bed in Laura's cell holds the place to hide the syringe and the bed
+        // itself, and their triggers overlap), and the game offers the nearer of them, so
+        // standing in the trigger of one while the other is offered is not being there yet:
+        // a press would use the other. A way on is reached once the character stands inside
+        // its volume, by the engine's own test against that volume's collision. A place of
+        // the scene is only a point on the ground with nothing to press, so being near it is
+        // arriving.
         bool AtTarget(const Target& t, UObject* offered)
         {
             if (t.way && t.hasBox) return t.inside;
             if (t.destination) return t.distance < 150.0;
-            return t.inRange || t.actor == offered;
+            if (t.actor == offered) return true;
+            return t.inRange && offered == nullptr;
         }
 
         Target* Selected()
@@ -1302,6 +1319,19 @@ namespace qa::features
                 StopWalk(L"explore.walk.blocked", false);
                 return;
             }
+            // At the end of the way with the game offering a neighbour instead of the target
+            // there is nowhere nearer to go: the walk ends, and the neighbour is named, since
+            // that is what a press would use.
+            UObject* offered = nullptr;
+            obj::ReadObject(pawn, L"CurrentUseLocation", offered);
+            if (way < 40.0 && !target->destination && obj::IsLive(offered) && offered != target->actor)
+            {
+                const auto other = CurrentUseLocationLabel();
+                log::Info(L"explore: at the end of the way to \"{}\" the game offers {}", target->label, other);
+                StopWalk(nullptr, false);
+                speech::Announce(locale::Mod(L"explore.walk.other", target->label, other));
+                return;
+            }
             const Vec goal = target->hasRoute ? target->routeNext : target->position;
             // The heading the beacon gives, in the camera's frame, which is the frame the
             // character's own keys work in. When the way ahead yields nothing for a moment the
@@ -1446,6 +1476,7 @@ namespace qa::features
                 g_targets.clear();
                 g_selected = nullptr;
                 g_waysAnnounced.clear();
+                std::erase_if(g_useLocationState, [](const auto& item) { return !obj::IsLive(item.first); });
             }
             // A short exchange in the middle of a scene leaves everything where it was, so
             // the list is not said again; only what the scene has added is.

@@ -230,8 +230,16 @@ crashed car at night.
    shows the game's own glyph, read as "<name>, левая кнопка мыши" with the same name the list
    gave it. Where several things stand together, the game offers one of them at a time and the
    glyph says which; each has its own patch of floor, so walking to another of them with G
-   moves the offer and the glyph says the new one. Walk away and back and the beacon leads again. Things the scene adds later are announced as "Новое: ...". A short
-   exchange in the middle of a scene does not start the list again.
+   moves the offer and the glyph says the new one. Two things can share a patch of floor: the
+   bed in Laura's cell in Chapter 7 holds both the hiding place and the bed itself, and their
+   patches overlap. A walk to one of them goes on to that thing's own spot until the game
+   offers it, "на месте" is said only then, and if at the end of the way the game still
+   offers the other you hear "<target>: рядом, но игра предлагает <other>." and a press would
+   use that other one. Walk away and back and the beacon leads again. Things the scene adds
+   later are announced as "Новое: ...". A short exchange in the middle of a scene does not
+   start the list again. Only what the scene has turned on is listed: a thing the scene keeps
+   switched off is not in the list even when the character stands on it, and the way out of a
+   room joins the list the moment the scene turns it on, a few seconds after entering.
 5. If the game ever offers its own places (a prompt "Осмотреться X" appears), F8 also names
    X, Z, C and V; in the prologue scenes it did not.
 6. In a scene that asks you to look around (the timer bar with "Используйте мышь, чтобы
