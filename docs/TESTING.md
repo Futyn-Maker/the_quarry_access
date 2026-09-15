@@ -230,9 +230,9 @@ crashed car at night.
    shows the game's own glyph, read as "<name>, левая кнопка мыши" with the same name the list
    gave it. Where several things stand together, the game offers one of them at a time and the
    glyph says which; each has its own patch of floor, so walking to another of them with G
-   moves the offer and the glyph says the new one. Two things can share a patch of floor: the
-   bed in Laura's cell in Chapter 7 holds both the hiding place and the bed itself, and their
-   patches overlap. A walk to one of them goes on to that thing's own spot until the game
+   moves the offer and the glyph says the new one. Two things can share a patch of floor: in
+   Laura's cell in Chapter 7 the hiding place in the wall and the cot beside it have
+   overlapping patches. A walk to one of them goes on to that thing's own spot until the game
    offers it, "на месте" is said only then, and if at the end of the way the game still
    offers the other you hear "<target>: рядом, но игра предлагает <other>." and a press would
    use that other one. Walk away and back and the beacon leads again. Things the scene adds

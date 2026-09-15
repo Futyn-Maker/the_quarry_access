@@ -739,8 +739,8 @@ namespace qa::features
         // Being there. For a use location this is the game's own answer and nothing else:
         // it is reached once the game offers it, or once the character stands within its
         // trigger while the game offers nothing there. Two of them can share a patch of
-        // floor (the bed in Laura's cell holds the place to hide the syringe and the bed
-        // itself, and their triggers overlap), and the game offers the nearer of them, so
+        // floor (in Laura's cell the loose brick that hides the syringe and the cot beside
+        // it have overlapping triggers), and the game offers the nearer of them, so
         // standing in the trigger of one while the other is offered is not being there yet:
         // a press would use the other. A way on is reached once the character stands inside
         // its volume, by the engine's own test against that volume's collision. A place of
