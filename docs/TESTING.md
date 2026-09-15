@@ -312,6 +312,26 @@ target; game aim point (...)` line twice a second, `combat: shot N (counted by t
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
 above name what the game held.
 
+## Tarot visions
+
+Tester script (Russian UI). After a chapter in which a card was found, Eliza offers to show a
+vision; choose "УВИДЕТЬ БОЛЬШЕ" (or the card, when two were found).
+
+1. When the vision begins to play in the crystal ball, its description is read, for example
+   after the prologue: "Джейкоб присел у передней части минивэна и отсоединяет топливный
+   шланг. Позже двигатель загорается, и минивэн горит." The description is read once, after
+   whatever the reader is saying, and says what the vision shows, without a chapter or a moment.
+2. Press F6 while the vision plays: the description again. Press F5: the last message.
+3. Open the pause menu, the tarot tab, choose a card whose vision was seen and press
+   "Повторить видение": the same description is read as the replay begins.
+4. The Hermit after chapter 5, Death, the Sun and Judgement after chapter 9 have several
+   visions; the one described is the one the game plays, named by its film.
+
+Expected log lines: `tarot: player 0 holds "Tarot/TheFool/TheFool.bk2"`, `tarot: vision
+"Tarot/TheFool/TheFool.bk2" plays on player 0 (described)`, one `SAY announce` with the
+description, and no `ERROR`. A `(no description)` in that line names a film the tables do
+not know: send the log.
+
 ## Credits
 
 Tester script (Russian UI).

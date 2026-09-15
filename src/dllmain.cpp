@@ -20,6 +20,7 @@
 #include "features/Prompts.hpp"
 #include "features/Qte.hpp"
 #include "features/Subtitles.hpp"
+#include "features/Tarot.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -133,6 +134,7 @@ public:
         qa::features::Register(std::make_unique<qa::features::ExplorationFeature>());
         qa::features::Register(std::make_unique<qa::features::CreditsFeature>());
         qa::features::Register(std::make_unique<qa::features::CombatFeature>());
+        qa::features::Register(std::make_unique<qa::features::TarotFeature>());
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

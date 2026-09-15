@@ -68,7 +68,8 @@ file, and 0 turns them off.
 
 The mod follows the game's text language. Its own messages exist for all 20 game languages;
 English and Russian are maintained by the author, the others were machine-assisted and
-corrections are very welcome (edit `mod\lang\<code>.ini` and open a pull request).
+corrections are very welcome (edit `mod\lang\<code>.ini` and open a pull request). The
+descriptions of the fortune teller's visions are kept apart, in `mod\lang\tarot\<code>.ini`.
 
 ## Developer setup
 

@@ -1,6 +1,7 @@
 #pragma once
 // Mod-authored strings, localized per game language.
-// Tables live in Mods\QuarryAccess\lang\<code>.ini ([strings] key=value).
+// Tables live in Mods\QuarryAccess\lang\<code>.ini ([strings] key=value), with the
+// descriptions of the tarot visions in Mods\QuarryAccess\lang\tarot\<code>.ini.
 // en_US.ini is always loaded as the fallback; the current language overlays it.
 
 #include <string>

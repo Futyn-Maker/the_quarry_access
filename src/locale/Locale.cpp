@@ -63,6 +63,8 @@ namespace qa::locale
         {
             log::Error(L"locale: cannot load {}\\en_US.ini", langDir);
         }
+        // The descriptions of the tarot visions live in a table of their own.
+        LoadTable(langDir + L"\\tarot\\en_US.ini", g_fallback);
         g_code = L"en_US";
         // The game reports locales as "ru-RU"; tables are named "ru_RU".
         std::wstring code = str::ReplaceAll(str::Trim(localeCode), L"-", L"_");
@@ -71,6 +73,7 @@ namespace qa::locale
             if (LoadTable(langDir + L"\\" + code + L".ini", g_current))
             {
                 g_code = code;
+                LoadTable(langDir + L"\\tarot\\" + code + L".ini", g_current);
                 for (const auto& [k, v] : g_fallback)
                 {
                     if (!g_current.contains(k)) g_missingInOverlay.push_back(k);

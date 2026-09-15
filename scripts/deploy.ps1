@@ -32,9 +32,11 @@ if (-not (Test-Path $dll)) { throw "Build output not found: $dll (run scripts\bu
 
 New-Item -ItemType Directory -Force (Join-Path $modDir "dlls") | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $modDir "lang") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $modDir "lang\tarot") | Out-Null
 Copy-Item $dll (Join-Path $modDir "dlls\main.dll") -Force
 Copy-Item (Join-Path $root "mod\enabled.txt") (Join-Path $modDir "enabled.txt") -Force
 Copy-Item (Join-Path $root "mod\lang\*.ini") (Join-Path $modDir "lang") -Force
+Copy-Item (Join-Path $root "mod\lang\tarot\*.ini") (Join-Path $modDir "lang\tarot") -Force
 $ini = Join-Path $modDir "QuarryAccess.ini"
 if ($ResetConfig -or -not (Test-Path $ini)) {
     Copy-Item (Join-Path $root "mod\QuarryAccess.ini") $ini -Force
