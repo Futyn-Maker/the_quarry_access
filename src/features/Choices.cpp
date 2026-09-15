@@ -56,6 +56,8 @@ namespace qa::features
             std::wstring labels; // the option labels at the last poll, the choice's identity
             int stablePolls = 0;
             bool announced = false;
+            bool headingSaid = false;   // the heading was said by itself, the options still to come
+            double seenAt = -1.0;       // when the options were first seen
             bool finished = false;      // decided: nothing more to read until new options come
             std::wstring keys;          // the key hints last read
             std::wstring message;       // the countdown message or the time remaining last read
@@ -170,9 +172,9 @@ namespace qa::features
             return str::JoinSentences(parts);
         }
 
-        // The whole readout: the heading (with the timer when the choice has one), the
-        // question, each option with its place and key, and the timeout option.
-        std::wstring ChoiceText(const Choice& choice)
+        // The heading: what kind of choice it is (with the timer when it has one) and its
+        // question when the game shows one.
+        std::wstring HeadingText(const Choice& choice)
         {
             std::vector<std::wstring> parts;
             bool timed = false;
@@ -180,20 +182,64 @@ namespace qa::features
             parts.push_back(locale::Mod(timed ? L"choice.timed" : L"choice.heading"));
             const auto question = ui::PropertyText(choice.widget, L"TitleText");
             if (!question.empty()) parts.push_back(question);
-            bool any = false;
+            return str::JoinSentences(parts);
+        }
+
+        // The options: each with its place and key, and the timeout option.
+        std::wstring OptionsText(const Choice& choice)
+        {
+            std::vector<std::wstring> parts;
             for (const auto& option : choice.options)
             {
                 if (!Shown(option.widget)) continue;
                 const auto labels = OptionText(option.widget);
                 if (labels.empty()) continue;
-                any = true;
                 std::wstring line = option.direction ? locale::Mod(option.direction) + L": " + labels : labels;
                 const auto key = KeyOf(choice, option);
                 if (!key.empty()) line += L", " + key;
                 parts.push_back(line);
             }
-            if (!any) return {};
             return str::JoinSentences(parts);
+        }
+
+        // The whole readout: the heading, then the options.
+        std::wstring ChoiceText(const Choice& choice)
+        {
+            const auto options = OptionsText(choice);
+            if (options.empty()) return {};
+            return str::JoinSentences({HeadingText(choice), options});
+        }
+
+        // Whether an option shows every label the game holds for it. The game writes both
+        // labels on the option at once but fades the phrase in later than the title: the
+        // option's Show animation keeps the phrase's box at zero opacity for its first 0.4 s
+        // and brings it in over the next 0.2 s. The labels are taken from the option's own
+        // data, so an option without a phrase is complete as soon as its title is in.
+        bool Revealed(UObject* option)
+        {
+            auto* info = obj::FindProperty(option, L"Info");
+            if (!info || obj::PropertyTypeName(info) != L"StructProperty") return true;
+            void* value = obj::ValuePtr(option, info);
+            const auto held = [&](const wchar_t* label, const wchar_t* localeLabel)
+            {
+                std::wstring text;
+                if (obj::ReadStringAt(value, obj::StructMember(info, label), text) && !str::Trim(text).empty()) return true;
+                // The key the label is resolved from, should the game fill the label in late.
+                auto* locale = obj::StructMember(info, localeLabel);
+                return locale && obj::ReadStringAt(obj::ValuePtrAt(value, locale), obj::StructMember(locale, L"Key"), text) && !str::Trim(text).empty();
+            };
+            if (held(L"Label1", L"LocaleLabel1") && ui::PropertyText(option, L"TitleText").empty()) return false;
+            if (held(L"Label2", L"LocaleLabel2") && ui::PropertyText(option, L"SubtitleText").empty()) return false;
+            return true;
+        }
+
+        bool Revealed(const Choice& choice)
+        {
+            for (const auto& option : choice.options)
+            {
+                if (Shown(option.widget) && !Revealed(option.widget)) return false;
+            }
+            return true;
         }
 
         bool AnyChosen(const Choice& choice)
@@ -241,9 +287,15 @@ namespace qa::features
                 choice.labels = labels;
                 choice.stablePolls = 0;
                 // A decided choice goes on changing while its options fade; only options with
-                // nothing chosen among them are a new choice.
+                // nothing chosen among them are a new choice. Options still being revealed
+                // change too, and those are the same choice.
                 if (!AnyChosen(choice))
                 {
+                    if (choice.announced)
+                    {
+                        choice.headingSaid = false;
+                        choice.seenAt = -1.0;
+                    }
                     choice.announced = false;
                     choice.finished = false;
                     choice.keys.clear();
@@ -263,12 +315,33 @@ namespace qa::features
                     log::Info(L"choices: {} already decided", obj::ClassName(choice.widget));
                     return;
                 }
-                if (labels.empty() || ++choice.stablePolls < 2) return;
-                const auto text = ChoiceText(choice);
+                if (labels.empty()) return;
+                const double now = gamethread::NowSeconds();
+                if (choice.seenAt < 0.0) choice.seenAt = now;
+                // The choice is announced the moment its options are on screen; the options
+                // themselves are read once, when the last of their phrases is in, so that
+                // they are never heard twice. A choice whose phrases are all in at first
+                // sight is read whole.
+                const bool revealed = Revealed(choice);
+                if (!revealed && !choice.headingSaid)
+                {
+                    choice.headingSaid = true;
+                    log::Info(L"choices: {} announced, its phrases still to come", obj::ClassName(choice.widget));
+                    speech::Announce(HeadingText(choice));
+                }
+                // Should a phrase never come in, the options are read as they are after a
+                // moment rather than never.
+                if (!revealed && now - choice.seenAt < 2.0)
+                {
+                    choice.stablePolls = 0;
+                    return;
+                }
+                if (++choice.stablePolls < 2) return;
+                const auto text = choice.headingSaid ? OptionsText(choice) : ChoiceText(choice);
                 if (text.empty()) return;
                 choice.announced = true;
                 choice.keys = KeyHints(choice);
-                log::Info(L"choices: {} read", obj::ClassName(choice.widget));
+                log::Info(L"choices: {} read{}", obj::ClassName(choice.widget), revealed ? L"" : L" with a phrase still to come");
                 speech::Announce(text);
                 return;
             }

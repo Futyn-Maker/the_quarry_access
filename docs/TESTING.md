@@ -128,11 +128,13 @@ Tester script (Russian UI). Play the prologue from the start.
 
 1. The first button prompt of the drive (an interruption or an interaction) is read with its
    label and key as it appears, for example "ПЕРЕБИТЬ? A" or "Используйте E, чтобы идти".
-2. At the first choice you hear: "Выбор на время." (or "Выбор." without a timer), then the
-   question if one is shown, "Влево: <label>, <line>", "Вправо: <label>, <line>", and the
-   option of not responding only in a choice that offers it. Nothing cuts anything off. The
-   game shows the keys only in the choices it decides to: when its key caps appear you hear
-   them, "A, D", with the keys as bound.
+2. At the first choice you hear: "Выбор на время." (or "Выбор." without a timer) the moment
+   the choice appears, then the question if one is shown, "Влево: <label>, <line>", "Вправо:
+   <label>, <line>", and the option of not responding only in a choice that offers it. The
+   game fades the line under each label in half a second after the label; the options are
+   read once, with their lines, and never twice. A choice whose options carry no lines is
+   read whole at once. Nothing cuts anything off. The game shows the keys only in the choices
+   it decides to: when its key caps appear you hear them, "A, D", with the keys as bound.
 3. Hold A or D: the option you are committing is read as it lights up (NVDA cuts speech while
    a letter key repeats, so it may come out short). Hold until a short two-note tone marks the
    commit, then release the key: "<option>, выбрано." follows the release.
@@ -146,8 +148,10 @@ Tester script (Russian UI). Play the prologue from the start.
 8. After a choice, pause and return to the game: the choice is not read again.
 
 Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
-ChoiceCommitLeft`, one `SAY announce` per choice and per prompt, `SAY focus` for the option held,
-and no `ERROR`.
+ChoiceCommitLeft`, `choices: ... announced, its phrases still to come` and then `choices: ...
+read` for a choice with lines under its labels (`choices: ... read` alone for one without), one
+`SAY announce` for the heading and one for the options, `SAY focus` for the option held, and no
+`ERROR`.
 
 ## Quick-time events, button mash, Don't Breathe
 
