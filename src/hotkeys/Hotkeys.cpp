@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Combat.hpp"
 #include "features/Exploration.hpp"
 #include "features/Subtitles.hpp"
 #include "locale/Locale.hpp"
@@ -206,7 +207,7 @@ namespace qa::hotkeys
             if (!controller) return;
             const bool chord = !g_padHold.empty() && IsKeyDown(controller, g_padHold);
             PollBindings(controller, g_padBindings, chord);
-            PollBindings(controller, g_exploreBindings, !chord && features::ExplorationActive());
+            PollBindings(controller, g_exploreBindings, !chord && (features::ExplorationActive() || features::CombatActive()));
         }
     }
 
@@ -314,11 +315,12 @@ namespace qa::hotkeys
             case Command::Help: speech::Now(diag::Help()); break;
             case Command::Subtitles: features::ToggleSubtitles(); break;
             case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
-            case Command::NextTarget: features::NextTarget(); break;
-            case Command::PreviousTarget: features::PreviousTarget(); break;
-            case Command::Where: features::WhereIsTarget(); break;
+            // While a fight's crosshair is up the target keys serve the fight.
+            case Command::NextTarget: features::CombatActive() ? features::NextCombatTarget() : features::NextTarget(); break;
+            case Command::PreviousTarget: features::CombatActive() ? features::PreviousCombatTarget() : features::PreviousTarget(); break;
+            case Command::Where: features::CombatActive() ? features::WhereIsCombatTarget() : features::WhereIsTarget(); break;
             case Command::Walk: features::WalkToTarget(); break;
-            case Command::Beacon: features::ToggleBeacon(); break;
+            case Command::Beacon: features::CombatActive() ? features::ToggleAimSound() : features::ToggleBeacon(); break;
             case Command::DevDumpTree:
                 diag::DumpScreen();
                 speech::Announce(locale::Mod(L"diag.dumped"));

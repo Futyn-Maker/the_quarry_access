@@ -26,6 +26,7 @@ namespace qa::sounds
         std::array<Wav, 6> g_cues;
         std::array<Wav, kTickSteps> g_ticks;
         std::array<Wav, 4> g_beacons; // made on demand; a few are kept so a playing one is not overwritten
+        Wav g_locked;                 // the double ping of a shot that would land
         size_t g_beaconIndex = 0;
         double g_amplitude = 0.0;
         bool g_enabled = false;
@@ -137,6 +138,8 @@ namespace qa::sounds
             const double frequency = 330.0 * std::pow(4.0, static_cast<double>(i) / (kTickSteps - 1));
             g_ticks[static_cast<size_t>(i)] = Wave({{frequency, 0.03}}, amplitude * 0.6);
         }
+        // Two high notes close together, unlike anything else the mod plays.
+        g_locked = Wave({{1047.0, 0.035}, {1568.0, 0.05}}, amplitude * 0.7, 1e-6);
         log::Info(L"sounds: volume {}", volume);
     }
 
@@ -162,6 +165,24 @@ namespace qa::sounds
         const double placed = std::clamp(pan, -1.0, 1.0);
         Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
         wav = Wave({{frequency, muffled ? 0.04 : 0.06}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
+        PlayWav(wav);
+    }
+
+    void Aim(double pan, double level, bool locked, bool muffled)
+    {
+        if (!g_enabled) return;
+        if (locked)
+        {
+            PlayWav(g_locked);
+            return;
+        }
+        // Two octaves from below the crosshair to above it; an octave lower when the target is
+        // behind.
+        double frequency = 330.0 * std::pow(4.0, std::clamp(level, 0.0, 1.0));
+        if (muffled) frequency *= 0.5;
+        const double placed = std::clamp(pan, -1.0, 1.0);
+        Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
+        wav = Wave({{frequency, 0.05}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
         PlayWav(wav);
     }
 }

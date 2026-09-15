@@ -40,6 +40,27 @@ namespace qa::diag
         g_modDir = modDir;
     }
 
+    // Every property of one object, by its full path or the name of its class (the first
+    // live instance then), so that a default value the game keeps in its code can be read.
+    void DumpProperties(const std::wstring& what)
+    {
+        UObject* object = obj::FindObject(what);
+        if (!object) object = obj::FindFirstLive(what);
+        if (!object)
+        {
+            log::Error(L"props: nothing is called {}", what);
+            return;
+        }
+        log::Info(L"props: {}", obj::FullName(object));
+        auto* cls = object->GetClassPrivate();
+        if (!cls) return;
+        for (auto* prop : cls->ForEachPropertyInChain())
+        {
+            if (!prop) continue;
+            log::Info(L"props:   {} ({}) = {}", prop->GetName(), obj::PropertyTypeName(prop), obj::ValueToString(prop, obj::ValuePtr(object, prop)));
+        }
+    }
+
     namespace
     {
         void RunCommandImpl(const std::wstring& line)
@@ -73,6 +94,8 @@ namespace qa::diag
                 log::Info(L"input: {}", input::DescribeWalkKeys());
             else if (str::StartsWith(lower, L"key "))
                 log::Info(L"{}", input::DescribeAction(cmd.substr(4)));
+            else if (str::StartsWith(lower, L"props "))
+                DumpProperties(str::Trim(cmd.substr(6)));
             else
                 log::Error(L"unknown command: {}", cmd);
         }

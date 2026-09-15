@@ -22,6 +22,11 @@ namespace qa::diag
 
     // Developer command file: Mods\QuarryAccess\command.txt is polled twice a second;
     // each line is executed and the file is deleted. Commands: "trace on|off",
-    // "dump", "loglevel Error|Info|Verbose|Trace", "say <text>", "read", "help".
+    // "dump", "loglevel Error|Info|Verbose|Trace", "say <text>", "read", "help",
+    // "props <object path or class name>".
     void InstallCommandFile();
+
+    // Writes every property of an object to the log (by full path, or the first live
+    // instance of a class).
+    void DumpProperties(const std::wstring& what);
 }

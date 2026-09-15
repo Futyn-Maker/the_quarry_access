@@ -49,13 +49,19 @@ chord there, because the game leaves those buttons unused while you walk.
 The Back chord above also reaches the first four from anywhere: right bumper for the next
 thing, left bumper for the previous, X for where it is, Y for the beacon.
 
+During a fight the same keys serve the fight: N and P switch between its targets, H says
+where the current one stands against the aim, and T switches the aim sound off and on.
+
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
 
 Short tones complement speech where speed matters: a rising two-note tone marks a choice
 committing or a challenge won, a falling one a challenge lost; a quick-time event plays its
 direction (notes climbing for up, falling for down, a note in the left or the right ear for
 the sides) at the same moment it is spoken; blips of rising or falling pitch follow the
-button-mash ring and the breath bars. Their volume is set in the same file, and 0 turns them off.
+button-mash ring and the breath bars; in a fight a blip sounds in the ear on the side of the
+target, higher when it is above the weapon's torch beam and lower when below, faster as the
+beam nears it, and a quick double ping means the beam is on the target. Their volume is set in the same
+file, and 0 turns them off.
 
 ## Languages
 

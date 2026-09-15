@@ -1,5 +1,7 @@
 #include "features/Prompts.hpp"
 
+#include "features/Combat.hpp"
+
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -54,6 +56,7 @@ namespace qa::features
             // An aiming prompt: the game's own aiming setting decides how much of the work it
             // does for the player, so it is worth knowing which one was in force.
             if (setup.style == 5) log::Info(L"prompts: the aiming setting is {}", ui::GameSettingValue(L"CombatAimSetting"));
+            if (setup.style == 5 || setup.action == L"CombatAttack") NoteCombatPrompt(self);
             if (str::StartsWith(setup.action, L"ExporationDestination")) NoteDestinationPrompt();
             g_setups[self] = setup;
             if (g_setups.size() > 64)

@@ -204,6 +204,7 @@ namespace qa::cfg
         s.exploreRange = ini.GetInt(L"Exploration", L"Range", s.exploreRange);
         s.autoTarget = ini.GetBool(L"Exploration", L"AutoTarget", s.autoTarget);
         s.walkDelayMs = ini.GetInt(L"Exploration", L"WalkDelayMs", s.walkDelayMs);
+        s.aimSound = ini.GetBool(L"Combat", L"AimSound", s.aimSound);
 
         if (const auto* features = ini.Section(L"Features"))
         {

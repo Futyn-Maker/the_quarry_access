@@ -273,6 +273,42 @@ style <n>` for every prompt the game shows (the destination prompts carry the
 `explore: a way ... is missed by the nearest road by ... cm and is offered/not offered` per
 way, and no `ERROR`.
 
+## Real-time combat
+
+Tester script (Russian UI). The first fight is the shooting range in chapter 2 (Nick with a
+pump-action shotgun, bottles and melons, no time limit); the story fights come later and last
+between 1.6 and 8 seconds each. Settings → Доступность → Помощь в прицеливании: "Откл." and
+"Вкл." both leave the aiming to you, "Автоматический" lets the game aim and fire.
+
+1. When the fight begins you hear the game's own prompt "ВЫСТРЕЛИТЬ, левая кнопка мыши",
+   then "Прицеливание." (with "Целей: 2." when the scene offers two) and, in the story fights,
+   "Таймер." for the timer bar. The game draws no crosshair: your aim is the torch beam on the
+   weapon. A blip sounds in the ear on the side of the target: higher when the target is above
+   the beam, lower when below, faster as the beam nears it. Move the mouse (or the right stick)
+   toward the sound. When the beam is on the target's body the blip becomes a quick double ping
+   in both ears: fire.
+2. Each shot is answered: a rising tone with "Попадание." or a falling one with "Промах." When
+   a timed fight ends without a hit you hear a falling tone and "Время вышло."
+3. Press H during a fight: "Цель: справа выше." or "На цели." Press N or P when the scene
+   offers two targets: "Цель 2 из 2. Цель: слева." and the sound follows that one. Press T:
+   "Звук прицела выключен." and the blips stop; T again brings them back. On a gamepad the
+   D-pad right, left, up and down do the same without a chord.
+4. Press F6 during a fight: aiming and where the target stands. Press F8: the sound explained
+   and the fire key.
+5. With the aiming setting on "Автоматический" you hear only "Прицеливание, автоматически."
+   and the game plays the fight.
+
+Expected log lines: `combat: begins on the fire prompt for <character> with <weapon> ...;
+aiming setting N; K target(s): ...; time limit ...; aim read from the torch`, one `combat:
+action ... in state "..."` per loaded fight action and `combat: status ...` per status object,
+`combat: aim assist strength ...`, `combat: replicator ... path "..."`, `combat: the fight's
+camera modifier is on` and later `off`, a `combat: torch yaw ... target ... on target/off
+target; game aim point (...)` line twice a second, `combat: shot N (counted by the game)`,
+`combat: the weapon fires`, `combat: hit (...)` or `combat: miss on shot N`, `combat: over
+(...)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
+from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
+above name what the game held.
+
 ## Credits
 
 Tester script (Russian UI).

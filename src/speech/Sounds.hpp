@@ -29,4 +29,10 @@ namespace qa::sounds
     // its pitch as the target comes closer, and `muffled` drops it an octave for a target
     // behind the player.
     void Beacon(double pan, double level, bool muffled);
+
+    // Plays an aim blip: `pan` places it on the side of the target, `level` (0 low to 1 high)
+    // is its pitch, above or below the crosshair; `locked` plays the quick double ping of a
+    // shot that would land instead, and `muffled` drops the blip an octave for a target
+    // behind the player.
+    void Aim(double pan, double level, bool locked, bool muffled);
 }

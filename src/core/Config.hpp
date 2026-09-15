@@ -74,6 +74,9 @@ namespace qa::cfg
         bool autoTarget = true;
         int walkDelayMs = 500; // between the word and the first step
 
+        // [Combat]
+        bool aimSound = true;
+
         // [Features]
         std::map<std::wstring, bool> features;
 
