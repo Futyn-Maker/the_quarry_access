@@ -1149,5 +1149,8 @@ namespace qa::features
         g_aimSound = !g_aimSound;
         log::Info(L"combat: aim sound {}", g_aimSound ? L"on" : L"off");
         speech::Now(locale::Mod(g_aimSound ? L"combat.sound.on" : L"combat.sound.off"));
+        // Kept in the ini, so that the next start begins the way this one ended.
+        if (!cfg::Persist(L"Combat", L"AimSound", g_aimSound ? L"1" : L"0"))
+            log::Error(L"combat: the aim sound setting could not be saved to QuarryAccess.ini");
     }
 }

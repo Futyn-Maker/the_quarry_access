@@ -2000,6 +2000,8 @@ namespace qa::features
         g_beacon = !g_beacon;
         log::Info(L"explore: beacon {}", g_beacon ? L"on" : L"off");
         speech::Now(locale::Mod(g_beacon ? L"explore.beacon.on" : L"explore.beacon.off"));
+        // Kept in the ini, so that the next start begins the way this one ended.
+        if (!cfg::Persist(L"Exploration", L"Beacon", g_beacon ? L"1" : L"0")) log::Error(L"explore: the beacon setting could not be saved to QuarryAccess.ini");
     }
 
     void NoteDestinationPrompt()
