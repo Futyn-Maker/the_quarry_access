@@ -2,7 +2,8 @@
 
 A mod that makes _The Quarry_ (Supermassive Games, 2022, PC/Steam) playable by blind players.
 It reads the game's screens through your screen reader: NVDA, JAWS and other Tolk-supported
-readers, with a SAPI fallback when no screen reader is running. Speech and braille are both
+readers, with a SAPI fallback when no screen reader is running; F3 moves the speech to SAPI
+and back while a screen reader runs, and the choice is kept. Speech and braille are both
 supported. The menus, settings and pause menu are covered, with the focused item, its description
 and the available key prompts spoken as you move; captions, notifications, alerts, subtitles,
 button prompts, choices, quick-time events, button mashes and Don't Breathe prompts that the
@@ -31,6 +32,7 @@ the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setu
 | F8       | Y                             | Help for the current situation          |
 | F4       | Right bumper                  | Repeat the last subtitle line           |
 | F9       | Right trigger                 | Turn subtitle reading on or off         |
+| F3       | Right stick click             | Speech through the screen reader or SAPI |
 | Ctrl+F9  |                               | Write a screen dump for bug reports     |
 | Ctrl+F10 |                               | Toggle the function tracer (developers) |
 | Ctrl+F11 |                               | Cycle the log level                     |

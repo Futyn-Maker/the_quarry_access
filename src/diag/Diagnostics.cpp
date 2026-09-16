@@ -288,6 +288,10 @@ namespace qa::diag
                                                                                   input::KeyDisplayName(s.chordHelp)}));
         else
             parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{s.keyRepeat, s.keyReadScreen, s.keyStop, s.keyHelp}));
+        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
+            parts.push_back(locale::Mod(L"help.speech.pad", input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordSpeech)));
+        else
+            parts.push_back(locale::Mod(L"help.speech", s.keySpeech));
         features::HelpAll(parts);
         return str::JoinSentences(parts);
     }

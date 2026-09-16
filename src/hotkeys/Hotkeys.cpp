@@ -195,6 +195,7 @@ namespace qa::hotkeys
         case Command::Help: return L"Help";
         case Command::Subtitles: return L"Subtitles";
         case Command::LastSubtitle: return L"LastSubtitle";
+        case Command::Speech: return L"Speech";
         case Command::NextTarget: return L"NextTarget";
         case Command::PreviousTarget: return L"PreviousTarget";
         case Command::Where: return L"Where";
@@ -217,6 +218,7 @@ namespace qa::hotkeys
         Bind(s.keyHelp, Command::Help);
         Bind(s.keySubtitles, Command::Subtitles);
         Bind(s.keyLastSubtitle, Command::LastSubtitle);
+        Bind(s.keySpeech, Command::Speech);
         Bind(s.keyNextTarget, Command::NextTarget);
         Bind(s.keyPreviousTarget, Command::PreviousTarget);
         Bind(s.keyWhere, Command::Where);
@@ -231,9 +233,10 @@ namespace qa::hotkeys
         g_padBindings.clear();
         if (!g_padHold.empty())
         {
-            for (const auto& [key, command] : {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen},
-                                               std::pair{s.chordStop, Command::Stop}, std::pair{s.chordHelp, Command::Help},
-                                               std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle}})
+            for (const auto& [key, command] :
+                 {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen}, std::pair{s.chordStop, Command::Stop},
+                  std::pair{s.chordHelp, Command::Help}, std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle},
+                  std::pair{s.chordSpeech, Command::Speech}})
             {
                 if (str::Trim(key).empty()) continue;
                 g_padBindings.push_back({str::Trim(key), command});
@@ -242,7 +245,7 @@ namespace qa::hotkeys
         }
         for (const auto& key : s.obsoleteKeys)
             log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
-                      L"ChordSubtitles and ChordLastSubtitle",
+                      L"ChordSubtitles, ChordLastSubtitle and ChordSpeech",
                       key);
         g_exploreBindings.clear();
         for (const auto& [key, command] :
@@ -293,6 +296,7 @@ namespace qa::hotkeys
             case Command::Help: speech::Now(diag::Help()); break;
             case Command::Subtitles: features::ToggleSubtitles(); break;
             case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
+            case Command::Speech: speech::ToggleOutput(); break;
             // The target keys serve the fight while one is on, exploration while the player
             // walks the character, and nothing anywhere else.
             case Command::NextTarget:

@@ -27,4 +27,8 @@ namespace qa::speech
 
     // Text of the last thing spoken (for the read-screen readout).
     std::wstring Last();
+
+    // Moves the speech between the screen reader and SAPI, says which now speaks, and keeps
+    // the choice in the ini. Without a screen reader SAPI speaks either way, and that is said.
+    void ToggleOutput();
 }

@@ -38,11 +38,16 @@ Tester script (Russian UI):
 4. Press F8 again and immediately F7: speech stops.
 5. Press F6: the current screen is described.
 6. Press Ctrl+F9 to write a screen dump for bug reports.
-7. On a gamepad, in the main menu: hold Back and press Y: the help is spoken, naming the
+7. Press F3 with NVDA running: "Речь: Microsoft SAPI." is spoken by SAPI, and so is everything
+   after it; press F3 again: "Речь: NVDA." through NVDA. Quit with SAPI chosen and start the
+   game again: the greeting comes through SAPI (`PreferSapi=1` in the ini). With no screen
+   reader running F3 says "Программа чтения экрана не запущена; говорит SAPI."
+8. On a gamepad, in the main menu: hold Back and press Y: the help is spoken, naming the
    chords ("удерживайте кнопку Back и нажмите кнопку A ..."). Hold Back and press A, X and B:
    the last message is repeated, the screen is read, speech stops; the menu does not react
    to A, B, X or Y while Back is held, and the D-pad still moves the selection when nothing is
-   held. The same chords work while a scene plays.
+   held. The same chords work while a scene plays. Back with the right stick pressed in
+   switches the speech as F3 does.
 
 Expected log lines: `Tolk loaded; screen reader: NVDA`, `game locale: ru-RU; mod language: ru_RU`,
 `self-check: SMG_HUD_MENU_BUTTON_NEWGAME_000001 = "Новая игра"`, `self-check: control scheme MouseKeyboard`,
@@ -218,7 +223,9 @@ crashed car at night.
    own, the name it carries in the level is read instead ("Camp Map: Взаимодействовать").
    The beacon starts on the target: it sounds in the ear on the side of the next turn of the
    walkable route, rises in pitch as you get closer and drops an octave when the way is
-   behind you. Walk toward it with W, A, S, D.
+   behind you. Walk toward it with W, A, S, D. T turns the beacon off and on, and the switch is
+   kept: quit with it off and the next start begins with it off (`Beacon=0` in the ini), as the
+   aim sound switch of a fight is kept under `[Combat] AimSound`.
 2. Press N: the next thing is said with its distance along the route and the beacon follows
    it; P goes back; the order stays the same however you move. H says the target again with
    its current distance and direction. T turns the beacon off ("Маяк выключен.") and on. F6

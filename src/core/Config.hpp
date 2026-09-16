@@ -31,6 +31,7 @@ namespace qa::cfg
         std::wstring keyHelp = L"F8";
         std::wstring keySubtitles = L"F9";
         std::wstring keyLastSubtitle = L"F4";
+        std::wstring keySpeech = L"F3";
         std::wstring keyDevDumpTree = L"Ctrl+F9";
         std::wstring keyDevTrace = L"Ctrl+F10";
         std::wstring keyDevLogLevel = L"Ctrl+F11";
@@ -44,6 +45,7 @@ namespace qa::cfg
         std::wstring chordHelp = L"Gamepad_FaceButton_Top";
         std::wstring chordSubtitles = L"Gamepad_RightTrigger";
         std::wstring chordLastSubtitle = L"Gamepad_RightShoulder";
+        std::wstring chordSpeech = L"Gamepad_RightThumbstick";
         std::wstring keyNextTarget = L"N";
         std::wstring keyPreviousTarget = L"P";
         std::wstring keyBeacon = L"T";
@@ -61,6 +63,7 @@ namespace qa::cfg
 
         // [Speech]
         int focusDedupeMs = 150;
+        bool preferSapi = false; // SAPI speaks even while a screen reader is running
 
         // [Sounds]
         int soundVolume = 80;

@@ -95,6 +95,7 @@ public:
         qa::log::Info(L"QuarryAccess {} starting; mod dir {}", ModVersion, m_modDir);
         if (!configError.empty()) qa::log::Error(L"config: {} (defaults in use)", configError);
 
+        qa::tolk::SetPreferSapi(settings.preferSapi);
         if (!qa::tolk::Load())
         {
             qa::log::Error(L"Tolk.dll could not be loaded. Put Tolk.dll, nvdaControllerClient64.dll and SAAPI64.dll next to TheQuarry-Win64-Shipping.exe.");

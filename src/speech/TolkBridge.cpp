@@ -24,6 +24,7 @@ namespace qa::tolk
         FnBool g_silence = nullptr;
         FnDetect g_detect = nullptr;
         FnOutput g_output = nullptr;
+        bool g_preferSapiWanted = false;
     }
 
     bool Load()
@@ -49,9 +50,10 @@ namespace qa::tolk
             g_module = nullptr;
             return false;
         }
-        // SAPI as the last-resort fallback when no screen reader is running.
+        // SAPI as the fallback when no screen reader is running, or first when the player
+        // asked for it.
         if (g_trySapi) g_trySapi(true);
-        if (g_preferSapi) g_preferSapi(false);
+        if (g_preferSapi) g_preferSapi(g_preferSapiWanted);
         g_load();
         g_loaded = true;
         return true;
@@ -101,5 +103,32 @@ namespace qa::tolk
         if (!g_loaded || !g_detect) return {};
         const wchar_t* name = g_detect();
         return name ? std::wstring(name) : std::wstring();
+    }
+
+    void SetPreferSapi(bool prefer)
+    {
+        g_preferSapiWanted = prefer;
+    }
+
+    bool PrefersSapi()
+    {
+        return g_preferSapiWanted;
+    }
+
+    std::wstring PreferSapi(bool prefer)
+    {
+        g_preferSapiWanted = prefer;
+        if (!g_loaded) return {};
+        if (g_silence) g_silence();
+        // Tolk looks for its driver again when the preference changes.
+        if (g_preferSapi) g_preferSapi(prefer);
+        return DetectScreenReader();
+    }
+
+    std::wstring Reload()
+    {
+        Unload();
+        if (!Load()) return {};
+        return DetectScreenReader();
     }
 }

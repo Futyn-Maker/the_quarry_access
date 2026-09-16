@@ -171,6 +171,7 @@ namespace qa::cfg
         s.keyHelp = ini.Get(L"Hotkeys", L"Help", s.keyHelp);
         s.keySubtitles = ini.Get(L"Hotkeys", L"Subtitles", s.keySubtitles);
         s.keyLastSubtitle = ini.Get(L"Hotkeys", L"LastSubtitle", s.keyLastSubtitle);
+        s.keySpeech = ini.Get(L"Hotkeys", L"Speech", s.keySpeech);
         s.keyDevDumpTree = ini.Get(L"Hotkeys", L"DevDumpTree", s.keyDevDumpTree);
         s.keyDevTrace = ini.Get(L"Hotkeys", L"DevTrace", s.keyDevTrace);
         s.keyDevLogLevel = ini.Get(L"Hotkeys", L"DevLogLevel", s.keyDevLogLevel);
@@ -181,6 +182,7 @@ namespace qa::cfg
         s.chordHelp = ini.Get(L"Hotkeys", L"ChordHelp", s.chordHelp);
         s.chordSubtitles = ini.Get(L"Hotkeys", L"ChordSubtitles", s.chordSubtitles);
         s.chordLastSubtitle = ini.Get(L"Hotkeys", L"ChordLastSubtitle", s.chordLastSubtitle);
+        s.chordSpeech = ini.Get(L"Hotkeys", L"ChordSpeech", s.chordSpeech);
         for (const wchar_t* old : {L"PadChordHold", L"PadRepeat", L"PadReadScreen", L"PadStop", L"PadHelp", L"PadSubtitles", L"PadLastSubtitle",
                                    L"PadNextTarget", L"PadPreviousTarget", L"PadWhere", L"PadBeacon"})
         {
@@ -198,6 +200,7 @@ namespace qa::cfg
         s.padExploreWalk = ini.Get(L"Hotkeys", L"ExploreWalk", s.padExploreWalk);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
+        s.preferSapi = ini.GetBool(L"Speech", L"PreferSapi", s.preferSapi);
         s.soundVolume = ini.GetInt(L"Sounds", L"Volume", s.soundVolume);
         s.readSubtitles = ini.GetBool(L"Subtitles", L"Read", s.readSubtitles);
         s.beacon = ini.GetBool(L"Exploration", L"Beacon", s.beacon);

@@ -3,6 +3,7 @@
 #include "core/Config.hpp"
 #include "core/Log.hpp"
 #include "input/InputNames.hpp"
+#include "locale/Locale.hpp"
 #include "speech/TolkBridge.hpp"
 
 #include <chrono>
@@ -120,5 +121,20 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         return g_lastMessage;
+    }
+
+    void ToggleOutput()
+    {
+        std::lock_guard lock(g_mutex);
+        const bool prefer = !tolk::PrefersSapi();
+        const std::wstring before = tolk::DetectScreenReader();
+        std::wstring after = tolk::PreferSapi(prefer);
+        // A driver that did not change hands is asked for through a fresh load.
+        if (after == before && !before.empty()) after = tolk::Reload();
+        log::Info(L"speech: output {} -> {} (SAPI preferred: {})", before.empty() ? L"<none>" : before, after.empty() ? L"<none>" : after, prefer);
+        if (!cfg::Persist(L"Speech", L"PreferSapi", prefer ? L"1" : L"0")) log::Error(L"speech: the output setting could not be saved to QuarryAccess.ini");
+        // The choice made no difference without a screen reader: SAPI spoke before and after.
+        const bool noReader = after == before && !prefer;
+        OutputNow(noReader ? locale::Mod(L"speech.noreader") : locale::Mod(L"speech.output", after.empty() ? L"SAPI" : after), true, L"now");
     }
 }
