@@ -73,6 +73,8 @@ namespace qa::features
             // not beyond, so it is not taken and the target is walked to by sight.
             bool routeBarred = false;
             UObject* barredBy = nullptr;
+            // The use location a place names, when it names one.
+            std::wstring namedUse;
         };
 
         // What the navigation mesh answers for one question.
@@ -580,6 +582,7 @@ namespace qa::features
                 if (!ActorLocation(actor, t.position)) continue;
                 if (Distance(here, t.position) > range) continue;
                 t.label = DestinationLabel(actor);
+                ReadActorReference(actor, L"UseLocation", t.namedUse);
                 places.push_back(std::move(t));
             }
 
@@ -640,6 +643,22 @@ namespace qa::features
             }
             std::sort(pairings.begin(), pairings.end(), [](const Pairing& a, const Pairing& b) { return a.distance < b.distance; });
             std::vector<size_t> placeOfUse(uses.size(), places.size());
+            // A place that names its use location is that use location's name and nothing
+            // else: it is listed with it, and not at all while the use location is off, since
+            // the game shows no glint there then. The crash site's trunk has two such places,
+            // one for each time the trunk is opened up, and one of them stood in the list as
+            // a second "Trunk" beside "Trunk: Examine".
+            for (size_t i = 0; i < places.size(); ++i)
+            {
+                if (places[i].namedUse.empty()) continue;
+                placeTaken[i] = true;
+                for (size_t u = 0; u < uses.size(); ++u)
+                {
+                    if (placeOfUse[u] < places.size() || !IsNamed(uses[u].actor, places[i].namedUse)) continue;
+                    placeOfUse[u] = i;
+                    break;
+                }
+            }
             for (const auto& pairing : pairings)
             {
                 if (placeTaken[pairing.place] || placeOfUse[pairing.use] < places.size()) continue;

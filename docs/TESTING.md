@@ -218,7 +218,7 @@ crashed car at night.
    named instead), and then the thing the beacon leads to, the nearest not yet reached:
    "Макс, 3 м, впереди". Nothing else is read by itself: F6 lists everything that can be
    walked to, nearest first, each as the game names it with its distance in metres and its
-   direction from the camera, "Багажник, 6 м, справа". Everything the scene has opened up is
+   direction from the camera, "Багажник: Изучить, 5 м, впереди слева". Everything the scene has opened up is
    there from the start, however far away it is. A use location standing at a place is one
    entry named "Листовка: Осмотреть"; where the scene gives an interaction no name of its
    own, the name it carries in the level is read instead ("Camp Map: Взаимодействовать").
