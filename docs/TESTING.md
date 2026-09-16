@@ -382,6 +382,19 @@ Tester script (Russian UI). Play the last chapter to its end.
 Expected log lines: `hud: appeared ActionHUDAftermathTextSMG026.AftermathTextInstance ->
 AftermathText_C ...` (at the verbose log level), one `SAY announce` per card, and no `ERROR`.
 
+## Overlays
+
+Tester script (Russian UI).
+
+1. When the game puts a phone camera, the binoculars or a rifle scope over the view (Emma's
+   phone in Chapter 1, the binoculars at the lodge), its prompt to close it is read once as it
+   appears, "ЗАКРЫТЬ, Backspace" (or the gamepad button). The labels of the phone's own
+   camera ("PHOTO", "VIDEO", "4:3") are not read; the interaction prompts the game shows
+   with the overlay are read as usual.
+
+Expected log lines: `hud: PhoneCameraOverlayLandscape_C shown with the prompt "ЗАКРЫТЬ" ...`
+or the same for `BinocularsOverlay_C`, and no `ERROR`.
+
 ## Couch co-op, Movie Mode and Wolf Pack
 
 Tester script (Russian UI).

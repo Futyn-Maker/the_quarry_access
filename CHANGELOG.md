@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The prompt to close the phone camera, the binoculars and the rifle scope is read as the overlay appears; the overlays were silent, and the phone's own camera labels stay so.
 - The couch co-op handover screen says whose turn it is and as whom ("АНДРЕЙ, ЛОРА") before its button; only the button was read.
 - The help on the couch co-op and Movie Mode screens names the keys that turn the character carousel, whose glyphs carry no words, as it names the tab keys of the pause menu.
 - The Wolf Pack host's mode selector no longer repeats its value as its title, and reads the description shown under it; the Wolf Pack result and waiting screens are read.

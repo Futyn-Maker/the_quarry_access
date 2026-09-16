@@ -64,6 +64,21 @@ namespace qa::features
                 speech::Announce(locale::Mod(L"hud.saving"));
                 return;
             }
+            // The phone camera, the binoculars and the rifle scope lay a frame over the view
+            // whose only words are the labels of a phone's camera and a prompt to close it;
+            // the prompt is what a player needs.
+            if (obj::IsA(ev.hud, L"ActionHUDPhoneCameraOverlaySMG026") || obj::IsA(ev.hud, L"ActionHUDBinocularsOverlaySMG026") ||
+                obj::IsA(ev.hud, L"ActionHUDRifleScopeOverlaySMG026"))
+            {
+                UObject* prompt = nullptr;
+                if (!obj::ReadObject(ev.instance, L"PromptClose", prompt) || !obj::IsLive(prompt)) return;
+                const auto text = ui::PropertyText(prompt, L"PromptText");
+                const auto key = ui::PromptKeyName(prompt, ui::ActionName(prompt, L"InputActionName"));
+                if (text.empty()) return;
+                log::Info(L"hud: {} shown with the prompt \"{}\" {}", ev.instanceClass, text, key);
+                speech::Announce(key.empty() ? text : text + L", " + key);
+                return;
+            }
             if (!Readable(ev.hud)) return;
             if (std::any_of(g_tracked.begin(), g_tracked.end(), [&](const Tracked& t) { return t.instance == ev.instance; })) return;
             g_tracked.push_back(Tracked{ev.instance});
