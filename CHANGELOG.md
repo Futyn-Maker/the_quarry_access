@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- SAPI speech is the mod's own: the voice lives on a thread with its own COM apartment and message loop, so nothing the game thread does can hold a sentence up or cut it, and the voice follows the game's language when the system's default voice speaks another. Tolk keeps the screen readers, and a braille display keeps its text while SAPI speaks.
 - A quick-time event's tone sounds again the moment the game begins to take the press. The game ignores a press until its marker has finished arriving, 0.8 s after it appears, for everyone; a sighted player sees the marker settle, and the tone now marks that moment.
 - The prompt to close the phone camera, the binoculars and the rifle scope is read as the overlay appears; the overlays were silent, and the phone's own camera labels stay so.
 - The couch co-op handover screen says whose turn it is and as whom ("АНДРЕЙ, ЛОРА") before its button; only the button was read.

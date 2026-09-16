@@ -1,5 +1,5 @@
 #pragma once
-// Speech policies on top of Tolk:
+// Speech policies on top of the screen reader (through Tolk) or SAPI (the mod's own):
 //
 //   Focus(text)    - for focus and navigation. Interrupts what is being said only when
 //                    the player has pressed something since it started, so their own
@@ -28,7 +28,12 @@ namespace qa::speech
     // Text of the last thing spoken (for the read-screen readout).
     std::wstring Last();
 
+    // SAPI speaks even while a screen reader runs, when so asked (the ini at the start, the
+    // Speech hotkey during play).
+    void SetPreferSapi(bool prefer);
     // Moves the speech between the screen reader and SAPI, says which now speaks, and keeps
     // the choice in the ini. Without a screen reader SAPI speaks either way, and that is said.
     void ToggleOutput();
+    // What speaks now: the screen reader's name, or "SAPI".
+    std::wstring OutputName();
 }

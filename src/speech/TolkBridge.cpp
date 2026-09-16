@@ -24,7 +24,8 @@ namespace qa::tolk
         FnBool g_silence = nullptr;
         FnDetect g_detect = nullptr;
         FnOutput g_output = nullptr;
-        bool g_preferSapiWanted = false;
+        using FnBraille = bool(__cdecl*)(const wchar_t*);
+        FnBraille g_braille = nullptr;
     }
 
     bool Load()
@@ -43,6 +44,7 @@ namespace qa::tolk
         g_silence = reinterpret_cast<FnBool>(GetProcAddress(g_module, "Tolk_Silence"));
         g_detect = reinterpret_cast<FnDetect>(GetProcAddress(g_module, "Tolk_DetectScreenReader"));
         g_output = reinterpret_cast<FnOutput>(GetProcAddress(g_module, "Tolk_Output"));
+        g_braille = reinterpret_cast<FnBraille>(GetProcAddress(g_module, "Tolk_Braille"));
 
         if (!g_load || !g_output)
         {
@@ -50,10 +52,10 @@ namespace qa::tolk
             g_module = nullptr;
             return false;
         }
-        // SAPI as the fallback when no screen reader is running, or first when the player
-        // asked for it.
-        if (g_trySapi) g_trySapi(true);
-        if (g_preferSapi) g_preferSapi(g_preferSapiWanted);
+        // Screen readers only: SAPI is spoken through by the mod itself, on a thread of its
+        // own, which Tolk's driver is not.
+        if (g_trySapi) g_trySapi(false);
+        if (g_preferSapi) g_preferSapi(false);
         g_load();
         g_loaded = true;
         return true;
@@ -105,30 +107,8 @@ namespace qa::tolk
         return name ? std::wstring(name) : std::wstring();
     }
 
-    void SetPreferSapi(bool prefer)
+    bool Braille(const wchar_t* text)
     {
-        g_preferSapiWanted = prefer;
-    }
-
-    bool PrefersSapi()
-    {
-        return g_preferSapiWanted;
-    }
-
-    std::wstring PreferSapi(bool prefer)
-    {
-        g_preferSapiWanted = prefer;
-        if (!g_loaded) return {};
-        if (g_silence) g_silence();
-        // Tolk looks for its driver again when the preference changes.
-        if (g_preferSapi) g_preferSapi(prefer);
-        return DetectScreenReader();
-    }
-
-    std::wstring Reload()
-    {
-        Unload();
-        if (!Load()) return {};
-        return DetectScreenReader();
+        return (g_loaded && g_braille && text) ? g_braille(text) : false;
     }
 }

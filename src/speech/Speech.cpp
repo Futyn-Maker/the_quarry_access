@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
+#include "speech/Sapi.hpp"
 #include "speech/TolkBridge.hpp"
 
 #include <chrono>
@@ -26,6 +27,27 @@ namespace qa::speech
         Clock::time_point g_lastSpokenAt{};
         Clock::time_point g_lastOutputAt{}; // when the reader was last given something to say
         std::deque<std::wstring> g_history; // for Repeat()
+        bool g_preferSapi = false;
+
+        // SAPI speaks when no screen reader runs, and when the player prefers it to theirs.
+        bool SapiSpeaks()
+        {
+            if (!sapi::IsAvailable()) return false;
+            return g_preferSapi || tolk::DetectScreenReader().empty();
+        }
+
+        // One line to whichever speaks; a screen reader with a display keeps getting the
+        // braille while SAPI does the speaking.
+        bool Emit(const std::wstring& text, bool interrupt)
+        {
+            if (SapiSpeaks())
+            {
+                const bool spoken = sapi::Speak(text, interrupt);
+                if (tolk::HasBraille()) tolk::Braille(text.c_str());
+                return spoken;
+            }
+            return tolk::Output(text.c_str(), interrupt);
+        }
 
         long long MsSince(Clock::time_point t)
         {
@@ -45,8 +67,7 @@ namespace qa::speech
         void OutputNow(std::wstring_view text, bool interrupt, const wchar_t* policy)
         {
             log::Say(policy, text);
-            std::wstring copy(text);
-            tolk::Output(copy.c_str(), interrupt);
+            Emit(std::wstring(text), interrupt);
             g_lastOutputAt = Clock::now();
             Remember(text);
             if (std::wstring_view(policy) != L"now") g_lastMessage = std::wstring(text);
@@ -71,7 +92,7 @@ namespace qa::speech
 
     void Focus(std::wstring_view text)
     {
-        if (text.empty() || !tolk::IsLoaded()) return;
+        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
         std::lock_guard lock(g_mutex);
         if (text == g_lastSpoken && MsSince(g_lastSpokenAt) < cfg::Get().focusDedupeMs)
         {
@@ -88,14 +109,14 @@ namespace qa::speech
 
     void Announce(std::wstring_view text)
     {
-        if (text.empty() || !tolk::IsLoaded()) return;
+        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, false, L"announce");
     }
 
     void Now(std::wstring_view text)
     {
-        if (text.empty() || !tolk::IsLoaded()) return;
+        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, true, L"now");
     }
@@ -104,6 +125,7 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         tolk::Silence();
+        sapi::Silence();
         log::Info(L"speech: stopped");
     }
 
@@ -113,7 +135,7 @@ namespace qa::speech
         if (g_history.empty()) return;
         const std::wstring last = g_history.back();
         log::Say(L"repeat", last);
-        tolk::Output(last.c_str(), true);
+        Emit(last, true);
         g_lastOutputAt = Clock::now();
     }
 
@@ -126,15 +148,32 @@ namespace qa::speech
     void ToggleOutput()
     {
         std::lock_guard lock(g_mutex);
-        const bool prefer = !tolk::PrefersSapi();
-        const std::wstring before = tolk::DetectScreenReader();
-        std::wstring after = tolk::PreferSapi(prefer);
-        // A driver that did not change hands is asked for through a fresh load.
-        if (after == before && !before.empty()) after = tolk::Reload();
-        log::Info(L"speech: output {} -> {} (SAPI preferred: {})", before.empty() ? L"<none>" : before, after.empty() ? L"<none>" : after, prefer);
-        if (!cfg::Persist(L"Speech", L"PreferSapi", prefer ? L"1" : L"0")) log::Error(L"speech: the output setting could not be saved to QuarryAccess.ini");
-        // The choice made no difference without a screen reader: SAPI spoke before and after.
-        const bool noReader = after == before && !prefer;
-        OutputNow(noReader ? locale::Mod(L"speech.noreader") : locale::Mod(L"speech.output", after.empty() ? L"SAPI" : after), true, L"now");
+        const std::wstring reader = tolk::DetectScreenReader();
+        // Without a screen reader the choice makes no difference: SAPI speaks either way.
+        if (reader.empty() || !sapi::IsAvailable())
+        {
+            OutputNow(locale::Mod(L"speech.noreader"), true, L"now");
+            return;
+        }
+        g_preferSapi = !g_preferSapi;
+        tolk::Silence();
+        sapi::Silence();
+        log::Info(L"speech: output {} (SAPI preferred: {}; SAPI voice {})", g_preferSapi ? L"SAPI" : reader, g_preferSapi, sapi::VoiceName());
+        if (!cfg::Persist(L"Speech", L"PreferSapi", g_preferSapi ? L"1" : L"0"))
+            log::Error(L"speech: the output setting could not be saved to QuarryAccess.ini");
+        OutputNow(locale::Mod(L"speech.output", g_preferSapi ? L"SAPI" : reader), true, L"now");
+    }
+
+    void SetPreferSapi(bool prefer)
+    {
+        std::lock_guard lock(g_mutex);
+        g_preferSapi = prefer;
+    }
+
+    std::wstring OutputName()
+    {
+        std::lock_guard lock(g_mutex);
+        if (SapiSpeaks()) return L"SAPI";
+        return tolk::DetectScreenReader();
     }
 }

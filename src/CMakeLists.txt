@@ -10,7 +10,7 @@ target_include_directories(${TARGET}
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
             "${CMAKE_SOURCE_DIR}/third_party/tolk")
 
-target_link_libraries(${TARGET} PUBLIC UE4SS PRIVATE winmm)
+target_link_libraries(${TARGET} PUBLIC UE4SS PRIVATE winmm ole32)
 
 target_compile_definitions(${TARGET} PRIVATE
     QA_VERSION_STRING="${QA_VERSION}"

@@ -38,10 +38,12 @@ Tester script (Russian UI):
 4. Press F8 again and immediately F7: speech stops.
 5. Press F6: the current screen is described.
 6. Press Ctrl+F9 to write a screen dump for bug reports.
-7. Press F3 with NVDA running: "Речь: Microsoft SAPI." is spoken by SAPI, and so is everything
-   after it; press F3 again: "Речь: NVDA." through NVDA. Quit with SAPI chosen and start the
-   game again: the greeting comes through SAPI (`PreferSapi=1` in the ini). With no screen
-   reader running F3 says "Программа чтения экрана не запущена; говорит SAPI."
+7. Press F3 with NVDA running: "Речь: SAPI." is spoken by the SAPI voice, and so is
+   everything after it, whole sentences included; press F3 again: "Речь: NVDA." through NVDA.
+   Quit with SAPI chosen and start the game again: the greeting comes through SAPI
+   (`PreferSapi=1` in the ini). With no screen reader running F3 says "Программа чтения
+   экрана не запущена; говорит SAPI." The log names the voice: `sapi: the voice ... speaks
+   ru_RU`, or the voice picked for the language when the default one speaks another.
 8. On a gamepad, in the main menu: hold Back and press Y: the help is spoken, naming the
    chords ("удерживайте кнопку Back и нажмите кнопку A ..."). Hold Back and press A, X and B:
    the last message is repeated, the screen is read, speech stops; the menu does not react

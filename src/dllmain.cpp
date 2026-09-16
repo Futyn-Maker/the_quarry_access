@@ -26,6 +26,7 @@
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
+#include "speech/Sapi.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
 #include "speech/TolkBridge.hpp"
@@ -74,6 +75,7 @@ public:
     ~QuarryAccessMod() override
     {
         qa::input::ForgetWalkKeys();
+        qa::sapi::Stop();
         qa::tolk::Unload();
         qa::log::Shutdown();
     }
@@ -95,7 +97,7 @@ public:
         qa::log::Info(L"QuarryAccess {} starting; mod dir {}", ModVersion, m_modDir);
         if (!configError.empty()) qa::log::Error(L"config: {} (defaults in use)", configError);
 
-        qa::tolk::SetPreferSapi(settings.preferSapi);
+        qa::speech::SetPreferSapi(settings.preferSapi);
         if (!qa::tolk::Load())
         {
             qa::log::Error(L"Tolk.dll could not be loaded. Put Tolk.dll, nvdaControllerClient64.dll and SAAPI64.dll next to TheQuarry-Win64-Shipping.exe.");
@@ -104,9 +106,11 @@ public:
         else
         {
             m_reader = qa::tolk::DetectScreenReader();
-            qa::log::Info(L"Tolk loaded; screen reader: {}; speech={} braille={}", m_reader.empty() ? L"<none, SAPI fallback>" : m_reader,
-                          qa::tolk::HasSpeech(), qa::tolk::HasBraille());
+            qa::log::Info(L"Tolk loaded; screen reader: {}; speech={} braille={}", m_reader.empty() ? L"<none>" : m_reader, qa::tolk::HasSpeech(),
+                          qa::tolk::HasBraille());
         }
+        // SAPI on its own thread, for a player without a screen reader or one who prefers it.
+        if (!qa::sapi::Start()) qa::log::Error(L"SAPI is not available; without a screen reader nothing will be spoken");
         qa::speech::Init();
         qa::sounds::Init(settings.soundVolume);
 
@@ -180,6 +184,8 @@ private:
         const std::wstring language = !forcedLanguage.empty() ? forcedLanguage : (gameLocale.empty() ? L"en_US" : gameLocale);
         qa::locale::LoadTables(m_modDir + L"\\lang", language);
         qa::log::Info(L"game locale: {}; mod language: {}", gameLocale.empty() ? L"<unknown>" : gameLocale, qa::locale::CurrentCode());
+        // The SAPI voice follows the language of what is said.
+        qa::sapi::SelectVoiceFor(qa::locale::CurrentCode());
 
         // Self-check: game string resolution, control scheme, key naming.
         const auto sample = qa::gametext::Resolve(L"SMG_HUD_MENU_BUTTON_NEWGAME_000001");
@@ -191,7 +197,8 @@ private:
 
         if (qa::cfg::Get().speakOnLoad)
         {
-            const std::wstring reader = m_reader.empty() ? qa::locale::Mod(L"greeting.noreader") : m_reader;
+            const std::wstring output = qa::speech::OutputName();
+            const std::wstring reader = output.empty() ? qa::locale::Mod(L"greeting.noreader") : output;
             qa::speech::Announce(qa::locale::Mod(L"greeting", std::vector<std::wstring>{ModVersion, reader, qa::locale::CurrentCode()}));
         }
         qa::log::Info(L"ready");
