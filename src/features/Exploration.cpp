@@ -1795,7 +1795,12 @@ namespace qa::features
                 }
             }
 
-            if (g_hintDueAt > 0.0 && now >= g_hintDueAt)
+            // The keys are said once there is something for them to work on. A character
+            // can be handed over for a few seconds between two scenes with nothing to walk
+            // to, as Jacob is before Abigail's day begins; a hint about choosing targets
+            // there would be about nothing, so it waits for the first target, and is dropped
+            // with the walk if none comes.
+            if (g_hintDueAt > 0.0 && now >= g_hintDueAt && !g_targets.empty())
             {
                 g_hintDueAt = -1.0;
                 // Once a scene, not after every exchange in the middle of one.

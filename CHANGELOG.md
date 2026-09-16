@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The exploration keys are no longer announced when a character is handed over with nothing to walk to, as Jacob is for a few seconds between two scenes of chapter 1 before Abigail's day begins; the hint waits for the first target and is dropped with the walk if none comes.
 - A place that names its use location is listed only with it, and not at all while that use location is off. The crash site's trunk has two such places, one for each time the trunk is opened, and one stood in the list as a second "Багажник" beside "Багажник: Изучить".
 - The walk reaches a use location where the game offers it, in its box, instead of at the actor's own spot, and when the road to the middle of the box stops short or runs through a place the scene is waiting on, the other spots of the box are tried and the best road is taken. In the prologue woods the cage stands in bushes the mesh reaches only from behind, round the whole trail and through the volume that ends the woods, while the front of its box is thirty metres away; the chest sits on a ledge of its own while the near half of its box is on the flyer's ground, twenty-two metres away. Walking to either went the long way and ended the exploration, or stalled; now both take the short road.
 - A transition that comes back to the exploration is an interlude, not a way on. The intercut on the trail of the prologue woods was listed as "Путь дальше", and its volume kept the road to "Идти по тропе" from hiding the trail's end, so that stood in the list as a second "Путь дальше".
