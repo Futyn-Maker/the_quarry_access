@@ -39,17 +39,71 @@ namespace qa::obj
         UObject* g_playerController = nullptr;
         UObject* g_gameInstance = nullptr;
 
+        // A string is copied only when its memory looks like a string: a length within reason
+        // and a buffer at a real address, and the copy itself runs under the fault guard. An
+        // object still being loaded, or torn down by a rewind, can hold anything where its
+        // string was, and the crash of 15 September 2026 was a read of such a string in a
+        // fight's setup two minutes after a rewind. A buffer that lies is an empty string
+        // rather than the end of the game.
+        struct StringCopy
+        {
+            const wchar_t* chars = nullptr;
+            size_t max = 0;
+            wchar_t* out = nullptr;
+            size_t written = 0;
+        };
+
+        void CopyChars(void* context)
+        {
+            auto* copy = static_cast<StringCopy*>(context);
+            size_t n = 0;
+            while (n < copy->max && copy->chars[n] != 0)
+            {
+                copy->out[n] = copy->chars[n];
+                ++n;
+            }
+            copy->written = n;
+        }
+
+        bool PlausibleAddress(const void* pointer)
+        {
+            const auto address = reinterpret_cast<uintptr_t>(pointer);
+            return address >= 0x10000 && address <= 0x00007FFFFFFFFFFFull && (address & 1) == 0;
+        }
+
         std::wstring FStringToWide(const FString* s)
         {
-            if (!s || s->Len() <= 0) return {};
+            if (!s) return {};
+            const int32_t length = s->Len();
+            if (length <= 0 || length > (1 << 16)) return {};
             const auto* chars = **s;
-            return chars ? std::wstring(chars) : std::wstring();
+            if (!PlausibleAddress(chars)) return {};
+            std::wstring out(static_cast<size_t>(length), L'\0');
+            StringCopy copy{chars, static_cast<size_t>(length), out.data(), 0};
+            if (!SafeInvoke(&CopyChars, &copy)) return {};
+            out.resize(copy.written);
+            return out;
+        }
+
+        struct TextCopy
+        {
+            const FText* text = nullptr;
+            std::wstring* out = nullptr;
+        };
+
+        void CopyText(void* context)
+        {
+            auto* copy = static_cast<TextCopy*>(context);
+            *copy->out = copy->text->ToString();
         }
 
         std::wstring FTextToWide(const FText* t)
         {
-            if (!t || !t->GetTextData()) return {};
-            return t->ToString();
+            if (!t || !PlausibleAddress(t->GetTextData())) return {};
+            std::wstring out;
+            TextCopy copy{t, &out};
+            if (!SafeInvoke(&CopyText, &copy)) return {};
+            return out;
         }
 
         constexpr int kVisCollapsed = 1;

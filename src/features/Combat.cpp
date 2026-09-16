@@ -1115,7 +1115,9 @@ namespace qa::features
 
     void NoteCombatPrompt(UObject* prompt)
     {
-        if (!g_combat.on) Begin(L"the fire prompt");
+        // The setup reads the flow's actions and the level's actors by the hundred, from
+        // inside the game's own prompt call; a fault there must not take the game down.
+        if (!g_combat.on) obj::SafeInvokeLogged(L"combat.Begin", [](void*) { Begin(L"the fire prompt"); }, nullptr);
         g_combat.prompt = prompt;
         g_combat.activeAt = gamethread::NowSeconds();
     }
