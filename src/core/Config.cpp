@@ -174,22 +174,23 @@ namespace qa::cfg
         s.keyDevDumpTree = ini.Get(L"Hotkeys", L"DevDumpTree", s.keyDevDumpTree);
         s.keyDevTrace = ini.Get(L"Hotkeys", L"DevTrace", s.keyDevTrace);
         s.keyDevLogLevel = ini.Get(L"Hotkeys", L"DevLogLevel", s.keyDevLogLevel);
-        s.padChordHold = ini.Get(L"Hotkeys", L"PadChordHold", s.padChordHold);
-        s.padRepeat = ini.Get(L"Hotkeys", L"PadRepeat", s.padRepeat);
-        s.padReadScreen = ini.Get(L"Hotkeys", L"PadReadScreen", s.padReadScreen);
-        s.padStop = ini.Get(L"Hotkeys", L"PadStop", s.padStop);
-        s.padHelp = ini.Get(L"Hotkeys", L"PadHelp", s.padHelp);
-        s.padSubtitles = ini.Get(L"Hotkeys", L"PadSubtitles", s.padSubtitles);
-        s.padLastSubtitle = ini.Get(L"Hotkeys", L"PadLastSubtitle", s.padLastSubtitle);
+        s.chordHold = ini.Get(L"Hotkeys", L"ChordHold", s.chordHold);
+        s.chordRepeat = ini.Get(L"Hotkeys", L"ChordRepeat", s.chordRepeat);
+        s.chordReadScreen = ini.Get(L"Hotkeys", L"ChordReadScreen", s.chordReadScreen);
+        s.chordStop = ini.Get(L"Hotkeys", L"ChordStop", s.chordStop);
+        s.chordHelp = ini.Get(L"Hotkeys", L"ChordHelp", s.chordHelp);
+        s.chordSubtitles = ini.Get(L"Hotkeys", L"ChordSubtitles", s.chordSubtitles);
+        s.chordLastSubtitle = ini.Get(L"Hotkeys", L"ChordLastSubtitle", s.chordLastSubtitle);
+        for (const wchar_t* old : {L"PadChordHold", L"PadRepeat", L"PadReadScreen", L"PadStop", L"PadHelp", L"PadSubtitles", L"PadLastSubtitle",
+                                   L"PadNextTarget", L"PadPreviousTarget", L"PadWhere", L"PadBeacon"})
+        {
+            if (ini.Has(L"Hotkeys", old)) s.obsoleteKeys.push_back(old);
+        }
         s.keyNextTarget = ini.Get(L"Hotkeys", L"NextTarget", s.keyNextTarget);
         s.keyPreviousTarget = ini.Get(L"Hotkeys", L"PreviousTarget", s.keyPreviousTarget);
         s.keyBeacon = ini.Get(L"Hotkeys", L"Beacon", s.keyBeacon);
         s.keyWhere = ini.Get(L"Hotkeys", L"Where", s.keyWhere);
         s.keyWalk = ini.Get(L"Hotkeys", L"Walk", s.keyWalk);
-        s.padNextTarget = ini.Get(L"Hotkeys", L"PadNextTarget", s.padNextTarget);
-        s.padPreviousTarget = ini.Get(L"Hotkeys", L"PadPreviousTarget", s.padPreviousTarget);
-        s.padBeacon = ini.Get(L"Hotkeys", L"PadBeacon", s.padBeacon);
-        s.padWhere = ini.Get(L"Hotkeys", L"PadWhere", s.padWhere);
         s.padExploreNext = ini.Get(L"Hotkeys", L"ExploreNext", s.padExploreNext);
         s.padExplorePrevious = ini.Get(L"Hotkeys", L"ExplorePrevious", s.padExplorePrevious);
         s.padExploreWhere = ini.Get(L"Hotkeys", L"ExploreWhere", s.padExploreWhere);

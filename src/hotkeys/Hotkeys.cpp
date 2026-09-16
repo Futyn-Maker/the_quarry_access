@@ -9,6 +9,7 @@
 #include "features/Combat.hpp"
 #include "features/Exploration.hpp"
 #include "features/Subtitles.hpp"
+#include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 
@@ -137,55 +138,27 @@ namespace qa::hotkeys
                 const bool down = Down(k.vk);
                 if (down && !k.wasDown && ctrl == k.ctrl && alt == k.alt && shift == k.shift)
                 {
-                    Run(k.command);
+                    Run(k.command, Source::Keyboard);
                 }
                 k.wasDown = down;
             }
         }
 
-        // ---- gamepad chord ----
+        // ---- gamepad chords ----
         struct PadBinding
         {
             std::wstring keyName;
             Command command;
             bool wasDown = false;
         };
+        // Chords: the hold button and one of these.
         std::vector<PadBinding> g_padBindings;
         // Buttons that need no chord because the game leaves them unused while the player
-        // walks the character freely; they answer only there.
+        // walks the character freely or fights; they answer only there.
         std::vector<PadBinding> g_exploreBindings;
         std::wstring g_padHold;
 
-        bool IsKeyDown(UObject* controller, const std::wstring& keyName)
-        {
-            static RC::Unreal::UFunction* fn = nullptr;
-            if (!fn) fn = obj::FindFunction(controller, L"IsInputKeyDown");
-            if (!fn) return false;
-            bool result = false;
-            obj::Call(
-                controller, fn,
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (prop && prop->GetName() == L"Key")
-                        {
-                            auto* key = prop->ContainerPtrToValuePtr<uint8_t>(params);
-                            std::construct_at(reinterpret_cast<RC::Unreal::FName*>(key), keyName.c_str(), RC::Unreal::FNAME_Add);
-                        }
-                    }
-                },
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, result);
-                    }
-                });
-            return result;
-        }
-
-        void PollBindings(UObject* controller, std::vector<PadBinding>& bindings, bool live)
+        void PollBindings(const input::PadReading& pad, std::vector<PadBinding>& bindings, bool live)
         {
             for (auto& b : bindings)
             {
@@ -194,20 +167,21 @@ namespace qa::hotkeys
                     b.wasDown = false;
                     continue;
                 }
-                const bool down = IsKeyDown(controller, b.keyName);
-                if (down && !b.wasDown) Run(b.command);
+                const bool down = input::PadKeyDown(pad, b.keyName);
+                if (down && !b.wasDown) Run(b.command, Source::Gamepad);
                 b.wasDown = down;
             }
         }
 
+        // The pad is read the way the game reads it, so the chords answer in a menu, where
+        // the player controller no longer reports keys, as well as in play.
         void PollPad()
         {
             if ((g_padBindings.empty() && g_exploreBindings.empty()) || gamethread::FrameCount() % 3 != 0) return;
-            UObject* controller = obj::LocalPlayerController();
-            if (!controller) return;
-            const bool chord = !g_padHold.empty() && IsKeyDown(controller, g_padHold);
-            PollBindings(controller, g_padBindings, chord);
-            PollBindings(controller, g_exploreBindings, !chord && (features::ExplorationActive() || features::CombatActive()));
+            const input::PadReading pad = GameWindowInForeground() ? input::ReadPad() : input::PadReading{};
+            const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
+            PollBindings(pad, g_padBindings, pad.valid && chord);
+            PollBindings(pad, g_exploreBindings, pad.valid && !chord && (features::ExplorationActive() || features::CombatActive()));
         }
     }
 
@@ -252,23 +226,24 @@ namespace qa::hotkeys
         Bind(s.keyDevTrace, Command::DevTrace);
         Bind(s.keyDevLogLevel, Command::DevLogLevel);
 
-        g_padHold = str::Trim(s.padChordHold);
+        g_padHold = str::Trim(s.chordHold);
+        input::SetChordHold(g_padHold);
         g_padBindings.clear();
         if (!g_padHold.empty())
         {
-            if (!s.padRepeat.empty()) g_padBindings.push_back({s.padRepeat, Command::Repeat});
-            if (!s.padReadScreen.empty()) g_padBindings.push_back({s.padReadScreen, Command::ReadScreen});
-            if (!s.padStop.empty()) g_padBindings.push_back({s.padStop, Command::Stop});
-            if (!s.padHelp.empty()) g_padBindings.push_back({s.padHelp, Command::Help});
-            if (!s.padSubtitles.empty()) g_padBindings.push_back({s.padSubtitles, Command::Subtitles});
-            if (!s.padLastSubtitle.empty()) g_padBindings.push_back({s.padLastSubtitle, Command::LastSubtitle});
-            if (!s.padNextTarget.empty()) g_padBindings.push_back({s.padNextTarget, Command::NextTarget});
-            if (!s.padPreviousTarget.empty()) g_padBindings.push_back({s.padPreviousTarget, Command::PreviousTarget});
-            if (!s.padWhere.empty()) g_padBindings.push_back({s.padWhere, Command::Where});
-            if (!s.padBeacon.empty()) g_padBindings.push_back({s.padBeacon, Command::Beacon});
-            for (const auto& binding : g_padBindings)
-                log::Info(L"gamepad {} + {} = {}", g_padHold, binding.keyName, CommandName(binding.command));
+            for (const auto& [key, command] : {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen},
+                                               std::pair{s.chordStop, Command::Stop}, std::pair{s.chordHelp, Command::Help},
+                                               std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle}})
+            {
+                if (str::Trim(key).empty()) continue;
+                g_padBindings.push_back({str::Trim(key), command});
+                log::Info(L"gamepad {} + {} = {}", g_padHold, str::Trim(key), CommandName(command));
+            }
         }
+        for (const auto& key : s.obsoleteKeys)
+            log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
+                      L"ChordSubtitles and ChordLastSubtitle",
+                      key);
         g_exploreBindings.clear();
         for (const auto& [key, command] :
              {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},
@@ -296,9 +271,12 @@ namespace qa::hotkeys
         }
     }
 
-    void Run(Command command)
+    void Run(Command command, Source source)
     {
-        log::Info(L"hotkey: {}", CommandName(command));
+        log::Info(L"hotkey: {}{}", CommandName(command), source == Source::Keyboard ? L" (keyboard)" : (source == Source::Gamepad ? L" (gamepad)" : L""));
+        // The answer is worded for the device the command came from.
+        if (source == Source::Keyboard) input::NoteHotkeyDevice(input::Scheme::MouseKeyboard);
+        if (source == Source::Gamepad) input::NoteHotkeyDevice(input::Scheme::Gamepad);
         // A hotkey must never take the game down: a fault abandons the command and is logged.
         if (!obj::SafeInvoke(&RunGuarded, &command)) log::Error(L"hotkey {} ran into a memory fault and was abandoned", CommandName(command));
     }

@@ -34,22 +34,23 @@ namespace qa::cfg
         std::wstring keyDevDumpTree = L"Ctrl+F9";
         std::wstring keyDevTrace = L"Ctrl+F10";
         std::wstring keyDevLogLevel = L"Ctrl+F11";
-        std::wstring padChordHold = L"Gamepad_Special_Left";
-        std::wstring padRepeat = L"Gamepad_DPad_Up";
-        std::wstring padReadScreen = L"Gamepad_DPad_Right";
-        std::wstring padStop = L"Gamepad_DPad_Down";
-        std::wstring padHelp = L"Gamepad_DPad_Left";
-        std::wstring padSubtitles = L"Gamepad_RightThumbstick";
-        std::wstring padLastSubtitle = L"Gamepad_LeftThumbstick";
+        // Gamepad chords: the hold button and the button pressed under it. The buttons
+        // under it all sit under the right thumb, so a chord is held with one hand on each
+        // side of the pad.
+        std::wstring chordHold = L"Gamepad_Special_Left";
+        std::wstring chordRepeat = L"Gamepad_FaceButton_Bottom";
+        std::wstring chordReadScreen = L"Gamepad_FaceButton_Left";
+        std::wstring chordStop = L"Gamepad_FaceButton_Right";
+        std::wstring chordHelp = L"Gamepad_FaceButton_Top";
+        std::wstring chordSubtitles = L"Gamepad_RightTrigger";
+        std::wstring chordLastSubtitle = L"Gamepad_RightShoulder";
         std::wstring keyNextTarget = L"N";
         std::wstring keyPreviousTarget = L"P";
         std::wstring keyBeacon = L"T";
         std::wstring keyWhere = L"H";
         std::wstring keyWalk = L"G";
-        std::wstring padNextTarget = L"Gamepad_RightShoulder";
-        std::wstring padPreviousTarget = L"Gamepad_LeftShoulder";
-        std::wstring padBeacon = L"Gamepad_FaceButton_Top";
-        std::wstring padWhere = L"Gamepad_FaceButton_Left";
+        // Keys of earlier versions found in the file, for a line in the log.
+        std::vector<std::wstring> obsoleteKeys;
         // Buttons the game leaves unused while the player walks the character freely, so
         // exploration answers them on their own there.
         std::wstring padExploreNext = L"Gamepad_DPad_Right";

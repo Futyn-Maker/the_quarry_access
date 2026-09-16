@@ -185,8 +185,12 @@ namespace qa::features
     void SubtitlesFeature::Help(std::vector<std::wstring>& out)
     {
         const auto& s = cfg::Get();
-        out.push_back(locale::Mod(L"help.subtitles", std::vector<std::wstring>{s.keySubtitles, s.keyLastSubtitle, input::KeyDisplayName(s.padSubtitles),
-                                                                               input::KeyDisplayName(s.padLastSubtitle)}));
+        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
+            out.push_back(
+                locale::Mod(L"help.subtitles.pad", std::vector<std::wstring>{input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordSubtitles),
+                                                                             input::KeyDisplayName(s.chordLastSubtitle)}));
+        else
+            out.push_back(locale::Mod(L"help.subtitles", s.keySubtitles, s.keyLastSubtitle));
     }
 
     void ToggleSubtitles()

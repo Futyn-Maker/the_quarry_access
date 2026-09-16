@@ -188,8 +188,30 @@ namespace qa::input
         }
     }
 
+    namespace
+    {
+        std::atomic<int> g_schemeHint{0};
+        std::atomic<long long> g_schemeHintAt{0};
+
+        long long SchemeClockMs()
+        {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
+    }
+
+    void NoteHotkeyDevice(Scheme scheme)
+    {
+        g_schemeHint.store(static_cast<int>(scheme), std::memory_order_relaxed);
+        g_schemeHintAt.store(SchemeClockMs(), std::memory_order_relaxed);
+    }
+
     Scheme CurrentScheme()
     {
+        // The game itself follows the last device touched, and so does the mod's answer to
+        // its own hotkeys: the device the hotkey came from wins for the moment it takes the
+        // game to notice the same press.
+        const long long hintAt = g_schemeHintAt.load(std::memory_order_relaxed);
+        if (hintAt != 0 && SchemeClockMs() - hintAt < 1500) return static_cast<Scheme>(g_schemeHint.load(std::memory_order_relaxed));
         auto* pc = obj::LocalPlayerController();
         if (!pc) return Scheme::Unknown;
         int64_t scheme = 0;
@@ -431,6 +453,28 @@ namespace qa::input
         bool g_padConnected[4] = {true, true, true, true};
         long long g_padScanAt = 0;
         constexpr int16_t kStickDeadZone = 12000;
+        constexpr uint8_t kTriggerThreshold = 30;
+
+        // The first connected pad, read through the real function so that what the mod
+        // reads is what the player holds, chord and all.
+        bool FirstPad(XInputState& out)
+        {
+            auto* getState = XInput();
+            if (!getState) return false;
+            const long long now = NowMs();
+            const bool scanAll = now >= g_padScanAt;
+            if (scanAll) g_padScanAt = now + 1000;
+            for (uint32_t pad = 0; pad < 4; ++pad)
+            {
+                if (!g_padConnected[pad] && !scanAll) continue;
+                XInputState state{};
+                g_padConnected[pad] = getState(pad, &state) == ERROR_SUCCESS;
+                if (!g_padConnected[pad]) continue;
+                out = state;
+                return true;
+            }
+            return false;
+        }
 
         bool AnyPadInput()
         {
@@ -474,6 +518,80 @@ namespace qa::input
         XInputGetStateFn g_realGetState = nullptr;
         void** g_importSlot = nullptr;
 
+        // ---- the mod's chords, hidden from the game -----------------------------------------
+        //
+        // While the hold button is down the game is shown a pad with no button, trigger or
+        // right stick pressed, so the D-pad still moves a menu only when nothing is held and a
+        // face button under the hold reaches the mod alone. What was pressed under the hold
+        // stays hidden after the hold is let go of, until it is let go of too: otherwise
+        // releasing Back a moment before A would hand the game an A.
+        std::atomic<uint16_t> g_holdButtons{0}; // the hold as XInput button bits
+        std::atomic<int> g_holdTrigger{0};      // 1 the left trigger, 2 the right, when the hold is one
+        std::atomic<uint16_t> g_latchedButtons{0};
+        std::atomic<bool> g_latchedLeftTrigger{false};
+        std::atomic<bool> g_latchedRightTrigger{false};
+        std::atomic<bool> g_latchedRightStick{false};
+
+        bool HoldDown(const XInputGamepad& g)
+        {
+            const uint16_t mask = g_holdButtons.load(std::memory_order_relaxed);
+            if (mask != 0 && (g.buttons & mask) != 0) return true;
+            const int trigger = g_holdTrigger.load(std::memory_order_relaxed);
+            return (trigger == 1 && g.leftTrigger > kTriggerThreshold) || (trigger == 2 && g.rightTrigger > kTriggerThreshold);
+        }
+
+        bool RightStickPushed(const XInputGamepad& g)
+        {
+            return g.thumbRX > kStickDeadZone || g.thumbRX < -kStickDeadZone || g.thumbRY > kStickDeadZone || g.thumbRY < -kStickDeadZone;
+        }
+
+        void HideChord(XInputGamepad& g)
+        {
+            if (g_holdButtons.load(std::memory_order_relaxed) == 0 && g_holdTrigger.load(std::memory_order_relaxed) == 0) return;
+            if (HoldDown(g))
+            {
+                g_latchedButtons.store(g.buttons, std::memory_order_relaxed);
+                g_latchedLeftTrigger.store(g.leftTrigger > kTriggerThreshold, std::memory_order_relaxed);
+                g_latchedRightTrigger.store(g.rightTrigger > kTriggerThreshold, std::memory_order_relaxed);
+                g_latchedRightStick.store(RightStickPushed(g), std::memory_order_relaxed);
+                g.buttons = 0;
+                g.leftTrigger = 0;
+                g.rightTrigger = 0;
+                g.thumbRX = 0;
+                g.thumbRY = 0;
+                return;
+            }
+            const uint16_t latched = static_cast<uint16_t>(g_latchedButtons.load(std::memory_order_relaxed) & g.buttons);
+            g_latchedButtons.store(latched, std::memory_order_relaxed);
+            g.buttons = static_cast<uint16_t>(g.buttons & ~latched);
+            if (g_latchedLeftTrigger.load(std::memory_order_relaxed))
+            {
+                if (g.leftTrigger > kTriggerThreshold)
+                    g.leftTrigger = 0;
+                else
+                    g_latchedLeftTrigger.store(false, std::memory_order_relaxed);
+            }
+            if (g_latchedRightTrigger.load(std::memory_order_relaxed))
+            {
+                if (g.rightTrigger > kTriggerThreshold)
+                    g.rightTrigger = 0;
+                else
+                    g_latchedRightTrigger.store(false, std::memory_order_relaxed);
+            }
+            if (g_latchedRightStick.load(std::memory_order_relaxed))
+            {
+                if (RightStickPushed(g))
+                {
+                    g.thumbRX = 0;
+                    g.thumbRY = 0;
+                }
+                else
+                {
+                    g_latchedRightStick.store(false, std::memory_order_relaxed);
+                }
+            }
+        }
+
         uint32_t __stdcall GetStateDetour(uint32_t index, XInputState* state)
         {
             const uint32_t result = g_realGetState ? g_realGetState(index, state) : 1167u;
@@ -488,6 +606,7 @@ namespace qa::input
                 state->gamepad.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
                 state->packetNumber += 1;
             }
+            if (result == 0 && state) HideChord(state->gamepad);
             return result;
         }
 
@@ -667,6 +786,70 @@ namespace qa::input
     void InstallActivityTracker()
     {
         gamethread::AddPoller(L"input.activity", &PollActivity);
+    }
+
+    PadReading ReadPad()
+    {
+        PadReading reading;
+        XInputState state{};
+        if (!FirstPad(state)) return reading;
+        reading.valid = true;
+        reading.buttons = state.gamepad.buttons;
+        reading.leftTrigger = state.gamepad.leftTrigger;
+        reading.rightTrigger = state.gamepad.rightTrigger;
+        reading.leftX = state.gamepad.thumbLX;
+        reading.leftY = state.gamepad.thumbLY;
+        reading.rightX = state.gamepad.thumbRX;
+        reading.rightY = state.gamepad.thumbRY;
+        return reading;
+    }
+
+    namespace
+    {
+        // The XInput button bit an engine key name stands for; 0 for a trigger or a stick.
+        unsigned PadButtonBit(const std::wstring& lower)
+        {
+            static const std::map<std::wstring, unsigned> bits = {
+                {L"gamepad_dpad_up", 0x0001},         {L"gamepad_dpad_down", 0x0002},         {L"gamepad_dpad_left", 0x0004},
+                {L"gamepad_dpad_right", 0x0008},      {L"gamepad_special_right", 0x0010},     {L"gamepad_special_left", 0x0020},
+                {L"gamepad_leftthumbstick", 0x0040},  {L"gamepad_rightthumbstick", 0x0080},   {L"gamepad_leftshoulder", 0x0100},
+                {L"gamepad_rightshoulder", 0x0200},   {L"gamepad_facebutton_bottom", 0x1000}, {L"gamepad_facebutton_right", 0x2000},
+                {L"gamepad_facebutton_left", 0x4000}, {L"gamepad_facebutton_top", 0x8000},
+            };
+            const auto it = bits.find(lower);
+            return it == bits.end() ? 0u : it->second;
+        }
+    }
+
+    bool PadKeyDown(const PadReading& pad, std::wstring_view keyName)
+    {
+        if (!pad.valid) return false;
+        const auto lower = str::ToLower(str::Trim(keyName));
+        if (const unsigned bit = PadButtonBit(lower)) return (pad.buttons & bit) != 0;
+        if (lower == L"gamepad_lefttrigger" || lower == L"gamepad_lefttriggeraxis") return pad.leftTrigger > kTriggerThreshold;
+        if (lower == L"gamepad_righttrigger" || lower == L"gamepad_righttriggeraxis") return pad.rightTrigger > kTriggerThreshold;
+        if (lower == L"gamepad_rightstick_up") return pad.rightY > kStickDeadZone;
+        if (lower == L"gamepad_rightstick_down") return pad.rightY < -kStickDeadZone;
+        if (lower == L"gamepad_rightstick_right") return pad.rightX > kStickDeadZone;
+        if (lower == L"gamepad_rightstick_left") return pad.rightX < -kStickDeadZone;
+        if (lower == L"gamepad_leftstick_up") return pad.leftY > kStickDeadZone;
+        if (lower == L"gamepad_leftstick_down") return pad.leftY < -kStickDeadZone;
+        if (lower == L"gamepad_leftstick_right") return pad.leftX > kStickDeadZone;
+        if (lower == L"gamepad_leftstick_left") return pad.leftX < -kStickDeadZone;
+        return false;
+    }
+
+    void SetChordHold(std::wstring_view keyName)
+    {
+        const auto lower = str::ToLower(str::Trim(keyName));
+        g_holdButtons.store(static_cast<uint16_t>(PadButtonBit(lower)), std::memory_order_relaxed);
+        g_holdTrigger.store(lower == L"gamepad_lefttrigger" ? 1 : (lower == L"gamepad_righttrigger" ? 2 : 0), std::memory_order_relaxed);
+        g_latchedButtons.store(0, std::memory_order_relaxed);
+        g_latchedLeftTrigger.store(false, std::memory_order_relaxed);
+        g_latchedRightTrigger.store(false, std::memory_order_relaxed);
+        g_latchedRightStick.store(false, std::memory_order_relaxed);
+        if (g_holdButtons.load(std::memory_order_relaxed) == 0 && g_holdTrigger.load(std::memory_order_relaxed) == 0 && !lower.empty())
+            log::Error(L"input: the chord hold {} is not a button or trigger the game reads", std::wstring(keyName));
     }
 
     long long MsSinceInput()

@@ -23,17 +23,22 @@ the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setu
 
 ## Hotkeys
 
-| Keyboard | Gamepad (hold Back/Select) | Action                                  |
-| -------- | -------------------------- | --------------------------------------- |
-| F5       | D-pad up                   | Repeat the last message                 |
-| F6       | D-pad right                | Read the current screen                 |
-| F7       | D-pad down                 | Stop speech                             |
-| F8       | D-pad left                 | Help for the current situation          |
-| F4       | Left stick click           | Repeat the last subtitle line           |
-| F9       | Right stick click          | Turn subtitle reading on or off         |
-| Ctrl+F9  |                            | Write a screen dump for bug reports     |
-| Ctrl+F10 |                            | Toggle the function tracer (developers) |
-| Ctrl+F11 |                            | Cycle the log level                     |
+| Keyboard | Gamepad (hold Back and press) | Action                                  |
+| -------- | ----------------------------- | --------------------------------------- |
+| F5       | A                             | Repeat the last message                 |
+| F6       | X                             | Read the current screen                 |
+| F7       | B                             | Stop speech                             |
+| F8       | Y                             | Help for the current situation          |
+| F4       | Right bumper                  | Repeat the last subtitle line           |
+| F9       | Right trigger                 | Turn subtitle reading on or off         |
+| Ctrl+F9  |                               | Write a screen dump for bug reports     |
+| Ctrl+F10 |                               | Toggle the function tracer (developers) |
+| Ctrl+F11 |                               | Cycle the log level                     |
+
+While Back is held the game sees no button, so a chord never also presses something in the
+game, and the chords work in every menu as well as in play. The help and the hints name the
+keys of the device the last press came from: the F keys after a keyboard press, the chords
+after a gamepad press.
 
 These guide the exploration while the character walks freely. On the gamepad they need no
 chord there, because the game leaves those buttons unused while you walk.
@@ -45,9 +50,6 @@ chord there, because the game leaves those buttons unused while you walk.
 | H        | D-pad up    | Where the target is now                   |
 | G        | X           | Walk there, and press again to stop       |
 | T        | D-pad down  | Beacon on or off                          |
-
-The Back chord above also reaches the first four from anywhere: right bumper for the next
-thing, left bumper for the previous, X for where it is, Y for the beacon.
 
 During a fight the same keys serve the fight: N and P switch between its targets, H says
 where the current one stands against the aim, and T switches the aim sound off and on. Outside

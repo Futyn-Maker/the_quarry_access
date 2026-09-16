@@ -48,6 +48,37 @@ namespace qa::input
     // not count.
     bool MovementHeld();
 
+    // The gamepad as the game reads it: the buttons, triggers and sticks of the first pad
+    // that answers, taken through the same XInput the game reads, so it is read in the menus
+    // as well as in play. (The player controller stops answering for keys while a menu has
+    // the input, which is why the mod's buttons are not asked of it.)
+    struct PadReading
+    {
+        bool valid = false;
+        unsigned buttons = 0;
+        int leftTrigger = 0;
+        int rightTrigger = 0;
+        int leftX = 0;
+        int leftY = 0;
+        int rightX = 0;
+        int rightY = 0;
+    };
+    PadReading ReadPad();
+
+    // Whether the button, trigger or stick direction an engine key name stands for
+    // ("Gamepad_FaceButton_Bottom", "Gamepad_RightTrigger", "Gamepad_RightStick_Up") is down
+    // in a reading.
+    bool PadKeyDown(const PadReading& pad, std::wstring_view keyName);
+
+    // The button the mod's chords are held with. While it is down the game is shown a pad
+    // with nothing pressed, and whatever was pressed under it stays hidden until it is let go
+    // of, so a chord is never also a press for the game.
+    void SetChordHold(std::wstring_view keyName);
+
+    // The device the player's last mod hotkey came from is the device the answer is worded
+    // for: for a moment after the press the scheme reads as that device.
+    void NoteHotkeyDevice(Scheme scheme);
+
     // Points the game's own reading of the gamepad through the mod, so that a walk can push
     // the stick the game already reads instead of pressing keys, which would make the game
     // treat the keyboard as the device in hand and redraw every prompt for it.

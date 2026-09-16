@@ -280,8 +280,14 @@ namespace qa::diag
         const auto& s = cfg::Get();
         std::vector<std::wstring> parts;
         parts.push_back(locale::Mod(L"help.intro"));
-        parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{s.keyRepeat, s.keyReadScreen, s.keyStop, s.keyHelp}));
-        parts.push_back(locale::Mod(L"help.pad"));
+        // The keys of the device in the player's hands: the gamepad's chords after a gamepad
+        // press, the keyboard's keys otherwise.
+        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
+            parts.push_back(locale::Mod(L"help.chords", std::vector<std::wstring>{input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordRepeat),
+                                                                                  input::KeyDisplayName(s.chordReadScreen), input::KeyDisplayName(s.chordStop),
+                                                                                  input::KeyDisplayName(s.chordHelp)}));
+        else
+            parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{s.keyRepeat, s.keyReadScreen, s.keyStop, s.keyHelp}));
         features::HelpAll(parts);
         return str::JoinSentences(parts);
     }

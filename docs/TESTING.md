@@ -33,15 +33,21 @@ Tester script (Russian UI):
 
 1. Start the game. Within a few seconds after the splash videos you should hear:
    "The Quarry Access <версия> загружен. Программа чтения экрана: NVDA. Язык: ru_RU."
-2. Press F8: the help text is spoken (hotkeys and the gamepad chord).
+2. Press F8: the help text is spoken, naming the F keys.
 3. Press F5: the help text is repeated.
 4. Press F8 again and immediately F7: speech stops.
 5. Press F6: the current screen is described.
 6. Press Ctrl+F9 to write a screen dump for bug reports.
+7. On a gamepad, in the main menu: hold Back and press Y: the help is spoken, naming the
+   chords ("удерживайте кнопку Back и нажмите кнопку A ..."). Hold Back and press A, X and B:
+   the last message is repeated, the screen is read, speech stops; the menu does not react
+   to A, B, X or Y while Back is held, and the D-pad still moves the selection when nothing is
+   held. The same chords work while a scene plays.
 
 Expected log lines: `Tolk loaded; screen reader: NVDA`, `game locale: ru-RU; mod language: ru_RU`,
 `self-check: SMG_HUD_MENU_BUTTON_NEWGAME_000001 = "Новая игра"`, `self-check: control scheme MouseKeyboard`,
-`ready`, one `hotkey:` line per key press, no `ERROR`.
+`ready`, one `gamepad Gamepad_Special_Left + ... = ...` line per chord at start, one `hotkey: <command>
+(keyboard)` or `(gamepad)` line per press, no `ERROR`.
 
 ## Menus
 
@@ -110,7 +116,8 @@ Tester script (Russian UI). Continue or start a game and let a scene with dialog
    субтитров включено" and the reading resumes. Quit with the reading off and start the game
    again: it stays off (`subtitles: reading off at start` in the log) until F9 turns it on.
 3. Press F5 during a scene: the last message is repeated. Press F6: the lines on screen are
-   read. Press F8: the help names F9 and F4 with their gamepad chords.
+   read. Press F8: the help names F9 and F4; after a gamepad press it names Back with the
+   right trigger and the right bumper instead, and those chords do the same.
 4. Pause the game: F4 still repeats the last line. Leave to the main menu: F4 now says
    "Субтитров ещё не было", and so it does after starting a game until the first line.
 5. Settings → Субтитры → Субтитры: "Выкл." makes the dialogue silent and F4 repeats only what
