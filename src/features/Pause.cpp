@@ -87,12 +87,12 @@ namespace qa::features
 
     void PauseFeature::Help(std::vector<std::wstring>& out)
     {
+        // The tab keys are named with the screen's prompts; the key that resumes the game
+        // shows no prompt.
         const auto tabs = ui::ActivePauseTabs();
         if (!tabs.system) return;
-        const auto left = input::KeyForAction(ui::ActionName(tabs.system, L"TabLeftActionMapping"));
-        const auto right = input::KeyForAction(ui::ActionName(tabs.system, L"TabRightActionMapping"));
         const auto resume = input::KeyForAction(ui::ActionName(tabs.system, L"UnpauseActionMapping"));
-        if (left.empty() || right.empty() || resume.empty()) return;
-        out.push_back(locale::Mod(L"help.pause", std::vector<std::wstring>{left, right, resume}));
+        if (resume.empty()) return;
+        out.push_back(locale::Mod(L"help.pause", resume));
     }
 }

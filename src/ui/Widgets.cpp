@@ -624,28 +624,6 @@ namespace qa::ui
         return JoinLines(parts);
     }
 
-    std::wstring CarouselHelp(UObject* screen)
-    {
-        if (!screen) return {};
-        const auto roots = ScreenRoots(screen);
-        for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
-        {
-            if (!OnScreen(carousel, roots)) continue;
-            // The carousel shows the glyphs of its two prompts and nothing else, as the tab bar
-            // of the pause menu does; the help names them.
-            std::wstring previous = L"UITabLeft";
-            std::wstring next = L"UITabRight";
-            UObject* prompt = nullptr;
-            if (obj::ReadObject(carousel, L"PromptPrev", prompt) && obj::IsLive(prompt) && !ActionOf(prompt).empty()) previous = ActionOf(prompt);
-            if (obj::ReadObject(carousel, L"PromptNext", prompt) && obj::IsLive(prompt) && !ActionOf(prompt).empty()) next = ActionOf(prompt);
-            const auto left = input::KeyForAction(previous);
-            const auto right = input::KeyForAction(next);
-            if (left.empty() || right.empty()) return {};
-            return locale::Mod(L"help.carousel", left, right);
-        }
-        return {};
-    }
-
     std::wstring ScreenText(UObject* screen)
     {
         if (!screen) return {};
@@ -893,6 +871,9 @@ namespace qa::ui
         std::vector<Prompt> prompts;
         if (!screen) return prompts;
         const auto roots = ScreenRoots(screen);
+        std::wstring tabLeft;
+        std::wstring tabRight;
+        UObject* tabPrompt = nullptr;
         for (auto* w : obj::FindAllLive(L"MenuPromptWidget_C"))
         {
             if (!OnScreen(w, roots)) continue;
@@ -900,9 +881,37 @@ namespace qa::ui
             p.action = ActionOf(w);
             p.key = PromptKey(w, p.action);
             p.label = ComposePrompt(w, p.key.empty() ? locale::Mod(L"input.anykey") : p.key);
-            if (p.label.empty()) continue;
+            if (p.label.empty())
+            {
+                // The tab keys show their glyphs with no words beside them, on the pause
+                // menu's tab bar and on the character and mode carousels alike.
+                if (p.action == L"UITabLeft") tabLeft = p.key;
+                if (p.action == L"UITabRight") tabRight = p.key;
+                if (!tabPrompt) tabPrompt = w;
+                continue;
+            }
             const bool duplicate = std::any_of(prompts.begin(), prompts.end(), [&](const Prompt& e) { return e.label == p.label; });
             if (!duplicate) prompts.push_back(p);
+        }
+        // The wordless pair is named by what it turns on this screen, as the game names its
+        // other prompts by what they do.
+        if (!tabLeft.empty() && !tabRight.empty())
+        {
+            const wchar_t* what = nullptr;
+            if (obj::FindOuterOfClass(tabPrompt, L"PauseTabSystemSMG026"))
+                what = L"ui.prompt.tabs";
+            else if (obj::FindOuterOfClass(tabPrompt, L"CharacterCarousel_C"))
+                what = L"help.carousel";
+            else if (obj::FindOuterOfClass(tabPrompt, L"MenuCarousel_New_C"))
+                what = L"ui.prompt.selector";
+            if (what)
+            {
+                Prompt p;
+                p.action = L"UITabRight";
+                p.key = tabRight;
+                p.label = locale::Mod(what, tabLeft, tabRight);
+                prompts.push_back(p);
+            }
         }
         return prompts;
     }

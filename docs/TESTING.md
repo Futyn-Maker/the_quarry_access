@@ -94,7 +94,8 @@ Tester script (Russian UI). Start a new game in a free slot and let the prologue
 
 1. When the scene starts you hear its caption, for example "22:30 - Лора. Хэкеттс Куори | Дорога"
    (time, character, place), and "Загрузка" while the game loads.
-2. Press Escape: "Пауза. Персонаж, вкладка 1 из 6" followed by what the tab shows and its prompts.
+2. Press Escape: "Пауза. Персонаж, вкладка 1 из 6" followed by what the tab shows and its prompts,
+   ending with "[ и ] переключают вкладки." (the bumpers after a gamepad press).
 3. Press ] and [: each tab is announced with its position; on the clues, evidence and tarot tabs
    the objective line, the selected entry with its description and the prompts follow. The
    character tab is named after the character it shows; it only displays the character, so
@@ -102,7 +103,7 @@ Tester script (Russian UI). Start a new game in a free slot and let the prologue
 4. On a collectables tab arrow through the entries: each is read with its position and
    description; press right to enter the details list and each entry is read.
 5. Press F6 in the pause menu: paused, the tab, the screen content and the prompts. Press F8: the
-   tab keys and the key that returns to the game.
+   key that returns to the game, then the prompts with the tab keys.
 6. Return to the game and play until a clue is found: the notification is read with its title,
    text and the key that opens it. A save shows as "Сохранение".
 7. Open the settings from the pause menu: they read as in the main menu.
@@ -400,10 +401,12 @@ or the same for `BinocularsOverlay_C`, and no `ERROR`.
 Tester script (Russian UI).
 
 1. Main menu → На одном экране: the character carousel is read as the game names it
-   ("ЛОРА. ПРИЛЕЖНАЯ, НЕЗАВИСИМАЯ, РЕШИТЕЛЬНАЯ"). Press F8: after the menu keys you hear
-   "[ и ] переключают персонажа." (the bumpers after a gamepad press); the carousel's own
-   glyphs carry no words, as the tab bar of the pause menu, so the help names them. The
-   same line comes in Режим кино at the director's chair.
+   ("ЛОРА. ПРИЛЕЖНАЯ, НЕЗАВИСИМАЯ, РЕШИТЕЛЬНАЯ"), and the screen's prompts end with
+   "[ и ] переключают персонажа." (the bumpers after a gamepad press): the carousel's own
+   glyphs carry no words, so the mod names what they turn, as it does for the pause menu's
+   tab bar ("[ и ] переключают вкладки.") and the Wolf Pack host's mode selector ("[ и ]
+   меняют значение."). F8 repeats the prompts. The same line comes in Режим кино at the
+   director's chair.
 2. Assign characters, start the game: the handover screen is read as the player and the
    character it names and the button under them: "АНДРЕЙ, ЛОРА. Готовы?" The screen has no
    other choice; A or Enter answers it.

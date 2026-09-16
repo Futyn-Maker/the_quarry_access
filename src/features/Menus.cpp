@@ -367,8 +367,6 @@ namespace qa::features
         UObject* screen = watch::CurrentScreen();
         if (!screen) return;
         out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"UINavigationConfirm"), input::KeyForAction(L"UINavigationCancel")));
-        const auto carousel = ui::CarouselHelp(screen);
-        if (!carousel.empty()) out.push_back(carousel);
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);
     }
