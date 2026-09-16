@@ -171,14 +171,11 @@ Tester script (Russian UI). Chapter 1 has the first quick-time events; a button 
 Don't Breathe come later in the story. Settings → Доступность shows the modes in play: Простые
 QTE, Быстрое нажатие, Не дышать.
 
-1. When a quick-time event appears you hear its direction at once, "Вверх, W." on the keyboard
-   (the key cap the game shows; the arrow keys work as bound too) or "Вверх." on a gamepad, and
-   at the same moment a cue: three notes climbing for up, falling for down, one note in the
-   left ear for left, in the right ear for right. Both are repeated every second for as long
-   as the arrow stays on screen. A rising two-note tone marks a hit, a falling one a miss or a
-   timeout; nothing is spoken for the result. The direction is never cut short by anything the
-   mod says on its own, and it does not cut a subtitle short either: the cue is what arrives
-   first when the reader is busy.
+1. At the first quick-time event the direction is said the moment the marker appears, with
+   its tone ("Вверх, W."), and the same tone sounds again when the marker has settled and the
+   game begins to take the press, about 0.8 s later: a press before that tone is ignored by
+   the game, for everyone. The direction is repeated every second until the event resolves,
+   and a rising or falling tone marks the result.
 2. Press F6 during an event: the direction is read again. Press F8: the four keys.
 3. At a button mash you hear the button the way Настройки → Доступность → Быстрое нажатие asks:
    "Быстро нажимайте левая кнопка мыши." by default, "Удерживайте ..." in the Hold mode,

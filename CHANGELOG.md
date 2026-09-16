@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A quick-time event's tone sounds again the moment the game begins to take the press. The game ignores a press until its marker has finished arriving, 0.8 s after it appears, for everyone; a sighted player sees the marker settle, and the tone now marks that moment.
 - The prompt to close the phone camera, the binoculars and the rifle scope is read as the overlay appears; the overlays were silent, and the phone's own camera labels stay so.
 - The couch co-op handover screen says whose turn it is and as whom ("АНДРЕЙ, ЛОРА") before its button; only the button was read.
 - The help on the couch co-op and Movie Mode screens names the keys that turn the character carousel, whose glyphs carry no words, as it names the tab keys of the pause menu.

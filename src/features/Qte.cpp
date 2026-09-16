@@ -42,6 +42,8 @@ namespace qa::features
             sounds::Cue cue = sounds::Cue::Up;
             bool speaker = false;    // the widget that reads the event, when several show it
             double spokenAt = -10.0; // when it was last said
+            double appearedAt = 0.0;
+            bool opened = false; // the game has begun taking the press
             Outcome outcome = Outcome::Pending;
             bool finished = false;
         };
@@ -226,7 +228,9 @@ namespace qa::features
             if (!obj::IsLive(widget)) return;
             if (std::any_of(g_qtes.begin(), g_qtes.end(), [&](const Qte& q) { return q.widget == widget; })) return;
             log::Info(L"qte: {} {} appeared", obj::ClassName(widget), obj::ObjectName(widget));
-            g_qtes.push_back(Qte{widget});
+            Qte qte{widget};
+            qte.appearedAt = gamethread::NowSeconds();
+            g_qtes.push_back(qte);
         }
 
         void Mark(UObject* widget, Outcome outcome)
@@ -272,7 +276,26 @@ namespace qa::features
                 if (!qte.announced && ++qte.polls <= 60) Read(qte);
                 if (!qte.finished)
                 {
-                    if (qte.speaker && gamethread::NowSeconds() - qte.spokenAt >= 1.0) Speak(qte, gamethread::NowSeconds());
+                    const double now = gamethread::NowSeconds();
+                    // The game takes the press only once the marker has finished arriving,
+                    // which its clock marks by starting to count; a press before that is
+                    // ignored, for everyone. The moment it starts counting is the moment the
+                    // marker settles on screen, and the tone marks it.
+                    if (qte.announced && !qte.opened)
+                    {
+                        const Info info = ReadInfo(qte.widget);
+                        if (info.valid && info.elapsed > 0.0)
+                        {
+                            qte.opened = true;
+                            log::Info(L"qte: {} takes the press from {:.2f} s after it appeared", obj::ObjectName(qte.widget), now - qte.appearedAt);
+                            if (qte.speaker)
+                            {
+                                sounds::Play(qte.cue);
+                                qte.spokenAt = now;
+                            }
+                        }
+                    }
+                    if (qte.speaker && now - qte.spokenAt >= 1.0) Speak(qte, now);
                     // The result animations are the game's own verdict; the hooks on their
                     // events come first, the animations themselves are the fallback.
                     if (qte.outcome == Outcome::Pending)
