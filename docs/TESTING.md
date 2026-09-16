@@ -382,6 +382,26 @@ Tester script (Russian UI). Play the last chapter to its end.
 Expected log lines: `hud: appeared ActionHUDAftermathTextSMG026.AftermathTextInstance ->
 AftermathText_C ...` (at the verbose log level), one `SAY announce` per card, and no `ERROR`.
 
+## Couch co-op, Movie Mode and Wolf Pack
+
+Tester script (Russian UI).
+
+1. Main menu → На одном экране: the character carousel is read as the game names it
+   ("ЛОРА. ПРИЛЕЖНАЯ, НЕЗАВИСИМАЯ, РЕШИТЕЛЬНАЯ"). Press F8: after the menu keys you hear
+   "[ и ] переключают персонажа." (the bumpers after a gamepad press); the carousel's own
+   glyphs carry no words, as the tab bar of the pause menu, so the help names them. The
+   same line comes in Режим кино at the director's chair.
+2. Assign characters, start the game: the handover screen is read as the player and the
+   character it names and the button under them: "АНДРЕЙ, ЛОРА. Готовы?" The screen has no
+   other choice; A or Enter answers it.
+3. Волчья стая → Новая игра: the host screen reads its title, the mode selector with its
+   description ("Волк-одиночка, селектор, Главный игрок получает право окончательного
+   выбора ..."), the members and the prompts. The "test ]" prompt is the game's own label on
+   that screen, read as shown. Левый Control ("Профиль") opens the platform's own profile
+   overlay outside the game, which the mod cannot read; nothing is missing from the log.
+4. In a Wolf Pack game the result the game shows after a member's challenge ("УСПЕХ",
+   "НЕУДАЧА") is read as it appears, and the waiting screen reads "Ожидание остальных".
+
 ## Credits
 
 Tester script (Russian UI).

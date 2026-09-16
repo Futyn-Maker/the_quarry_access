@@ -20,11 +20,12 @@ namespace qa::features
     {
         // HUD elements whose text stands on its own, among them the fate cards the epilogue
         // lays over its scenes (a character's name and state, and a line on how the night
-        // ended for them). Elements the player acts on (choices, prompts, quick-time events,
+        // ended for them) and the result a Wolf Pack shows after one of its members plays a
+        // challenge. Elements the player acts on (choices, prompts, quick-time events,
         // subtitles) belong to their own features.
-        const wchar_t* const kReadableHuds[] = {L"ActionHUDSceneDetails",     L"ActionHUDNotification", L"ActionHUDAlertSMG026",
-                                                L"ActionHUDActDisplaySMG026", L"ActionHUDSingleLine",   L"ActionHUDTitleIntro",
-                                                L"ActionHUDCharacterIntros",  L"ActionHUDBigTitlesDP",  L"ActionHUDAftermathTextSMG026"};
+        const wchar_t* const kReadableHuds[] = {
+            L"ActionHUDSceneDetails", L"ActionHUDNotification",    L"ActionHUDAlertSMG026", L"ActionHUDActDisplaySMG026",    L"ActionHUDSingleLine",
+            L"ActionHUDTitleIntro",   L"ActionHUDCharacterIntros", L"ActionHUDBigTitlesDP", L"ActionHUDAftermathTextSMG026", L"ActionHUDWPResultSMG026"};
 
         struct Tracked
         {

@@ -299,6 +299,9 @@ namespace qa::ui
                 d.value = str::Join(values, L" ");
             }
             if (str::Trim(d.label).empty() && !rendered.empty()) d.label = rendered.front();
+            // A selector with no title of its own shows its value alone (the Wolf Pack host's
+            // mode), which is then its name and not to be said twice.
+            if (str::EqualsNoCase(str::Trim(d.value), str::Trim(d.label))) d.value.clear();
         }
         else
         {
@@ -356,6 +359,13 @@ namespace qa::ui
             (!obj::ReadBool(interactable, L"bIsCollectableUnlocked", unlocked) || unlocked))
         {
             d.tip = gametext::ReadLocalized(collectable, L"CollectableDescription");
+        }
+        // A selector explained by a text beside it rather than by a tooltip: the Wolf Pack
+        // host's mode is described under the selector on the screen that holds it.
+        for (UObject* outer = obj::FindOuterUserWidget(interactable); outer && str::Trim(d.tip).empty() && d.kind == Kind::Selector;
+             outer = obj::FindOuterUserWidget(outer))
+        {
+            d.tip = VisibleTextProperty(outer, L"ModeDescription_txt");
         }
         d.tip = str::CollapseWhitespace(str::StripMarkup(d.tip));
         return d;
@@ -591,7 +601,49 @@ namespace qa::ui
         {
             if (OnScreen(carousel, roots)) add(CarouselText(carousel));
         }
+        // The controller handover of couch co-op: whose turn it is, and as whom, above the
+        // button that answers it.
+        for (auto* handover : obj::FindAllLive(L"CouchCo-opHandover_C"))
+        {
+            if (!OnScreen(handover, roots)) continue;
+            std::vector<std::wstring> who;
+            for (const wchar_t* property : {L"PlayerName", L"CharacterName"})
+            {
+                const auto text = str::CollapseWhitespace(PropertyText(handover, property));
+                if (!text.empty() && std::find(who.begin(), who.end(), text) == who.end()) who.push_back(text);
+            }
+            add(str::Join(who, L", "));
+        }
+        // Waiting for the rest of a Wolf Pack: the line the screen shows.
+        for (auto* waiting : obj::FindAllLive(L"WolfPackWaitSyncWidget_C"))
+        {
+            if (!OnScreen(waiting, roots)) continue;
+            for (const auto& text : DisplayTexts(obj::DescendantTexts(waiting, kLabelDepthDeep)))
+                add(text);
+        }
         return JoinLines(parts);
+    }
+
+    std::wstring CarouselHelp(UObject* screen)
+    {
+        if (!screen) return {};
+        const auto roots = ScreenRoots(screen);
+        for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
+        {
+            if (!OnScreen(carousel, roots)) continue;
+            // The carousel shows the glyphs of its two prompts and nothing else, as the tab bar
+            // of the pause menu does; the help names them.
+            std::wstring previous = L"UITabLeft";
+            std::wstring next = L"UITabRight";
+            UObject* prompt = nullptr;
+            if (obj::ReadObject(carousel, L"PromptPrev", prompt) && obj::IsLive(prompt) && !ActionOf(prompt).empty()) previous = ActionOf(prompt);
+            if (obj::ReadObject(carousel, L"PromptNext", prompt) && obj::IsLive(prompt) && !ActionOf(prompt).empty()) next = ActionOf(prompt);
+            const auto left = input::KeyForAction(previous);
+            const auto right = input::KeyForAction(next);
+            if (left.empty() || right.empty()) return {};
+            return locale::Mod(L"help.carousel", left, right);
+        }
+        return {};
     }
 
     std::wstring ScreenText(UObject* screen)

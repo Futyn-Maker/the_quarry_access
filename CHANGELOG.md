@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The couch co-op handover screen says whose turn it is and as whom ("АНДРЕЙ, ЛОРА") before its button; only the button was read.
+- The help on the couch co-op and Movie Mode screens names the keys that turn the character carousel, whose glyphs carry no words, as it names the tab keys of the pause menu.
+- The Wolf Pack host's mode selector no longer repeats its value as its title, and reads the description shown under it; the Wolf Pack result and waiting screens are read.
 - The beacon switch and the aim sound switch are kept in the ini, as the subtitle switch already was, so a new start begins the way the last one ended.
 - The speech can be moved between the screen reader and SAPI while playing: F3, or Back with the right stick pressed in, switches it and says which now speaks ("Речь: Microsoft SAPI"), and the choice is kept in the ini, so a start with a screen reader running begins the way the last one ended. Without a screen reader SAPI speaks either way, and the key says so.
 - Coming under the player's control no longer reads the whole list of what is around. After the game's own prompt about the stick or the movement keys the mod names its keys, once a scene ("N и P выбирают цель, G идёт к ней, H говорит, где она, T включает и выключает маяк", or the D-pad and X after a gamepad press), and then the thing the beacon leads to; the list with every distance is left to F6.

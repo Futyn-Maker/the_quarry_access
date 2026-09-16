@@ -65,6 +65,10 @@ namespace qa::ui
     Kind KindOf(UObject* interactable);
     Description Describe(UObject* interactable);
 
+    // The keys that turn a character carousel on a screen (couch co-op, Movie Mode), for the
+    // help; empty when the screen has none.
+    std::wstring CarouselHelp(UObject* screen);
+
     // Spoken form of a description according to the configured verbosity.
     std::wstring Speak(const Description& description);
 
