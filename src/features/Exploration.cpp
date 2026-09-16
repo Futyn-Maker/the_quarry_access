@@ -69,10 +69,14 @@ namespace qa::features
             double routeLength = 0.0; // centimetres along the way
             Vec routeNext;            // the corner to walk to now
             Vec routeFrom;            // where the character was when it was asked
-            // The mesh's way runs through a place the scene is waiting on that the target is
-            // not beyond, so it is not taken and the target is walked to by sight.
-            bool routeBarred = false;
-            UObject* barredBy = nullptr;
+            // Where a use location is reached: the middle of the box the game offers it in,
+            // or another spot of that box when the road to the middle is no road.
+            bool hasApproach = false;
+            Vec approach;
+            double approachAt = -1000.0; // when the spots of the box were last tried
+            Vec approachFrom;
+            // The place the scene is waiting on that the road runs through, when it does.
+            UObject* roadThrough = nullptr;
             // The use location a place names, when it names one.
             std::wstring namedUse;
         };
@@ -324,6 +328,23 @@ namespace qa::features
             return ptr && obj::ReadStringAt(ptr, obj::StructMember(prop, L"ActorName"), out);
         }
 
+        // Whether a transition leads to a state that hands the flow back to this one: an
+        // interlude that plays and returns, not a way on.
+        bool ReturnsTo(UObject* transition, UObject* state)
+        {
+            UObject* target = nullptr;
+            if (!obj::ReadObject(transition, L"TargetState", target) || !obj::IsLive(target)) return false;
+            if (target == state) return true;
+            std::vector<UObject*> onward;
+            obj::ReadObjectArray(target, L"Transitions", onward);
+            for (auto* next : onward)
+            {
+                UObject* back = nullptr;
+                if (obj::IsLive(next) && obj::ReadObject(next, L"TargetState", back) && back == state) return true;
+            }
+            return false;
+        }
+
         // Whether an actor is the one a flow calls by this name. A flow names actors by the
         // name in their register, the name they were given in the editor, and a cooked level
         // can number the actor itself apart from it: the chest of the prologue woods is the
@@ -448,6 +469,10 @@ namespace qa::features
                 for (auto* transition : transitions)
                 {
                     if (!obj::IsLive(transition)) continue;
+                    // A transition that comes back to this state is an interlude, not the way
+                    // on: the intercut on the trail of the prologue woods plays and hands the
+                    // woods back.
+                    if (ReturnsTo(transition, state)) continue;
                     std::vector<UObject*> conditions;
                     obj::ReadObjectArray(transition, L"Conditions", conditions);
                     std::vector<std::wstring> volumes;
@@ -523,7 +548,7 @@ namespace qa::features
         bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight);
         bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high);
         bool InsideVolume(UObject* pawn, UObject* volume, const Vec& low, const Vec& high, int& storey);
-        UObject* WayBarring(UObject* pawn, const Vec& here, const std::vector<Vec>& road, const Target& target);
+        bool UseBox(UObject* actor, Vec& centre, Vec& extent, double& yaw);
 
         std::vector<Target> Gather(UObject* pawn, const Vec& here, double yaw, double now)
         {
@@ -565,6 +590,15 @@ namespace qa::features
                 t.label = ComposeLabel(UseLocationName(actor), t.verb);
                 obj::ReadFloat(actor, L"NavigationRadius", t.navRadius);
                 t.inRange = std::find(overlapping.begin(), overlapping.end(), actor) != overlapping.end();
+                // The road to a use location ends where the game offers it: in its box.
+                Vec centre;
+                Vec extent;
+                double yaw = 0.0;
+                if (UseBox(actor, centre, extent, yaw))
+                {
+                    t.approach = Vec{centre.x, centre.y, centre.z - extent.z};
+                    t.hasApproach = true;
+                }
                 uses.push_back(std::move(t));
             }
             // Place actors do not move; the scan of all objects is repeated only now and then.
@@ -705,9 +739,7 @@ namespace qa::features
                     if (++asked > 10) break;
                     std::vector<Vec> road;
                     FindRoute(pawn, here, t, &road);
-                    // A road the walk will not take, because it runs through a way the target
-                    // is not beyond, sets nothing off and hides nothing.
-                    if (road.size() >= 2 && !WayBarring(pawn, here, road, t)) roads.push_back(std::move(road));
+                    if (road.size() >= 2) roads.push_back(std::move(road));
                 }
                 const double radius = WalkingRadius(pawn);
                 for (const auto& way : ways)
@@ -763,8 +795,11 @@ namespace qa::features
                 it->routeLength = old.routeLength;
                 it->routeNext = old.routeNext;
                 it->routeFrom = old.routeFrom;
-                it->routeBarred = old.routeBarred;
-                it->barredBy = old.barredBy;
+                it->hasApproach = old.hasApproach;
+                it->approach = old.approach;
+                it->approachAt = old.approachAt;
+                it->approachFrom = old.approachFrom;
+                it->roadThrough = old.roadThrough;
                 kept.push_back(*it);
                 it->actor = nullptr; // consumed
             }
@@ -872,13 +907,20 @@ namespace qa::features
             return ok;
         }
 
+        // Where a road to a target is aimed: a use location at the spot of its box, anything
+        // else where it stands.
+        const Vec& Aim(const Target& t)
+        {
+            return t.hasApproach ? t.approach : t.position;
+        }
+
         Route FindRoute(UObject* pawn, const Vec& here, const Target& target, std::vector<Vec>* road)
         {
             Route route;
             UObject* nav = NavigationSystem();
             auto* fn = nav ? obj::FindFunction(nav, L"FindPathToLocationSynchronously") : nullptr;
             if (!fn) return route;
-            Vec end = target.position;
+            Vec end = Aim(target);
             Vec projected;
             // The engine settles on the ground nearest across, whatever its height within the
             // search, so a search that takes in another floor can hand back that floor: a thing
@@ -995,6 +1037,40 @@ namespace qa::features
             low = Vec{origin.x - extent.x, origin.y - extent.y, origin.z - extent.z};
             high = Vec{origin.x + extent.x, origin.y + extent.y, origin.z + extent.z};
             return true;
+        }
+
+        // The box a use location is offered in: the collision the game overlaps the character
+        // with, as its middle, half-extents and yaw in the world.
+        bool UseBox(UObject* actor, Vec& centre, Vec& extent, double& yaw)
+        {
+            UObject* box = nullptr;
+            if (!obj::IsLive(actor) || !obj::ReadObject(actor, L"CollisionComponent", box) || !obj::IsLive(box)) return false;
+            auto* prop = obj::FindProperty(box, L"BoxExtent");
+            if (!prop || !ReadVec(obj::ValuePtr(box, prop), prop, extent) || extent.x < 1.0 || extent.y < 1.0) return false;
+            bool placed = false;
+            obj::CallReturn(box, L"K2_GetComponentLocation",
+                            [&](void* params, FProperty* returnValue) { placed = ReadVec(obj::ValuePtrAt(params, returnValue), returnValue, centre); });
+            if (!placed) return false;
+            if (!YawOf(box, L"K2_GetComponentRotation", yaw)) yaw = 0.0;
+            return true;
+        }
+
+        // The spots of a use location's box a road can end on: the middle, then eight more
+        // well inside the box, on the ground.
+        std::vector<Vec> BoxSpots(const Vec& centre, const Vec& extent, double yaw)
+        {
+            std::vector<Vec> spots;
+            const double radians = yaw * std::numbers::pi / 180.0;
+            const double c = std::cos(radians);
+            const double s = std::sin(radians);
+            for (const auto& [fx, fy] : {std::pair{0.0, 0.0}, std::pair{-0.7, 0.0}, std::pair{0.7, 0.0}, std::pair{0.0, -0.7}, std::pair{0.0, 0.7},
+                                         std::pair{-0.7, -0.7}, std::pair{-0.7, 0.7}, std::pair{0.7, -0.7}, std::pair{0.7, 0.7}})
+            {
+                const double lx = fx * extent.x;
+                const double ly = fy * extent.y;
+                spots.push_back(Vec{centre.x + lx * c - ly * s, centre.y + lx * s + ly * c, centre.z - extent.z});
+            }
+            return spots;
         }
 
         // How wide the character is, which is how near a road has to come for the walk to set
@@ -1145,16 +1221,10 @@ namespace qa::features
             return false;
         }
 
-        // The place the scene is waiting on that the mesh's road to a target runs through
-        // while the target is not beyond it. Such a place is where the scene moves on: the
-        // prologue woods end the moment the character steps into the volume at the end of
-        // the trail, and the mesh's only road to the chest below the trail went through it,
-        // while the chest stands outside and a player who sees it walks straight there. A
-        // road like that is not taken. Whether the target is beyond the place is the straight
-        // line's word: when the line from the character to the target passes through the
-        // volume as well, the target is reached through it whichever way, and the road
-        // stands.
-        UObject* WayBarring(UObject* pawn, const Vec& here, const std::vector<Vec>& road, const Target& target)
+        // The place the scene is waiting on that a road runs through, if any. Such a place is
+        // where the scene moves on for good, so a road through it is a road out of the scene
+        // rather than to the target.
+        UObject* WayCrossed(UObject* pawn, const std::vector<Vec>& road, const Target& target)
         {
             if (target.way || road.size() < 2) return nullptr;
             Vec middle;
@@ -1166,37 +1236,81 @@ namespace qa::features
                 Vec low;
                 Vec high;
                 if (!TriggerBox(volume, low, high)) continue;
-                if (!RoadEnters(volume, low, high, road, halfHeight)) continue;
-                if (RoadEnters(volume, low, high, std::vector<Vec>{here, target.position}, halfHeight)) continue;
-                return volume;
+                if (RoadEnters(volume, low, high, road, halfHeight)) return volume;
             }
             return nullptr;
         }
 
+        // How good a road is: one that arrives and keeps clear of the places the scene waits
+        // on comes first, then one that arrives, then one that stops short but near; a road
+        // that stops far short is no road.
+        int RoadRank(const Route& route, UObject* through)
+        {
+            if (!route.valid) return -1;
+            if (route.partial && Distance(route.end, route.goal) > 300.0) return -1;
+            return (through ? 0 : 2) + (route.partial ? 0 : 1);
+        }
+
         // Asks the mesh again when the answer has aged or the character has walked on. A
-        // maximum age of zero asks every time.
+        // maximum age of zero asks every time. A use location is reached where the game
+        // offers it, anywhere in its box: when the road to the middle of the box stops short
+        // or runs through a place the scene is waiting on, the other spots of the box are
+        // tried and the best road among them is taken. The cage of the prologue woods stands
+        // in bushes the mesh reaches only from behind, round the whole trail and through the
+        // volume that ends the woods, while the front of its box is thirty metres away; the
+        // chest sits on a ledge of its own, while the near half of its box is on the ground
+        // the flyer stands on.
         void EnsureRoute(UObject* pawn, const Vec& here, Target& t, double now, double maxAge)
         {
             if (now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0) return;
             std::vector<Vec> road;
-            const Route route = FindRoute(pawn, here, t, &road);
+            Route route = FindRoute(pawn, here, t, &road);
+            UObject* through = route.valid ? WayCrossed(pawn, road, t) : nullptr;
+            int rank = RoadRank(route, through);
+            if (!t.destination && rank < 3 && (now - t.approachAt > 5.0 || FlatDistance(here, t.approachFrom) > 300.0))
+            {
+                t.approachAt = now;
+                t.approachFrom = here;
+                Vec centre;
+                Vec extent;
+                double yaw = 0.0;
+                if (UseBox(t.actor, centre, extent, yaw))
+                {
+                    for (const Vec& spot : BoxSpots(centre, extent, yaw))
+                    {
+                        Target probe = t;
+                        probe.approach = spot;
+                        probe.hasApproach = true;
+                        std::vector<Vec> spotRoad;
+                        const Route candidate = FindRoute(pawn, here, probe, &spotRoad);
+                        UObject* spotThrough = candidate.valid ? WayCrossed(pawn, spotRoad, t) : nullptr;
+                        const int spotRank = RoadRank(candidate, spotThrough);
+                        if (spotRank > rank || (spotRank == rank && spotRank >= 0 && candidate.length < route.length - 1.0))
+                        {
+                            log::Info(L"explore: \"{}\" is better reached at another spot of its box, {:.0f} cm from its middle: {:.0f} cm, {}{}", t.label,
+                                      FlatDistance(spot, centre), candidate.length, candidate.partial ? L"partial" : L"whole",
+                                      spotThrough ? L", through " + obj::ObjectName(spotThrough) : std::wstring());
+                            t.approach = spot;
+                            t.hasApproach = true;
+                            route = candidate;
+                            road = spotRoad;
+                            through = spotThrough;
+                            rank = spotRank;
+                        }
+                    }
+                }
+            }
             t.routeAt = now;
             t.routeFrom = here;
             t.hasRoute = route.valid;
             t.routeLength = route.length;
             t.routeNext = route.next;
-            UObject* barring = route.valid ? WayBarring(pawn, here, road, t) : nullptr;
-            t.routeBarred = barring != nullptr;
-            if (barring) t.hasRoute = false;
-            if (barring != t.barredBy)
+            if (through != t.roadThrough)
             {
-                if (barring)
-                    log::Info(L"explore: the mesh's way to \"{}\", {:.0f} cm, runs through {}, which the scene is waiting on, and the target is not beyond it; "
-                              L"by sight it is {:.0f} cm",
-                              t.label, route.length, obj::ObjectName(barring), t.distance);
-                else
-                    log::Info(L"explore: the mesh's way to \"{}\" is clear of {}", t.label, obj::ObjectName(t.barredBy));
-                t.barredBy = barring;
+                if (through)
+                    log::Info(L"explore: the road to \"{}\", {:.0f} cm, runs through {}, which the scene is waiting on", t.label, route.length,
+                              obj::ObjectName(through));
+                t.roadThrough = through;
             }
         }
 
@@ -1476,7 +1590,7 @@ namespace qa::features
                 if (FlatDistance(here, g_walkLastPosition) > 20.0) g_walkMovingAt = now;
                 log::Info(L"explore: walking to \"{}\": {:.0f} cm straight, way {} {:.0f} cm, corner {:.0f} cm at {:.0f} deg, lean {:.0f}, speed {:.0f}, moved "
                           L"{:.0f} cm",
-                          target->label, target->distance, target->hasRoute ? L"through" : (target->routeBarred ? L"by sight" : L"unknown"),
+                          target->label, target->distance, target->hasRoute ? L"through" : L"unknown",
                           target->routeLength, FlatDistance(here, goal), BearingDegrees(here, goal, yaw), g_walkLean, speed,
                           FlatDistance(here, g_walkLastPosition));
                 g_walkLoggedAt = now;
@@ -1528,7 +1642,7 @@ namespace qa::features
             if (route.valid)
                 log::Info(L"explore: the ground for \"{}\" is {:.0f} cm across from it and {:+.0f} cm in height; the way there is {} and ends {:.0f} cm from "
                           L"that ground",
-                          target->label, FlatDistance(route.goal, target->position), route.goal.z - target->position.z,
+                          target->label, FlatDistance(route.goal, Aim(*target)), route.goal.z - Aim(*target).z,
                           route.partial ? L"partial" : L"complete", Distance(route.end, route.goal));
             if (route.valid && target->way && target->hasBox)
             {
