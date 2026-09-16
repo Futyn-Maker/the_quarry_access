@@ -39,6 +39,8 @@ namespace qa::input
     // Milliseconds since the player last pressed, held or moved anything. A large number
     // when the game does not have the focus or nothing has been touched yet.
     long long MsSinceInput();
+    // A key the mod's own hook took before the system saw it counts as the player's input too.
+    void NoteKeyboardActivity();
 
     // True while a key, button or stick is held down.
     bool InputHeld();

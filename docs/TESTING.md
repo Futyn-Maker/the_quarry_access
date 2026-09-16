@@ -38,7 +38,7 @@ Tester script (Russian UI):
 4. Press F8 again and immediately F7: speech stops.
 5. Press F6: the current screen is described.
 6. Press Ctrl+F9 to write a screen dump for bug reports.
-7. Press F3 with NVDA running: "Речь: SAPI." is spoken by the SAPI voice, and so is
+7. Press F3 with NVDA running, once: "Речь: SAPI." is spoken by the SAPI voice, and so is
    everything after it, whole sentences included; press F3 again: "Речь: NVDA." through NVDA.
    Quit with SAPI chosen and start the game again: the greeting comes through SAPI
    (`PreferSapi=1` in the ini). With no screen reader running F3 says "Программа чтения
@@ -53,8 +53,9 @@ Tester script (Russian UI):
 
 Expected log lines: `Tolk loaded; screen reader: NVDA`, `game locale: ru-RU; mod language: ru_RU`,
 `self-check: SMG_HUD_MENU_BUTTON_NEWGAME_000001 = "Новая игра"`, `self-check: control scheme MouseKeyboard`,
-`ready`, one `gamepad Gamepad_Special_Left + ... = ...` line per chord at start, one `hotkey: <command>
-(keyboard)` or `(gamepad)` line per press, no `ERROR`.
+`ready`, `keyboard hook installed: the mod's keys are taken ahead of the screen reader and the
+game`, one `gamepad Gamepad_Special_Left + ... = ...` line per chord at start, one `hotkey:
+<command> (keyboard)` or `(gamepad)` line per press, every press included, no `ERROR`.
 
 ## Menus
 

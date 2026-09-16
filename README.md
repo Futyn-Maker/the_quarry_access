@@ -58,7 +58,11 @@ During a fight the same keys serve the fight: N and P switch between its targets
 where the current one stands against the aim, and T switches the aim sound off and on. Outside
 a fight and outside walking the character they do nothing.
 
-All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`.
+All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`. The mod takes its keys
+ahead of the screen reader and the game, so a key that the screen reader or one of its
+add-ons has bound for itself still reaches the mod while the game is in front, and neither
+of them sees it. The exploration letters are taken only while the player walks the
+character or fights; everywhere else they go to the game as any other letter.
 
 Short tones complement speech where speed matters: a rising two-note tone marks a choice
 committing or a challenge won, a falling one a challenge lost; a quick-time event plays its

@@ -859,6 +859,11 @@ namespace qa::input
         return NowMs() - last;
     }
 
+    void NoteKeyboardActivity()
+    {
+        g_lastInputAt.store(NowMs(), std::memory_order_relaxed);
+    }
+
     bool InputHeld()
     {
         return GameWindowInForeground() && (AnyKeyDown(0x8000) || AnyPadInput());

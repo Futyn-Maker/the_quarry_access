@@ -9,6 +9,7 @@
 #include "features/Combat.hpp"
 #include "features/Exploration.hpp"
 #include "features/Subtitles.hpp"
+#include "hotkeys/KeyHook.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -124,6 +125,19 @@ namespace qa::hotkeys
         void PollKeyboard()
         {
             if (g_keys.empty()) return;
+            // The hook hands over the presses it took; the poll below is for when it could
+            // not be set.
+            if (keyhook::Active())
+            {
+                // The exploration letters are the game's, or a text field's, outside
+                // exploration and the fights; the hook leaves them alone there.
+                keyhook::SetContext(features::ExplorationActive() || features::CombatActive());
+                for (const int id : keyhook::TakePresses())
+                {
+                    if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
+                }
+                return;
+            }
             if (!GameWindowInForeground())
             {
                 for (auto& k : g_keys)
@@ -185,6 +199,11 @@ namespace qa::hotkeys
         }
     }
 
+    void Uninstall()
+    {
+        keyhook::Uninstall();
+    }
+
     std::wstring CommandName(Command command)
     {
         switch (command)
@@ -227,6 +246,19 @@ namespace qa::hotkeys
         Bind(s.keyDevDumpTree, Command::DevDumpTree);
         Bind(s.keyDevTrace, Command::DevTrace);
         Bind(s.keyDevLogLevel, Command::DevLogLevel);
+
+        std::vector<keyhook::Binding> bindings;
+        for (size_t i = 0; i < g_keys.size(); ++i)
+        {
+            const Command c = g_keys[i].command;
+            const bool contextual =
+                c == Command::NextTarget || c == Command::PreviousTarget || c == Command::Where || c == Command::Walk || c == Command::Beacon;
+            bindings.push_back(keyhook::Binding{g_keys[i].vk, g_keys[i].ctrl, g_keys[i].alt, g_keys[i].shift, static_cast<int>(i), contextual});
+        }
+        if (keyhook::Install(bindings))
+            log::Info(L"keyboard hook installed: the mod's keys are taken ahead of the screen reader and the game");
+        else
+            log::Error(L"the keyboard hook could not be set; the mod's keys are polled, and a key the screen reader takes for itself is lost");
 
         g_padHold = str::Trim(s.chordHold);
         input::SetChordHold(g_padHold);

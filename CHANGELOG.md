@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The mod's keys are taken by a keyboard hook of its own ahead of the screen reader and the game, on a thread of the mod's own. A screen reader add-on that binds a key for itself (an NVDA add-on takes F3 for "find next") took it before the game saw it, and F3 answered only when the add-on happened to miss; now every press reaches the mod, and neither the screen reader nor the game sees the mod's keys while the game is in front. The exploration letters are taken only while they serve, in exploration and in a fight, and go to the game elsewhere. The old polling stays as the fallback when the hook cannot be set.
 - SAPI speech is the mod's own: the voice lives on a thread with its own COM apartment and message loop, so nothing the game thread does can hold a sentence up or cut it, and the voice follows the game's language when the system's default voice speaks another. Tolk keeps the screen readers, and a braille display keeps its text while SAPI speaks.
 - A quick-time event's tone sounds again the moment the game begins to take the press. The game ignores a press until its marker has finished arriving, 0.8 s after it appears, for everyone; a sighted player sees the marker settle, and the tone now marks that moment.
 - The prompt to close the phone camera, the binoculars and the rifle scope is read as the overlay appears; the overlays were silent, and the phone's own camera labels stay so.

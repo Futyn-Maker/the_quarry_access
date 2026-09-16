@@ -74,6 +74,7 @@ public:
 
     ~QuarryAccessMod() override
     {
+        qa::hotkeys::Uninstall();
         qa::input::ForgetWalkKeys();
         qa::sapi::Stop();
         qa::tolk::Unload();
