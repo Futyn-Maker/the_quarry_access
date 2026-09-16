@@ -206,16 +206,19 @@ passed at N s`,
 Tester script (Russian UI). Start the prologue: the first scene the player walks in is the
 crashed car at night.
 
-1. When the character comes under your control you hear "Рядом." followed by what can be
+1. When the character comes under your control the game's own prompt about the keys or the
+   stick is read, then, once a scene, the mod's keys: "N и P выбирают цель, G идёт к ней, H
+   говорит, где она, T включает и выключает маяк." (after a gamepad press the D-pad and X are
+   named instead), and then the thing the beacon leads to, the nearest not yet reached:
+   "Макс, 3 м, впереди". Nothing else is read by itself: F6 lists everything that can be
    walked to, nearest first, each as the game names it with its distance in metres and its
-   direction from the camera: "Макс, 3 м, впереди", "Багажник, 6 м, справа". Everything the
-   scene has opened up is there from the start, however far away it is. A use location
-   standing at a place is one entry named "Листовка: Осмотреть"; where the scene gives an
-   interaction no name of its own, the name it carries in the level is read instead
-   ("Camp Map: Взаимодействовать"). The nearest thing not yet
-   reached is targeted by itself and a beacon starts: it sounds in the ear on the side of the
-   next turn of the walkable route, rises in pitch as you get closer and drops an octave when
-   the way is behind you. Walk toward it with W, A, S, D.
+   direction from the camera, "Багажник, 6 м, справа". Everything the scene has opened up is
+   there from the start, however far away it is. A use location standing at a place is one
+   entry named "Листовка: Осмотреть"; where the scene gives an interaction no name of its
+   own, the name it carries in the level is read instead ("Camp Map: Взаимодействовать").
+   The beacon starts on the target: it sounds in the ear on the side of the next turn of the
+   walkable route, rises in pitch as you get closer and drops an octave when the way is
+   behind you. Walk toward it with W, A, S, D.
 2. Press N: the next thing is said with its distance along the route and the beacon follows
    it; P goes back; the order stays the same however you move. H says the target again with
    its current distance and direction. T turns the beacon off ("Маяк выключен.") and on. F6
@@ -300,7 +303,7 @@ between 1.6 and 8 seconds each. Settings → Доступность → Помо
 "Вкл." both leave the aiming to you, "Автоматический" lets the game aim and fire.
 
 1. When the fight begins you hear the game's own prompt "ВЫСТРЕЛИТЬ, левая кнопка мыши",
-   then "Прицеливание." and what there is to shoot at as it is seen: "Существо, 4 м, слева." for
+   then "Прицеливание." and nothing more; what there is to shoot at is a key away. H says it as it is seen: "Существо, 4 м, слева." for
    a werewolf, "Объект, 6 м, впереди." for a bottle or a table, "Цель, ..." for a person, who is
    never named; with two, "Целей: 2." comes first. In the story fights "Таймер." follows for the
    timer bar. The game draws no crosshair: your aim is the torch beam on the

@@ -100,6 +100,8 @@ namespace qa::features
         Vec g_leftAtPosition;
         bool g_exploring = false;
         bool g_inLoco = false;
+        double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
+        double g_hintSaidAt = -1000.0; // when they were last said
         bool g_beacon = true;
         double g_beaconAt = -10.0;
         double g_destinationsScannedAt = -10.0;
@@ -1214,6 +1216,17 @@ namespace qa::features
             return str::JoinSentences(parts);
         }
 
+        // What the mod's keys do here, named for the device in the player's hands.
+        std::wstring HintText()
+        {
+            const auto& s = cfg::Get();
+            if (input::CurrentScheme() == input::Scheme::Gamepad)
+                return locale::Mod(L"explore.hint", {input::KeyDisplayName(s.padExploreNext), input::KeyDisplayName(s.padExplorePrevious),
+                                                     input::KeyDisplayName(s.padExploreWalk), input::KeyDisplayName(s.padExploreWhere),
+                                                     input::KeyDisplayName(s.padExploreBeacon)});
+            return locale::Mod(L"explore.hint", {s.keyNextTarget, s.keyPreviousTarget, s.keyWalk, s.keyWhere, s.keyBeacon});
+        }
+
         void Select(Target* t, UObject* pawn, const Vec& here, double yaw, bool say)
         {
             g_selected = t ? t->actor : nullptr;
@@ -1451,6 +1464,7 @@ namespace qa::features
                 {
                     g_exploring = false;
                     g_leftAt = now;
+                    g_hintDueAt = -1.0;
                     StopWalk(nullptr, false);
                     if (pawn) ActorLocation(pawn, g_leftAtPosition);
                 }
@@ -1536,15 +1550,15 @@ namespace qa::features
             if (!g_exploring)
             {
                 g_exploring = true;
-                if (!g_targets.empty())
+                if (cfg::Get().autoTarget)
                 {
-                    speech::Announce(ListText());
-                    if (cfg::Get().autoTarget)
-                    {
-                        auto it = std::find_if(g_targets.begin(), g_targets.end(), [](const Target& t) { return !t.reached; });
-                        if (it != g_targets.end()) Select(&*it, pawn, here, yaw, false);
-                    }
+                    auto it = std::find_if(g_targets.begin(), g_targets.end(), [](const Target& t) { return !t.reached; });
+                    if (it != g_targets.end()) Select(&*it, pawn, here, yaw, false);
                 }
+                // The keys are said after the game's own word about the stick or the movement
+                // keys, which it shows a moment after handing the character over, and then the
+                // target the beacon leads to. The rest of what is around is left to F6.
+                g_hintDueAt = now + 1.0;
             }
             else
             {
@@ -1560,6 +1574,18 @@ namespace qa::features
                     auto it = std::find_if(g_targets.begin(), g_targets.end(), [](const Target& t) { return !t.reached; });
                     if (it != g_targets.end()) Select(&*it, pawn, here, yaw, false);
                 }
+            }
+
+            if (g_hintDueAt > 0.0 && now >= g_hintDueAt)
+            {
+                g_hintDueAt = -1.0;
+                // Once a scene, not after every exchange in the middle of one.
+                if (now - g_hintSaidAt > 120.0)
+                {
+                    g_hintSaidAt = now;
+                    speech::Announce(HintText());
+                }
+                if (Target* chosen = Selected()) speech::Announce(TargetText(*chosen, here, yaw));
             }
 
             Target* target = Selected();

@@ -883,17 +883,9 @@ namespace qa::features
                       sign, pawn ? obj::ObjectName(pawn) : L"<no pawn>", RegisteredName(pawn), WeaponText(pawn), setting, wantedState, c.targets.size(),
                       str::Join(names, L", "), c.hasTimeLimit ? std::format(L"{:.1f} s", c.timeLimit) : L"none",
                       c.status ? obj::ObjectName(c.status) : L"<none>", c.shots, beam.placed ? beam.source : L"nothing");
+            // Only the word for aiming: a fight leaves seconds, and they belong to the game's
+            // own prompt and the aim sound. What there is to shoot at is a key away (H, F6).
             speech::Announce(locale::Mod(c.automatic ? L"combat.auto" : L"combat.aim"));
-            // What is there to shoot at, as it is seen: the creatures and the things by their
-            // kind, a person only as a target, each with its distance and its side.
-            const auto standing = Standing(c);
-            if (standing.size() > 1) speech::Announce(locale::Mod(L"combat.targets", std::to_wstring(standing.size())));
-            for (const Target* t : standing)
-            {
-                if (standing.size() == 1 && t->kind == Kind::Person) break;
-                const Sight s = Look(beam, t->actor);
-                if (s.placed) speech::Announce(ItemText(*t, s));
-            }
         }
 
         // The aim sound: a blip in the ear on the side of the target, higher when it is above
