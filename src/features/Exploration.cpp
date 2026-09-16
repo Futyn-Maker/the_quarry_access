@@ -1590,9 +1590,8 @@ namespace qa::features
                 if (FlatDistance(here, g_walkLastPosition) > 20.0) g_walkMovingAt = now;
                 log::Info(L"explore: walking to \"{}\": {:.0f} cm straight, way {} {:.0f} cm, corner {:.0f} cm at {:.0f} deg, lean {:.0f}, speed {:.0f}, moved "
                           L"{:.0f} cm",
-                          target->label, target->distance, target->hasRoute ? L"through" : L"unknown",
-                          target->routeLength, FlatDistance(here, goal), BearingDegrees(here, goal, yaw), g_walkLean, speed,
-                          FlatDistance(here, g_walkLastPosition));
+                          target->label, target->distance, target->hasRoute ? L"through" : L"unknown", target->routeLength, FlatDistance(here, goal),
+                          BearingDegrees(here, goal, yaw), g_walkLean, speed, FlatDistance(here, g_walkLastPosition));
                 g_walkLoggedAt = now;
                 g_walkLastPosition = here;
             }
@@ -1642,8 +1641,8 @@ namespace qa::features
             if (route.valid)
                 log::Info(L"explore: the ground for \"{}\" is {:.0f} cm across from it and {:+.0f} cm in height; the way there is {} and ends {:.0f} cm from "
                           L"that ground",
-                          target->label, FlatDistance(route.goal, Aim(*target)), route.goal.z - Aim(*target).z,
-                          route.partial ? L"partial" : L"complete", Distance(route.end, route.goal));
+                          target->label, FlatDistance(route.goal, Aim(*target)), route.goal.z - Aim(*target).z, route.partial ? L"partial" : L"complete",
+                          Distance(route.end, route.goal));
             if (route.valid && target->way && target->hasBox)
             {
                 Vec middle;
