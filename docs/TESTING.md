@@ -293,6 +293,13 @@ crashed car at night.
     to the list after being hidden is not announced as new again.
 14. Press F8 in the main menu after leaving a game, and again while exploring: the help is
     read both times and the game keeps running.
+15. Prologue, the woods after the flyer: select «Сундук: Изучить» or «Клетка: Осмотреть». Each is
+    said with its distance as the crow flies ("Сундук: Изучить, 37 м", not the 100 m of the trail),
+    and the log says the mesh's way to it runs through T_HearCloseNoise, which the scene is
+    waiting on, and that it goes by sight. G walks toward it directly, the beacon points the same
+    way, and the scene does not move on while it walks; «Идти по тропе» still moves it on when
+    you choose that. A road that must pass through a waiting place to reach its target, as
+    through a doorway the scene watches, is still walked as before.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>
@@ -301,7 +308,8 @@ style <n>` for every prompt the game shows (the destination prompts carry the
 `explore: point of interest found`, `explore: reading pane opened`,
 `input: the gamepad the game reads through ... is shared with the mod`, one
 `explore: a way ... is missed by the nearest road by ... cm and is offered/not offered` per
-way, and no `ERROR`.
+way, `explore: the mesh's way to "...", N cm, runs through ..., which the scene is waiting on, and
+the target is not beyond it; by sight it is N cm` for the woods chest and cage, and no `ERROR`.
 
 ## Real-time combat
 

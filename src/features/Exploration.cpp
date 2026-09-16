@@ -69,6 +69,10 @@ namespace qa::features
             double routeLength = 0.0; // centimetres along the way
             Vec routeNext;            // the corner to walk to now
             Vec routeFrom;            // where the character was when it was asked
+            // The mesh's way runs through a place the scene is waiting on that the target is
+            // not beyond, so it is not taken and the target is walked to by sight.
+            bool routeBarred = false;
+            UObject* barredBy = nullptr;
         };
 
         // What the navigation mesh answers for one question.
@@ -318,6 +322,20 @@ namespace qa::features
             return ptr && obj::ReadStringAt(ptr, obj::StructMember(prop, L"ActorName"), out);
         }
 
+        // Whether an actor is the one a flow calls by this name. A flow names actors by the
+        // name in their register, the name they were given in the editor, and a cooked level
+        // can number the actor itself apart from it: the chest of the prologue woods is the
+        // actor UL_FindOldTrunk_2 registered as UL_FindOldTrunk, and the game turns it on by
+        // the register. So the register is what a reference is matched against, and the
+        // actor's own name serves where the two are one.
+        bool IsNamed(UObject* actor, const std::wstring& named)
+        {
+            if (!obj::IsLive(actor)) return false;
+            if (obj::ObjectName(actor) == named) return true;
+            std::wstring registered;
+            return ReadActorReference(actor, L"ActorRegister", registered) && registered == named;
+        }
+
         enum class Verdict
         {
             Holds,
@@ -417,8 +435,7 @@ namespace qa::features
             {
                 std::wstring named;
                 if (!ReadActorReference(action, L"UseLocationName", named)) continue;
-                if (std::none_of(availableUses.begin(), availableUses.end(), [&](UObject* use) { return obj::IsLive(use) && obj::ObjectName(use) == named; }))
-                    continue;
+                if (std::none_of(availableUses.begin(), availableUses.end(), [&](UObject* use) { return IsNamed(use, named); })) continue;
                 UObject* schema = obj::Outer(action);
                 UObject* state = schema ? obj::Outer(schema) : nullptr;
                 if (!obj::IsLive(state)) continue;
@@ -465,7 +482,7 @@ namespace qa::features
             if (wanted.empty()) return out;
             for (auto* volume : obj::FindAllLive(L"TriggerVolumeSMG"))
             {
-                if (std::find(wanted.begin(), wanted.end(), obj::ObjectName(volume)) != wanted.end()) out.push_back(volume);
+                if (std::any_of(wanted.begin(), wanted.end(), [&](const std::wstring& name) { return IsNamed(volume, name); })) out.push_back(volume);
             }
             if (out.size() != g_ways.size())
             {
@@ -504,6 +521,7 @@ namespace qa::features
         bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight);
         bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high);
         bool InsideVolume(UObject* pawn, UObject* volume, const Vec& low, const Vec& high, int& storey);
+        UObject* WayBarring(UObject* pawn, const Vec& here, const std::vector<Vec>& road, const Target& target);
 
         std::vector<Target> Gather(UObject* pawn, const Vec& here, double yaw, double now)
         {
@@ -668,7 +686,9 @@ namespace qa::features
                     if (++asked > 10) break;
                     std::vector<Vec> road;
                     FindRoute(pawn, here, t, &road);
-                    if (road.size() >= 2) roads.push_back(std::move(road));
+                    // A road the walk will not take, because it runs through a way the target
+                    // is not beyond, sets nothing off and hides nothing.
+                    if (road.size() >= 2 && !WayBarring(pawn, here, road, t)) roads.push_back(std::move(road));
                 }
                 const double radius = WalkingRadius(pawn);
                 for (const auto& way : ways)
@@ -724,6 +744,8 @@ namespace qa::features
                 it->routeLength = old.routeLength;
                 it->routeNext = old.routeNext;
                 it->routeFrom = old.routeFrom;
+                it->routeBarred = old.routeBarred;
+                it->barredBy = old.barredBy;
                 kept.push_back(*it);
                 it->actor = nullptr; // consumed
             }
@@ -1082,17 +1104,81 @@ namespace qa::features
             return best;
         }
 
+        // Whether a road, walked at the character's height, passes through a volume.
+        bool RoadEnters(UObject* volume, const Vec& low, const Vec& high, const std::vector<Vec>& road, double halfHeight)
+        {
+            for (size_t i = 1; i < road.size(); ++i)
+            {
+                const Vec& a = road[i - 1];
+                const Vec& b = road[i];
+                const int steps = std::max(1, static_cast<int>(Distance(a, b) / 50.0));
+                for (int step = 0; step <= steps; ++step)
+                {
+                    const double f = static_cast<double>(step) / steps;
+                    Vec p{a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f};
+                    // The point measured is on the character's upright line, at the height of
+                    // the volume's middle kept within the capsule, as when the character stands.
+                    p.z = std::clamp((low.z + high.z) / 2.0, p.z, p.z + 2.0 * halfHeight);
+                    if (p.x < low.x || p.x > high.x || p.y < low.y || p.y > high.y || p.z < low.z || p.z > high.z) continue;
+                    if (PointInVolume(volume, p, low, high)) return true;
+                }
+            }
+            return false;
+        }
+
+        // The place the scene is waiting on that the mesh's road to a target runs through
+        // while the target is not beyond it. Such a place is where the scene moves on: the
+        // prologue woods end the moment the character steps into the volume at the end of
+        // the trail, and the mesh's only road to the chest below the trail went through it,
+        // while the chest stands outside and a player who sees it walks straight there. A
+        // road like that is not taken. Whether the target is beyond the place is the straight
+        // line's word: when the line from the character to the target passes through the
+        // volume as well, the target is reached through it whichever way, and the road
+        // stands.
+        UObject* WayBarring(UObject* pawn, const Vec& here, const std::vector<Vec>& road, const Target& target)
+        {
+            if (target.way || road.size() < 2) return nullptr;
+            Vec middle;
+            double halfHeight = 90.0;
+            CapsuleSpan(pawn, middle, halfHeight);
+            for (auto* volume : g_ways)
+            {
+                if (!obj::IsLive(volume) || volume == target.actor) continue;
+                Vec low;
+                Vec high;
+                if (!TriggerBox(volume, low, high)) continue;
+                if (!RoadEnters(volume, low, high, road, halfHeight)) continue;
+                if (RoadEnters(volume, low, high, std::vector<Vec>{here, target.position}, halfHeight)) continue;
+                return volume;
+            }
+            return nullptr;
+        }
+
         // Asks the mesh again when the answer has aged or the character has walked on. A
         // maximum age of zero asks every time.
         void EnsureRoute(UObject* pawn, const Vec& here, Target& t, double now, double maxAge)
         {
-            if (t.hasRoute && now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0) return;
-            const Route route = FindRoute(pawn, here, t, nullptr);
+            if (now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0) return;
+            std::vector<Vec> road;
+            const Route route = FindRoute(pawn, here, t, &road);
             t.routeAt = now;
             t.routeFrom = here;
             t.hasRoute = route.valid;
             t.routeLength = route.length;
             t.routeNext = route.next;
+            UObject* barring = route.valid ? WayBarring(pawn, here, road, t) : nullptr;
+            t.routeBarred = barring != nullptr;
+            if (barring) t.hasRoute = false;
+            if (barring != t.barredBy)
+            {
+                if (barring)
+                    log::Info(L"explore: the mesh's way to \"{}\", {:.0f} cm, runs through {}, which the scene is waiting on, and the target is not beyond it; "
+                              L"by sight it is {:.0f} cm",
+                              t.label, route.length, obj::ObjectName(barring), t.distance);
+                else
+                    log::Info(L"explore: the mesh's way to \"{}\" is clear of {}", t.label, obj::ObjectName(t.barredBy));
+                t.barredBy = barring;
+            }
         }
 
         // How far the walkable ground reaches around the character, which is what a player
@@ -1371,8 +1457,9 @@ namespace qa::features
                 if (FlatDistance(here, g_walkLastPosition) > 20.0) g_walkMovingAt = now;
                 log::Info(L"explore: walking to \"{}\": {:.0f} cm straight, way {} {:.0f} cm, corner {:.0f} cm at {:.0f} deg, lean {:.0f}, speed {:.0f}, moved "
                           L"{:.0f} cm",
-                          target->label, target->distance, target->hasRoute ? L"through" : L"unknown", target->routeLength, FlatDistance(here, goal),
-                          BearingDegrees(here, goal, yaw), g_walkLean, speed, FlatDistance(here, g_walkLastPosition));
+                          target->label, target->distance, target->hasRoute ? L"through" : (target->routeBarred ? L"by sight" : L"unknown"),
+                          target->routeLength, FlatDistance(here, goal), BearingDegrees(here, goal, yaw), g_walkLean, speed,
+                          FlatDistance(here, g_walkLastPosition));
                 g_walkLoggedAt = now;
                 g_walkLastPosition = here;
             }
