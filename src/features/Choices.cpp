@@ -241,6 +241,30 @@ namespace qa::features
             return most;
         }
 
+        // What is done once a choice has been taken, whichever way it was taken: the tone, the
+        // word after the key is released, and, for a four-way choice, a fresh reading, since
+        // the next of a chain comes back on the same widget with a option gone from it.
+        void Committed(Choice& choice, const std::wstring& text)
+        {
+            sounds::Play(sounds::Cue::Confirm);
+            if (!text.empty()) g_pendingChosen = locale::Mod(L"choice.chosen", text);
+            if (choice.kind != Kind::Multi)
+            {
+                choice.finished = true;
+                return;
+            }
+            choice.announced = false;
+            choice.headingSaid = false;
+            choice.seenAt = -1.0;
+            choice.labels.clear();
+            choice.lastCurrent.clear();
+            // The bar is left full so that the same commit is not read twice, once by the
+            // button and once by the bar it also fills.
+            choice.commit = 1.0;
+            for (auto& option : choice.options)
+                option.current = option.chosen = false;
+        }
+
         // The option labels alone: what identifies one choice against the next.
         std::wstring Labels(const Choice& choice)
         {
@@ -457,15 +481,23 @@ namespace qa::features
                 if (!keys.empty()) speech::Announce(keys);
             }
 
-            // The option the player is committing lights up; the chosen one stays lit.
+            // The option lights up under the stick pushed toward it and under the mouse
+            // pointer alike, and either way it is the one the player is on. It is taken by the
+            // choice marking it chosen or by the click of its button.
+            std::wstring taken;
             for (auto& option : choice.options)
             {
                 if (!obj::IsLive(option.widget)) continue;
                 bool current = false;
+                bool pointer = false;
                 bool chosen = false;
+                bool clicked = false;
                 obj::ReadBool(option.widget, L"bCurrentChoice", current);
+                obj::ReadBool(option.widget, L"bIsMouseHighlighted", pointer);
                 obj::ReadBool(option.widget, L"bChosen", chosen);
-                if (current && !option.current && Shown(option.widget))
+                obj::ReadBool(option.widget, L"bIsClicked", clicked);
+                const bool lit = current || pointer;
+                if (lit && !option.current && Shown(option.widget))
                 {
                     const auto text = OptionText(option.widget);
                     if (!text.empty())
@@ -474,17 +506,20 @@ namespace qa::features
                         speech::Focus(text);
                     }
                 }
-                if (chosen && !option.chosen)
+                if ((chosen || clicked) && !option.chosen)
                 {
-                    sounds::Play(sounds::Cue::Confirm);
-                    const auto text = OptionText(option.widget);
-                    if (!text.empty()) g_pendingChosen = locale::Mod(L"choice.chosen", text);
-                    choice.finished = true;
-                    log::Info(L"choices: chosen \"{}\"", text);
+                    taken = OptionText(option.widget);
+                    log::Info(L"choices: chosen \"{}\"{}", taken, clicked ? L" by its button" : L"");
                 }
-                option.current = current;
-                option.chosen = chosen;
+                option.current = lit;
+                option.chosen = option.chosen || chosen || clicked;
             }
+            if (!taken.empty())
+            {
+                Committed(choice, taken);
+                return;
+            }
+            if (choice.finished) return;
             // A four-way choice is taken by holding a direction until its bar fills, and the
             // game marks it nowhere else, so the bar is what tells of the commit. The choice is
             // then read afresh, since the next of a chain comes back on the same widget.
@@ -494,17 +529,12 @@ namespace qa::features
                 if (commit >= 0.999 && choice.commit < 0.999)
                 {
                     log::Info(L"choices: held to the end on \"{}\"", choice.lastCurrent);
-                    sounds::Play(sounds::Cue::Confirm);
-                    if (!choice.lastCurrent.empty()) g_pendingChosen = locale::Mod(L"choice.chosen", choice.lastCurrent);
-                    choice.announced = false;
-                    choice.headingSaid = false;
-                    choice.seenAt = -1.0;
-                    choice.labels.clear();
-                    choice.lastCurrent.clear();
-                    for (auto& o : choice.options)
-                        o.current = o.chosen = false;
+                    Committed(choice, choice.lastCurrent);
                 }
-                choice.commit = commit;
+                else
+                {
+                    choice.commit = commit;
+                }
                 if (!choice.announced) return;
             }
 

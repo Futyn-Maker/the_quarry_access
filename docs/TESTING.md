@@ -164,6 +164,8 @@ Tester script (Russian UI). Play the prologue from the start.
    another. Push a stick toward a corner: that option is named as it lights up. Hold it: a
    two-note tone marks the commit and "<вариант>, выбрано." follows the release. The
    keyboard does nothing here. Press F8: the help says all of this.
+   With a mouse: move the pointer over a corner and the option there is named as it lights up;
+   click it and the tone and "<вариант>, выбрано." follow, with no holding.
 7. Press F6 during a choice: the choice is read again; during a prompt: the prompt.
 8. After a choice, pause and return to the game: the choice is not read again.
 9. The breakers of the Hackett basement, chapter 8, after "ПОМОЧЬ ДЖЕЙКОБУ": each of the
