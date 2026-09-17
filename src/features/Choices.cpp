@@ -21,6 +21,7 @@
 
 namespace qa::features
 {
+    using RC::Unreal::FProperty;
     using RC::Unreal::UObject;
 
     namespace
@@ -62,6 +63,8 @@ namespace qa::features
             bool finished = false;    // decided: nothing more to read until new options come
             std::wstring keys;        // the key hints last read
             std::wstring message;     // the countdown message or the time remaining last read
+            std::wstring lastCurrent; // the option the player was last pushing toward
+            double commit = 0.0;      // how far that push had come at the last poll
         };
 
         std::vector<Choice> g_choices;
@@ -76,11 +79,16 @@ namespace qa::features
             {L"ChoiceBWidgetInstance", L"ChoiceRight", L"dir.right", L"ButtonPromptRight", L"ChoiceCommitRight"},
             {L"ChoiceTimeoutWidgetInstance", L"ChoiceTimeout", nullptr, nullptr, nullptr},
         };
+        // A four-way choice puts its options in the four corners of the screen, not above,
+        // below and beside one another, and the widgets are not named after the corners they
+        // sit in: the top row holds ButtonPromptDown and then ButtonPromptUp, the bottom row
+        // ButtonPromptLeft and then ButtonPromptRight. The places below are those corners, in
+        // reading order, as the widget's own layout sets them out.
         const Option kMulti[] = {
-            {L"ChoiceWidgetInstance", L"ButtonPromptUp", L"dir.up", nullptr, nullptr},
-            {L"ChoiceWidgetInstance", L"ButtonPromptRight", L"dir.right", nullptr, nullptr},
-            {L"ChoiceWidgetInstance", L"ButtonPromptDown", L"dir.down", nullptr, nullptr},
-            {L"ChoiceWidgetInstance", L"ButtonPromptLeft", L"dir.left", nullptr, nullptr},
+            {L"ChoiceWidgetInstance", L"ButtonPromptDown", L"dir.topleft", nullptr, nullptr},
+            {L"ChoiceWidgetInstance", L"ButtonPromptUp", L"dir.topright", nullptr, nullptr},
+            {L"ChoiceWidgetInstance", L"ButtonPromptLeft", L"dir.bottomleft", nullptr, nullptr},
+            {L"ChoiceWidgetInstance", L"ButtonPromptRight", L"dir.bottomright", nullptr, nullptr},
         };
 
         // The cage doors of the Hackett basement that stand open, which the room shows plainly
@@ -211,6 +219,26 @@ namespace qa::features
             if (!obj::ReadObject(choice.widget, option.prompt, prompt) || !Shown(prompt)) return {};
             const auto action = PromptAction(prompt);
             return ui::PromptKeyName(prompt, action.empty() ? std::wstring(option.action) : action);
+        }
+
+        // How far the option the player is pushing toward has come to being taken. A four-way
+        // choice is committed by holding, and the game keeps one scalar per option, full when
+        // the option is taken. It never marks an option chosen the way a two-way choice does,
+        // so this is the only word the game gives that a choice has been made.
+        double CommitFraction(const Choice& choice)
+        {
+            UObject* data = nullptr;
+            if (!obj::ReadObject(choice.widget, L"InfoDataInstance", data) || !obj::IsLive(data)) return 0.0;
+            auto* prop = obj::FindProperty(data, L"CommitScalars");
+            if (!prop) return 0.0;
+            double most = 0.0;
+            obj::ForEachArrayElement(data, prop,
+                                     [&](void* element, FProperty* inner)
+                                     {
+                                         double value = 0.0;
+                                         if (obj::ReadFloatAt(element, inner, value) && value > most) most = value;
+                                     });
+            return most;
         }
 
         // The option labels alone: what identifies one choice against the next.
@@ -440,7 +468,11 @@ namespace qa::features
                 if (current && !option.current && Shown(option.widget))
                 {
                     const auto text = OptionText(option.widget);
-                    if (!text.empty()) speech::Focus(text);
+                    if (!text.empty())
+                    {
+                        choice.lastCurrent = text;
+                        speech::Focus(text);
+                    }
                 }
                 if (chosen && !option.chosen)
                 {
@@ -453,6 +485,29 @@ namespace qa::features
                 option.current = current;
                 option.chosen = chosen;
             }
+            // A four-way choice is taken by holding a direction until its bar fills, and the
+            // game marks it nowhere else, so the bar is what tells of the commit. The choice is
+            // then read afresh, since the next of a chain comes back on the same widget.
+            if (choice.kind == Kind::Multi)
+            {
+                const double commit = CommitFraction(choice);
+                if (commit >= 0.999 && choice.commit < 0.999)
+                {
+                    log::Info(L"choices: held to the end on \"{}\"", choice.lastCurrent);
+                    sounds::Play(sounds::Cue::Confirm);
+                    if (!choice.lastCurrent.empty()) g_pendingChosen = locale::Mod(L"choice.chosen", choice.lastCurrent);
+                    choice.announced = false;
+                    choice.headingSaid = false;
+                    choice.seenAt = -1.0;
+                    choice.labels.clear();
+                    choice.lastCurrent.clear();
+                    for (auto& o : choice.options)
+                        o.current = o.chosen = false;
+                }
+                choice.commit = commit;
+                if (!choice.announced) return;
+            }
+
             if (choice.finished) return;
 
             // The seconds left, once the game starts showing them.
@@ -563,11 +618,7 @@ namespace qa::features
             }
             else if (choice.kind == Kind::Multi)
             {
-                std::vector<std::wstring> keys;
-                for (const wchar_t* action : {L"TarotSelectionUp", L"TarotSelectionRight", L"TarotSelectionDown", L"TarotSelectionLeft"})
-                    keys.push_back(input::KeyForAction(action));
-                if (std::none_of(keys.begin(), keys.end(), [](const std::wstring& k) { return k.empty(); }))
-                    out.push_back(locale::Mod(L"help.multichoice", keys));
+                out.push_back(locale::Mod(L"help.multichoice"));
             }
         }
     }

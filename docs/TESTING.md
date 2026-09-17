@@ -158,22 +158,25 @@ Tester script (Russian UI). Play the prologue from the start.
    with nothing held, the game shows nothing more and nothing is said.
 5. Before a choice on the road you may hear "Выбор через 5 с" and then "Скоро придётся сделать
    выбор!": the countdown is read when it appears and when its wording changes, not every second.
-6. At the tarot or any four-way choice: "Выбор." then each option with its place ("Вверх: ...",
-   "Вправо: ...", "Вниз: ...", "Влево: ..."). Press F8: the keys of the four places.
+6. At the tarot or any four-way choice: "Выбор." then each option with its corner
+   ("Сверху слева: ...", "Сверху справа: ...", "Снизу слева: ...", "Снизу справа: ..."), in that
+   order. The game sets these options in the corners of the screen, not above and beside one
+   another. Push a stick toward a corner: that option is named as it lights up. Hold it: a
+   two-note tone marks the commit and "<вариант>, выбрано." follows the release. The
+   keyboard does nothing here. Press F8: the help says all of this.
 7. Press F6 during a choice: the choice is read again; during a prompt: the prompt.
 8. After a choice, pause and return to the game: the choice is not read again.
 9. The breakers of the Hackett basement, chapter 8, after "ПОМОЧЬ ДЖЕЙКОБУ": each of the
    four-way choices is read as "Выбор. На клетках номера: в 3 Джейкоб, средняя 5 пуста, в 7
-   оборотень." and then the four breakers with their places. The line comes with every one
+   оборотень." and then the four breakers by corner, "Сверху слева: Переключатель 1."
+   and so on, which is where the box shows them. The line comes with every one
    of these choices, the first breaker and the second, in every round, and F6 repeats it. It
    is not said at the "БРОСИТЬ / ПРОДОЛЖИТЬ" choice between rounds, nor at any other
    choice in the game.
-10. At those breakers, push a direction and hold it: the option is named as the game highlights
-    it, a short two-note tone marks the commit, and "<переключатель>, выбрано." follows when the
-    direction is released. A press without a hold only names the option. Press F8: the help
-    names the four directions and says to hold. After a door has opened, the next round adds
-    "Уже открыто: 3." for the doors that stand open, and the game itself offers only the
-    breakers not yet flipped, so three are read where there were four.
+10. At those breakers the numbers painted on the box sit in the same corners as the options:
+    1 upper left, 2 upper right, 3 lower left, 4 lower right. After a door has opened, the next
+    round adds "Уже открыто: 3." for the doors that stand open, and where the game offers
+    only the breakers not yet flipped, three are read where there were four.
 
 Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
 ChoiceCommitLeft`, `choices: ... announced, its phrases still to come` and then `choices: ...
