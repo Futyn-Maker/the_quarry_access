@@ -379,7 +379,11 @@ above name what the game held.
     nothing is said. The log has `combat: the shot line has been on target N for a fifth of a
     second, the word to fire`.
 7. The shooting range, chapter 2: nine targets, six bottles and three melons, all about 13 m
-    away, so H says 13 m for every one of them; the character does not walk here. The sound
+    away, so H says 13 m for every one of them; the character does not walk here. The aim
+    assist's lock reaches 7 m, so nothing is locked here whatever the setting. A bottle is five
+    centimetres wide, a fifth of a degree at that range, so the double ping on a bottle needs a
+    steady stick; a melon is three times as wide. The `combat: begins` line names each target's
+    bodies (`bodies: Capsule (CapsuleComponent), Mesh (SkeletalMeshComponent)`). The sound
     leads along the row; with the line between two bottles it leads to the nearer one. Hold
     the double ping on a bottle or a melon and fire, and fire once more with the blips fast but
     no double ping: "Попадание." or "Промах." answers each, and the log at the shot shows the

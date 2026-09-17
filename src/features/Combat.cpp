@@ -336,51 +336,87 @@ namespace qa::features
             return true;
         }
 
-        // The bodies of a target a shot can meet: its mesh and its capsule, whichever it has.
+        // The bodies of a target a shot can meet: every component of it that can collide,
+        // asked for by class. Their names are the blueprint's own and cannot be guessed: the
+        // bottles of the shooting range carry their hit body as a capsule named "Capsule",
+        // five centimetres wide, under a mesh that has no collision of its own, while the
+        // melons' mesh collides by itself.
         std::vector<UObject*> Bodies(UObject* actor)
         {
             std::vector<UObject*> bodies;
-            for (const wchar_t* name : {L"BodyMesh", L"Mesh", L"CapsuleComponent", L"StaticMeshComponent", L"RootComponent"})
-            {
-                UObject* component = nullptr;
-                if (!obj::FindProperty(actor, name) || !obj::ReadObject(actor, name, component) || !obj::IsLive(component)) continue;
-                if (!obj::IsA(component, L"PrimitiveComponent")) continue;
-                if (std::find(bodies.begin(), bodies.end(), component) == bodies.end()) bodies.push_back(component);
-            }
+            auto* fn = obj::IsLive(actor) ? obj::FindFunction(actor, L"K2_GetComponentsByClass") : nullptr;
+            UObject* primitive = obj::FindObject(L"/Script/Engine.PrimitiveComponent");
+            if (!fn || !primitive) return bodies;
+            obj::Call(
+                actor, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ComponentClass") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = primitive;
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop || prop->GetName() != L"ReturnValue") continue;
+                        obj::ForEachArrayElement(params, prop,
+                                                 [&](void* element, FProperty* inner)
+                                                 {
+                                                     UObject* component = nullptr;
+                                                     if (obj::ReadObjectAt(element, inner, component) && obj::IsLive(component)) bodies.push_back(component);
+                                                 });
+                    }
+                });
             return bodies;
         }
 
-        // Whether the beam meets one of the target's bodies: the engine's own test against
-        // the target's collision.
+        std::wstring BodiesText(UObject* actor)
+        {
+            std::vector<std::wstring> names;
+            for (UObject* body : Bodies(actor))
+                names.push_back(std::format(L"{} ({})", obj::ObjectName(body), obj::ClassName(body)));
+            return names.empty() ? std::wstring(L"none") : str::Join(names, L", ");
+        }
+
+        // Whether a line meets one of the target's bodies: the engine's own test against the
+        // target's collision, against its shapes first and its triangles when it has no
+        // shapes.
         bool Meets(UObject* actor, const Vec& from, const Vec& to)
         {
             for (UObject* body : Bodies(actor))
             {
                 auto* fn = obj::FindFunction(body, L"K2_LineTraceComponent");
                 if (!fn) continue;
-                bool hit = false;
-                obj::Call(
-                    body, fn,
-                    [&](void* params)
-                    {
-                        for (auto* prop : fn->ForEachProperty())
+                for (const bool complex : {false, true})
+                {
+                    bool hit = false;
+                    obj::Call(
+                        body, fn,
+                        [&](void* params)
                         {
-                            if (!prop) continue;
-                            const auto name = prop->GetName();
-                            if (name == L"TraceStart")
-                                WriteVec(obj::ValuePtrAt(params, prop), prop, from);
-                            else if (name == L"TraceEnd")
-                                WriteVec(obj::ValuePtrAt(params, prop), prop, to);
-                        }
-                    },
-                    [&](void* params)
-                    {
-                        for (auto* prop : fn->ForEachProperty())
+                            for (auto* prop : fn->ForEachProperty())
+                            {
+                                if (!prop) continue;
+                                const auto name = prop->GetName();
+                                if (name == L"TraceStart")
+                                    WriteVec(obj::ValuePtrAt(params, prop), prop, from);
+                                else if (name == L"TraceEnd")
+                                    WriteVec(obj::ValuePtrAt(params, prop), prop, to);
+                                else if (name == L"bTraceComplex")
+                                    *static_cast<bool*>(obj::ValuePtrAt(params, prop)) = complex;
+                            }
+                        },
+                        [&](void* params)
                         {
-                            if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, hit);
-                        }
-                    });
-                if (hit) return true;
+                            for (auto* prop : fn->ForEachProperty())
+                            {
+                                if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, hit);
+                            }
+                        });
+                    if (hit) return true;
+                }
             }
             return false;
         }
@@ -931,8 +967,9 @@ namespace qa::features
                     std::wstring how;
                     t.actor = actors.Find(name, how);
                     t.kind = KindOf(t.actor);
-                    names.push_back(
-                        name + (obj::IsLive(t.actor) ? std::format(L" ({} {}, {})", obj::ClassName(t.actor), obj::ObjectName(t.actor), how) : L" (not found)"));
+                    names.push_back(name + (obj::IsLive(t.actor) ? std::format(L" ({} {}, {}; bodies: {})", obj::ClassName(t.actor), obj::ObjectName(t.actor),
+                                                                               how, BodiesText(t.actor))
+                                                                 : L" (not found)"));
                     c.targets.push_back(t);
                 }
                 double strength = 0.0, magnetism = 0.0, lockNear = 0.0, lockFar = 0.0, aimDistance = 0.0;
