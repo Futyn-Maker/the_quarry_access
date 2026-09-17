@@ -316,7 +316,11 @@ crashed car at night.
     stick brings it in. The log names the points at the start, `explore: looking around begins
     ... with N point(s): L_TakeTreehousePhoto (30 by 20 deg, the flow judges it within 20
     deg)`, every second `explore: look at "...": N deg across, N up, N off the view, in frame`
-    or `off`, and the picture's verdict.
+    or `off`, the picture's verdict, and the flow's own: `explore: the flow's bool
+    "b_kaitlynislookingattreehouse" is now true, the view N deg across, N up, N off
+    "L_TakeTreehousePhoto"` as the treehouse comes within the flow's 20 degrees, and after the
+    press `explore: the flow's flag "f_kaitlynsawtreehouselight" is raised`, on which the
+    honesty choice at the campfire hangs.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>

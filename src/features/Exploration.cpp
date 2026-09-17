@@ -165,6 +165,26 @@ namespace qa::features
             double loggedAt = 0.0;
         };
         LookAround g_look;
+
+        // The flow's own verdicts on a look-around live in its blackboard: a bool that follows
+        // its looking-at condition, a flag the picture raises. The player is shown none of
+        // them, so nothing is said of them; they go to the log with where the view was, so
+        // that the flow's judgement and the mod's can be laid side by side.
+        struct FlowValue
+        {
+            UObject* variable = nullptr;
+            std::wstring name;
+            bool flag = false; // a flag, else a bool
+            bool value = false;
+        };
+        struct FlowWatch
+        {
+            bool on = false;
+            double until = 0.0; // the verdict comes a moment after the look-around ends
+            std::vector<FlowValue> values;
+            std::wstring where; // the led point against the view, at the last poll
+        };
+        FlowWatch g_flowWatch;
         UObject* g_readingPane = nullptr;
         std::wstring g_pageText;
         std::wstring g_pageRead;
@@ -1922,7 +1942,20 @@ namespace qa::features
             double pitch = 0.0;
             double yaw = 0.0;
             std::vector<Point>* out = nullptr;
+            std::vector<UObject*> flows; // the packages of the actions the points came from
         };
+
+        UObject* Outermost(UObject* object)
+        {
+            UObject* top = object;
+            for (int i = 0; i < 16 && top; ++i)
+            {
+                UObject* up = obj::Outer(top);
+                if (!up) break;
+                top = up;
+            }
+            return top;
+        }
 
         void GatherPoints(void* context)
         {
@@ -1975,6 +2008,9 @@ namespace qa::features
                                              if (pitchLimited && (up < pitchMin - 5.0 || up > pitchMax + 5.0)) return;
                                              if (std::any_of(points.begin(), points.end(), [&](const Point& q) { return q.actor == p.actor; })) return;
                                              points.push_back(std::move(p));
+                                             if (UObject* flow = Outermost(action);
+                                                 flow && std::find(request->flows.begin(), request->flows.end(), flow) == request->flows.end())
+                                                 request->flows.push_back(flow);
                                          });
             }
             for (UObject* condition : obj::FindAllLive(L"GFConditionIsLookingAt"))
@@ -1991,6 +2027,83 @@ namespace qa::features
                     if (p.cone <= 0.0 || static_cast<double>(degrees) < p.cone) p.cone = static_cast<double>(degrees);
                     if (hold > p.hold) p.hold = hold;
                 }
+            }
+        }
+
+        // The game's blackboard library answers for a bool or a flag by its variable object.
+        bool ReadFlowValue(UObject* variable, bool flag, bool& out)
+        {
+            UObject* library = obj::FindObject(L"/Script/SMGGameFlow.Default__GFBlackboardBlueprintLibrary");
+            auto* fn = library ? obj::FindFunction(library, flag ? L"GetGlobalBlackboardFlag" : L"GetGlobalBlackboardBool") : nullptr;
+            UObject* context = obj::LocalPlayerController();
+            if (!fn || !context || !obj::IsLive(variable)) return false;
+            bool ok = false;
+            obj::Call(
+                library, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"WorldContextObject")
+                            *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = context;
+                        else if (name == L"VariableRef")
+                        {
+                            auto* member = obj::StructMember(prop, L"Variable");
+                            void* ref = obj::ValuePtrAt(params, prop);
+                            if (member && ref) *static_cast<UObject**>(obj::ValuePtrAt(ref, member)) = variable;
+                        }
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") ok = obj::ReadBoolAt(params, prop, out);
+                    }
+                });
+            return ok;
+        }
+
+        void BeginFlowWatch(const std::vector<UObject*>& flows)
+        {
+            g_flowWatch = FlowWatch{};
+            for (const bool flag : {false, true})
+            {
+                for (UObject* variable : obj::FindAllLive(flag ? L"GFBlackboardVariableFlag" : L"GFBlackboardVariableBool"))
+                {
+                    if (!flows.empty() && std::find(flows.begin(), flows.end(), Outermost(variable)) == flows.end()) continue;
+                    FlowValue v;
+                    v.variable = variable;
+                    v.name = obj::ObjectName(variable);
+                    v.flag = flag;
+                    if (!ReadFlowValue(variable, flag, v.value)) continue;
+                    g_flowWatch.values.push_back(std::move(v));
+                }
+            }
+            g_flowWatch.on = !g_flowWatch.values.empty();
+            g_flowWatch.until = 1e18;
+            log::Info(L"explore: {} bools and flags of the scene's flow are watched", g_flowWatch.values.size());
+        }
+
+        void PollFlowWatch(double now)
+        {
+            FlowWatch& watch = g_flowWatch;
+            if (!watch.on) return;
+            if (now > watch.until)
+            {
+                watch = FlowWatch{};
+                return;
+            }
+            for (FlowValue& v : watch.values)
+            {
+                bool value = false;
+                if (!ReadFlowValue(v.variable, v.flag, value) || value == v.value) continue;
+                v.value = value;
+                log::Info(L"explore: the flow's {} \"{}\" {}{}", v.flag ? L"flag" : L"bool", v.name,
+                          v.flag ? (value ? L"is raised" : L"is lowered") : (value ? L"is now true" : L"is now false"),
+                          watch.where.empty() ? L"" : L", the view " + watch.where);
             }
         }
 
@@ -2020,6 +2133,7 @@ namespace qa::features
             }
             log::Info(L"explore: looking around begins{} with {} point(s){}{}", photo ? L" through the phone camera" : L"", g_look.points.size(),
                       names.empty() ? L"" : L": ", str::Join(names, L", "));
+            BeginFlowWatch(request.flows);
         }
 
         void EndLook(UObject* instance)
@@ -2034,6 +2148,8 @@ namespace qa::features
             }
             log::Info(L"explore: looking around ends");
             g_look = LookAround{};
+            // The flow passes its verdict a moment after the look-around ends.
+            if (g_flowWatch.on) g_flowWatch.until = gamethread::NowSeconds() + 5.0;
         }
 
         // Leads the view to the point nearest it with the aim sound of the fights: the blip on
@@ -2138,6 +2254,7 @@ namespace qa::features
                 log::Info(L"explore: look at \"{}\": {:.0f} deg across, {:.0f} up, {:.0f} off the view, {}", p.name, bestAcross, bestUp, bestApart,
                           p.inFrame ? L"in frame" : L"off");
             }
+            g_flowWatch.where = std::format(L"{:.0f} deg across, {:.0f} up, {:.1f} off \"{}\"", bestAcross, bestUp, bestApart, p.name);
             // The look-around's sound is the fights' aim sound and follows its setting.
             if (!AimSoundOn()) return;
             const double interval = p.inFrame ? 0.12 : 0.09 + 0.4 * std::clamp(best / 25.0, 0.0, 1.0);
@@ -2274,6 +2391,7 @@ namespace qa::features
             PollWalk(now); // the character is pushed along every frame, as a held key would
             if (gamethread::FrameCount() % 10 == 0) PollRoaming(now);
             if (gamethread::FrameCount() % 5 == 0) PollStatic(now);
+            if (gamethread::FrameCount() % 5 == 2) PollFlowWatch(now);
             if (gamethread::FrameCount() % 6 == 3) PollReading();
         }
 
