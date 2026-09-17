@@ -87,6 +87,7 @@ namespace qa::features
             int pellets = 0;         // how many of the shot's pellets meet the target's body
             int of = 0;              // of how many the shot throws
             bool onTarget = false;   // a shot fired now would take the target
+            bool solid = false;      // and so would one fired a moment later, whichever way the aim sways meanwhile
             bool assisted = false;   // within the aim assist's reach: its sphere along the line touches the target
             double cameraAngle = 0.0;
             bool cameraOn = false;
@@ -378,6 +379,11 @@ namespace qa::features
         // melons' mesh collides by itself.
         std::vector<UObject*> Bodies(UObject* actor)
         {
+            // A shot's pellets ask for the same actor's bodies by the score; they are found
+            // once a frame.
+            static std::map<UObject*, std::pair<unsigned long long, std::vector<UObject*>>> found;
+            const auto frame = gamethread::FrameCount();
+            if (auto it = found.find(actor); it != found.end() && it->second.first == frame) return it->second.second;
             std::vector<UObject*> bodies;
             auto* fn = obj::IsLive(actor) ? obj::FindFunction(actor, L"K2_GetComponentsByClass") : nullptr;
             UObject* primitive = obj::FindObject(L"/Script/Engine.PrimitiveComponent");
@@ -400,10 +406,14 @@ namespace qa::features
                                                  [&](void* element, FProperty* inner)
                                                  {
                                                      UObject* component = nullptr;
-                                                     if (obj::ReadObjectAt(element, inner, component) && obj::IsLive(component)) bodies.push_back(component);
+                                                     if (obj::ReadObjectAt(element, inner, component) && obj::IsLive(component) &&
+                                                         obj::CallForBool(component, L"K2_IsCollisionEnabled"))
+                                                         bodies.push_back(component);
                                                  });
                     }
                 });
+            if (found.size() > 64) found.clear();
+            found[actor] = {frame, bodies};
             return bodies;
         }
 
@@ -424,8 +434,12 @@ namespace qa::features
             {
                 auto* fn = obj::FindFunction(body, L"K2_LineTraceComponent");
                 if (!fn) continue;
+                // A mesh with no shapes of its own answers only to its triangles; a shape
+                // answers to the plain trace.
+                const bool mesh = obj::IsA(body, L"MeshComponent");
                 for (const bool complex : {false, true})
                 {
+                    if (complex && !mesh) break;
                     bool hit = false;
                     obj::Call(
                         body, fn,
@@ -514,9 +528,37 @@ namespace qa::features
             return hits;
         }
 
+        // Whether the shot would take the target from a line swayed a little to either side
+        // and up or down: the aim sways by about a tenth of a degree on its own, breathing
+        // with the character, so a target at the very edge of the pellets' reach is hit and
+        // missed by turns while the stick stays still. A hit that holds through that sway is
+        // one a shot fired a moment later would still make.
+        bool Robust(const Beam& beam, UObject* actor)
+        {
+            const double sway = 0.15 * std::numbers::pi / 180.0;
+            for (const int way : {0, 1, 2, 3})
+            {
+                Beam b = beam;
+                const double c = std::cos(sway), n = (way % 2 == 0 ? 1.0 : -1.0) * std::sin(sway);
+                if (way < 2)
+                {
+                    b.forward = Vec{beam.forward.x * c + beam.right.x * n, beam.forward.y * c + beam.right.y * n, beam.forward.z * c + beam.right.z * n};
+                    b.right = Vec{beam.right.x * c - beam.forward.x * n, beam.right.y * c - beam.forward.y * n, beam.right.z * c - beam.forward.z * n};
+                }
+                else
+                {
+                    b.forward = Vec{beam.forward.x * c + beam.up.x * n, beam.forward.y * c + beam.up.y * n, beam.forward.z * c + beam.up.z * n};
+                    b.up = Vec{beam.up.x * c - beam.forward.x * n, beam.up.y * c - beam.forward.y * n, beam.up.z * c - beam.forward.z * n};
+                }
+                int of = 0;
+                if (Pellets(b, actor, of) == 0) return false;
+            }
+            return true;
+        }
+
         // Where a target stands against the shot; with `others`, against the camera's line of
-        // sight as well, for the log.
-        Sight Look(const Beam& beam, UObject* actor, bool others = false)
+        // sight as well, for the log; with `robust`, whether the hit survives the sway.
+        Sight Look(const Beam& beam, UObject* actor, bool others = false, bool robust = false)
         {
             Sight s;
             Vec centre, reach;
@@ -540,6 +582,7 @@ namespace qa::features
             else
                 s.of = c.single || !c.uniform || c.pellets <= 0 ? 1 : 0;
             s.onTarget = s.pellets > 0;
+            if (robust && s.onTarget) s.solid = Robust(beam, actor);
             s.assisted = c.aimSetting == 1 && c.magnetism > 0.0 && s.angle < 90.0 && Beside(eye, beam.forward, centre) - radius <= c.magnetism;
             if (others && beam.cameraPlaced)
             {
@@ -872,7 +915,7 @@ namespace qa::features
         // The side of the beam a target stands on, in words.
         std::wstring PlaceText(const Sight& s)
         {
-            if (s.onTarget) return locale::Mod(L"combat.on");
+            if (s.solid) return locale::Mod(L"combat.on");
             std::vector<std::wstring> words;
             if (std::fabs(s.horizontal) > 90.0)
                 words.push_back(locale::Mod(L"combat.behind"));
@@ -887,7 +930,7 @@ namespace qa::features
         std::wstring WhereText(const Sight& s)
         {
             if (!s.placed) return locale::Mod(L"explore.notarget");
-            if (s.onTarget) return locale::Mod(L"combat.on");
+            if (s.solid) return locale::Mod(L"combat.on");
             return locale::Mod(L"combat.where", Metres(s.metres) + L" " + locale::Mod(L"combat.m") + L", " + PlaceText(s));
         }
 
@@ -950,12 +993,13 @@ namespace qa::features
             std::vector<std::wstring> parts;
             for (const Target* t : Standing(c))
             {
-                const Sight s = Look(beam, t->actor, true);
+                const Sight s = Look(beam, t->actor, true, true);
                 if (!s.placed) continue;
-                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {} of {} pellets, {}{} (camera {:.1f} off, {})",
+                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {} of {} pellets, {}{}{} (camera {:.1f} off, {})",
                                             t->index, std::fabs(s.horizontal), s.horizontal >= 0 ? L"right" : L"left", std::fabs(s.vertical),
-                                            s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres, s.pellets, s.of, s.onTarget ? L"on target" : L"off target",
-                                            s.assisted ? L", in the assist's reach" : L"", s.cameraAngle, s.cameraOn ? L"on" : L"off"));
+                                            s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres, s.pellets, s.of,
+                                            s.onTarget ? (s.solid ? L"on target and sure" : L"on target at the edge") : L"off target",
+                                            s.assisted ? L", in the assist's reach" : L"", L"", s.cameraAngle, s.cameraOn ? L"on" : L"off"));
             }
             std::wstring aim = L"no aim point";
             Vec pos;
@@ -1175,20 +1219,25 @@ namespace qa::features
                 c.onSince = -1.0;
             }
             c.leading = led->index;
+            // The double ping tells the moment: a shot fired now would take the target. The
+            // word to fire tells more: the hit holds through the aim's own sway, so a shot a
+            // moment later takes it too, and it has held for a fifth of a second, so that a
+            // line swept across a target does not call it. A target at the very edge of the
+            // pellets' reach, hit and missed by turns as the aim breathes, gets the ping by
+            // turns and never the word; the ping keeps the side of the target, so the stick
+            // can bring it in. The word comes again only after a second off the target. It
+            // comes with the aim sound on or off and with the aiming setting on or off, short
+            // of the one that fights by itself.
+            best.solid = best.onTarget && Robust(beam, led->actor);
             c.sight = best;
-            // The word to fire: once the shot line has been on the target the sound leads to
-            // for a fifth of a second, so that a line swept across a target does not call it,
-            // and again only after the line has been off the target for a second. It comes
-            // with the aim sound on or off and with the aiming setting on or off, short of
-            // the one that fights by itself.
-            if (best.onTarget)
+            if (best.solid)
             {
                 if (c.onSince < 0.0) c.onSince = now;
                 c.onTargetAt = now;
                 if (!c.fireCalled && now - c.onSince >= 0.2)
                 {
                     c.fireCalled = true;
-                    log::Info(L"combat: the shot line has been on target {} for a fifth of a second, the word to fire", led->index);
+                    log::Info(L"combat: a shot has been sure of target {} for a fifth of a second, the word to fire", led->index);
                     speech::Announce(locale::Mod(L"combat.fire"));
                 }
             }
@@ -1333,7 +1382,7 @@ namespace qa::features
             const Target& target = *standing[static_cast<size_t>(next)];
             c.chosen = target.index;
             c.leading = c.chosen;
-            c.sight = Look(AimLine(Pawn()), target.actor);
+            c.sight = Look(AimLine(Pawn()), target.actor, false, true);
             log::Info(L"combat: target {} chosen", c.chosen);
             speech::Now(str::JoinSentences({TargetText(c, target), WhereText(c.sight)}));
         }
@@ -1406,7 +1455,7 @@ namespace qa::features
         Combat& c = g_combat;
         if (!CombatActive()) return;
         const Target* led = Led(c);
-        if (led) c.sight = Look(AimLine(Pawn()), led->actor);
+        if (led) c.sight = Look(AimLine(Pawn()), led->actor, false, true);
         speech::Now(led ? str::JoinSentences({TargetText(c, *led), WhereText(c.sight)}) : locale::Mod(L"explore.notarget"));
     }
 

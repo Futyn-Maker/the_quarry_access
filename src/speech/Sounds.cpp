@@ -171,16 +171,20 @@ namespace qa::sounds
     void Aim(double pan, double level, bool locked, bool muffled)
     {
         if (!g_enabled) return;
+        const double placed = std::clamp(pan, -1.0, 1.0);
         if (locked)
         {
-            PlayWav(g_locked);
+            // The double ping keeps the side of the target, so that a hit at the edge of the
+            // pattern can be nudged to its middle.
+            Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
+            wav = Wave({{1047.0, 0.035}, {1568.0, 0.05}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
+            PlayWav(wav);
             return;
         }
         // Two octaves from below the crosshair to above it; an octave lower when the target is
         // behind.
         double frequency = 330.0 * std::pow(4.0, std::clamp(level, 0.0, 1.0));
         if (muffled) frequency *= 0.5;
-        const double placed = std::clamp(pan, -1.0, 1.0);
         Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
         wav = Wave({{frequency, 0.05}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
         PlayWav(wav);

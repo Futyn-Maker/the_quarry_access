@@ -376,11 +376,16 @@ line twice a second and one more `combat: at the shot: ...` at every shot, `comb
 (the fight's replicator is gone)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
 above name what the game held.
-6. Once the shot line has been on the target the sound leads to for a fifth of a second,
-    "Огонь!" is said once, with the aim sound on or off and with aim assist on or off; it comes
-    again only after the line has been off the target for a second. In the automatic setting
-    nothing is said. The log has `combat: the shot line has been on target N for a fifth of a
-    second, the word to fire`.
+6. Once a shot has been sure of the target the sound leads to for a fifth of a second, that
+    is, the pellets would take it from the line as it is and from the line swayed a seventh
+    of a degree to any side, "Огонь!" is said once, with the aim sound on or off and with aim
+    assist on or off; it comes again only after the shot has been off the target for a
+    second. The double ping alone means a shot fired at that moment would take the target; a
+    target at the very edge of the pellets' reach gets the ping by turns as the aim breathes,
+    and the ping keeps the target's side, so nudge toward it until the word comes. In the
+    automatic setting nothing is said. The log has `combat: a shot has been sure of target N
+    for a fifth of a second, the word to fire`, and marks every hit `on target and sure` or
+    `on target at the edge`.
 7. The shooting range, chapter 2: nine targets, six bottles and three melons, all about 13 m
     away, so H says 13 m for every one of them; the character does not walk here. With the aim
     assist on, the game pulls the aim onto any target its magnetism sphere, 60 cm wide about
