@@ -345,8 +345,10 @@ between 1.6 and 8 seconds each. Settings → Доступность → Помо
    timer bar. The game draws no crosshair: your aim is the torch beam on the
    weapon. A blip sounds in the ear on the side of the target: higher when the target is above
    the beam, lower when below, faster as the beam nears it. Move the mouse (or the right stick)
-   toward the sound. When the beam is on the target's body the blip becomes a quick double ping
-   in both ears: fire.
+   toward the sound. When the shot line is on the target's body the blip becomes a quick double
+   ping in both ears: fire. The sound leads to one target at a time: the one the line is on,
+   else the one chosen with N or P, else the nearest to the line, which it keeps until another
+   is clearly nearer; the double ping and "Огонь!" are for that target only.
 2. Each shot is answered: a rising tone with "Попадание." or a falling one with "Промах." When
    a timed fight ends without a hit you hear a falling tone and "Время вышло."
 3. Press H during a fight: "Цель: 6 м, справа выше." or "На цели." Press N or P when the
@@ -365,17 +367,24 @@ target(s): <name> (<class> <actor>, by its register) ...; time limit ...; aim re
 torch`, one `combat: action ... in state "..."` per loaded fight action, the one of the fight
 marked `<- the replicator's state` (a name carried by several actors lists them with their
 distances and the nearest is taken), and `combat: status ...` per status object,
-`combat: aim assist strength ...`, `combat: replicator ... path "..."`, a `combat: aim: torch yaw ...; target 0 ... on target/off target ...; aim point (...) N m
-from the torch, N deg off its beam` line twice a second and one more `combat: at the shot:
-...` at every shot, `combat: the sound leads to target N` when the sound changes target, `combat: shot N (counted by the game)`,
-`combat: the weapon fires`, `combat: hit (...)` or `combat: miss on shot N`, `combat: over
+`combat: aim assist strength ...`, `combat: replicator ... path "..."`, a `combat: aim: aim point yaw ... (torch yaw ..., camera yaw ...); target 0 ... on target/off target (torch N off, on/off; camera N off, on/off) ...; aim point (...) N m off, N deg off the torch`
+line twice a second and one more `combat: at the shot: ...` at every shot, `combat: the sound leads to target N` when the sound changes target, `combat: shot N (counted by the game)`,
+`combat: target N lost health, 1 to 0` for the target a shot took, `combat: the weapon fires`, `combat: hit (...)` or `combat: miss on shot N`, `combat: over
 (the fight's replicator is gone)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
 above name what the game held.
-6. The moment the beam meets the target the sound leads to, "Огонь!" is said once, with the aim
-    sound on or off and with aim assist on or off; it comes again only after the beam has been
-    off the target for a second. In the automatic setting nothing is said. The log has
-    `combat: the beam meets target N, the word to fire`.
+6. Once the shot line has been on the target the sound leads to for a fifth of a second,
+    "Огонь!" is said once, with the aim sound on or off and with aim assist on or off; it comes
+    again only after the line has been off the target for a second. In the automatic setting
+    nothing is said. The log has `combat: the shot line has been on target N for a fifth of a
+    second, the word to fire`.
+7. The shooting range, chapter 2: nine targets, six bottles and three melons, all about 13 m
+    away, so H says 13 m for every one of them; the character does not walk here. The sound
+    leads along the row; with the line between two bottles it leads to the nearer one. Hold
+    the double ping on a bottle or a melon and fire, and fire once more with the blips fast but
+    no double ping: "Попадание." or "Промах." answers each, and the log at the shot shows the
+    three lines against every target with the target that lost health, which is what settles
+    the shot line. The scene goes on after the shots whatever they hit.
 
 ## Tarot visions
 

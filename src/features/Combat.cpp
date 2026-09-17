@@ -65,6 +65,15 @@ namespace qa::features
             double pitch = 0.0;
             double yaw = 0.0;
             const wchar_t* source = L"";
+            // The two lines the shot line is read against in the log: the torch beam as the
+            // weapon points it, and the camera's line of sight.
+            bool torchPlaced = false;
+            double torchPitch = 0.0;
+            double torchYaw = 0.0;
+            bool cameraPlaced = false;
+            Vec cameraFrom;
+            double cameraPitch = 0.0;
+            double cameraYaw = 0.0;
         };
 
         // Where a target stands against the beam.
@@ -75,7 +84,12 @@ namespace qa::features
             double vertical = 0.0;   // degrees above it
             double angle = 0.0;      // degrees off the beam altogether
             double metres = 0.0;     // from the aim
-            bool onTarget = false;   // the beam meets the target's body
+            bool onTarget = false;   // the shot line meets the target's body
+            // Against the torch beam and the camera's line of sight, read for the log.
+            double torchAngle = 0.0;
+            bool torchOn = false;
+            double cameraAngle = 0.0;
+            bool cameraOn = false;
         };
 
         struct Combat
@@ -105,8 +119,10 @@ namespace qa::features
             double blipAt = 0.0;
             double quietUntil = 0.0; // the aim sound waits while a cue plays
             double loggedAt = 0.0;
-            bool fireCalled = false; // the word to fire was said and the beam has not left the target since
-            double onTargetAt = 0.0; // the last moment the beam met the target it leads to
+            bool fireCalled = false;     // the word to fire was said and the beam has not left the target since
+            double onTargetAt = 0.0;     // the last moment the beam met the target it leads to
+            double onSince = -1.0;       // when the shot line came onto the target it leads to, -1 while off
+            std::vector<int64_t> health; // each target's health at the last look
         };
         Combat g_combat;
         bool g_aimSound = true;
@@ -202,9 +218,13 @@ namespace qa::features
             return nullptr;
         }
 
-        // The line a shot would take. The game shows the aim as the torch beam on the weapon,
-        // which sways as the weapon does, so the beam's own place and direction are read; with
-        // no torch to read, the camera's line of sight, which the aim follows.
+        // The line a shot would take. The game sends the shot from the weapon to its own aim
+        // point, which the fight's replicator carries for the shot, so the line from the torch
+        // on the weapon to that point is the shot line. The torch beam, which the game shows
+        // as the aim, points near that line but not along it: at the shooting range it stood
+        // a third of a degree off, the width of a bottle at thirteen metres. The beam stands
+        // in until the aim point is set, and with no torch to read, the camera's line of
+        // sight, which the aim follows.
         Beam AimLine(UObject* pawn)
         {
             Beam b;
@@ -215,26 +235,45 @@ namespace qa::features
                 Vec forward;
                 if (CallForVec(torch, L"K2_GetComponentLocation", b.from) && CallForVec(torch, L"GetForwardVector", forward))
                 {
-                    b.yaw = std::atan2(forward.y, forward.x) * 180.0 / std::numbers::pi;
-                    b.pitch = std::asin(std::clamp(forward.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+                    b.torchYaw = std::atan2(forward.y, forward.x) * 180.0 / std::numbers::pi;
+                    b.torchPitch = std::asin(std::clamp(forward.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+                    b.torchPlaced = true;
+                    b.yaw = b.torchYaw;
+                    b.pitch = b.torchPitch;
                     b.source = L"torch";
                     b.placed = true;
-                    return b;
                 }
             }
-            UObject* camera = CameraManager();
-            if (!camera) return b;
-            bool turned = false;
-            if (!CallForVec(camera, L"GetCameraLocation", b.from)) return b;
-            obj::CallReturn(camera, L"GetCameraRotation",
-                            [&](void* params, FProperty* returnValue)
-                            {
-                                void* value = obj::ValuePtrAt(params, returnValue);
-                                turned = value && obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Pitch"), b.pitch) &&
-                                         obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Yaw"), b.yaw);
-                            });
-            b.source = L"camera";
-            b.placed = turned;
+            if (UObject* camera = CameraManager(); camera && CallForVec(camera, L"GetCameraLocation", b.cameraFrom))
+            {
+                obj::CallReturn(camera, L"GetCameraRotation",
+                                [&](void* params, FProperty* returnValue)
+                                {
+                                    void* value = obj::ValuePtrAt(params, returnValue);
+                                    b.cameraPlaced = value && obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Pitch"), b.cameraPitch) &&
+                                                     obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Yaw"), b.cameraYaw);
+                                });
+            }
+            if (!b.placed && b.cameraPlaced)
+            {
+                b.from = b.cameraFrom;
+                b.pitch = b.cameraPitch;
+                b.yaw = b.cameraYaw;
+                b.source = L"camera";
+                b.placed = true;
+            }
+            Vec aim;
+            if (b.placed && obj::IsLive(g_combat.replicator) && ReadVecProperty(g_combat.replicator, L"TargetPos", aim) &&
+                (aim.x != 0.0 || aim.y != 0.0 || aim.z != 0.0))
+            {
+                const double d = Distance(b.from, aim);
+                if (d > 100.0)
+                {
+                    b.yaw = std::atan2(aim.y - b.from.y, aim.x - b.from.x) * 180.0 / std::numbers::pi;
+                    b.pitch = std::asin(std::clamp((aim.z - b.from.z) / d, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+                    b.source = L"aim point";
+                }
+            }
             return b;
         }
 
@@ -346,8 +385,24 @@ namespace qa::features
             return false;
         }
 
-        // Where a target stands against the beam.
-        Sight Look(const Beam& beam, UObject* actor)
+        // Degrees between a line and the line from its start to a point.
+        double AngleOff(const Vec& from, const Vec& forward, const Vec& to)
+        {
+            const double d = Distance(from, to);
+            if (d <= 0.0) return 0.0;
+            const double along = ((to.x - from.x) * forward.x + (to.y - from.y) * forward.y + (to.z - from.z) * forward.z) / d;
+            return std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+        }
+
+        bool MeetsAlong(UObject* actor, const Vec& from, const Vec& forward)
+        {
+            const Vec far{from.x + forward.x * 20000.0, from.y + forward.y * 20000.0, from.z + forward.z * 20000.0};
+            return Meets(actor, from, far);
+        }
+
+        // Where a target stands against the shot line; with `others`, against the torch beam
+        // and the camera's line of sight as well, for the log.
+        Sight Look(const Beam& beam, UObject* actor, bool others = false)
         {
             Sight s;
             Vec centre;
@@ -359,12 +414,24 @@ namespace qa::features
             s.horizontal = NormalizeDegrees(bearing - beam.yaw);
             s.vertical = NormalizeDegrees(elevation - beam.pitch);
             const Vec f = Forward(beam.pitch, beam.yaw);
-            const double d = Distance(eye, centre);
-            s.metres = d / 100.0;
-            const double along = d > 0.0 ? ((centre.x - eye.x) * f.x + (centre.y - eye.y) * f.y + (centre.z - eye.z) * f.z) / d : 1.0;
-            s.angle = std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-            const Vec far{eye.x + f.x * 20000.0, eye.y + f.y * 20000.0, eye.z + f.z * 20000.0};
-            s.onTarget = s.angle < 45.0 && Meets(actor, eye, far);
+            s.metres = Distance(eye, centre) / 100.0;
+            s.angle = AngleOff(eye, f, centre);
+            s.onTarget = s.angle < 45.0 && MeetsAlong(actor, eye, f);
+            if (others)
+            {
+                if (beam.torchPlaced)
+                {
+                    const Vec t = Forward(beam.torchPitch, beam.torchYaw);
+                    s.torchAngle = AngleOff(eye, t, centre);
+                    s.torchOn = s.torchAngle < 45.0 && MeetsAlong(actor, eye, t);
+                }
+                if (beam.cameraPlaced)
+                {
+                    const Vec c = Forward(beam.cameraPitch, beam.cameraYaw);
+                    s.cameraAngle = AngleOff(beam.cameraFrom, c, centre);
+                    s.cameraOn = s.cameraAngle < 45.0 && MeetsAlong(actor, beam.cameraFrom, c);
+                }
+            }
             s.placed = true;
             return s;
         }
@@ -518,16 +585,22 @@ namespace qa::features
             if (!obj::IsLive(c.status)) return -1;
             int64_t sum = 0;
             int index = 0;
+            std::vector<int64_t> health;
             obj::ForEachArrayElement(c.status, obj::FindProperty(c.status, L"TargetsHealth"),
                                      [&](void* element, FProperty* inner)
                                      {
                                          int64_t current = 0;
                                          obj::ReadIntAt(element, obj::StructMember(inner, L"CurrentHealth"), current);
                                          sum += std::max<int64_t>(0, current);
+                                         health.push_back(current);
                                          for (auto& t : c.targets)
                                              if (t.index == index) t.dead = current <= 0;
                                          ++index;
                                      });
+            // Which target a shot took health from is what the shot line is judged by.
+            for (size_t i = 0; i < health.size() && i < c.health.size(); ++i)
+                if (health[i] < c.health[i]) log::Info(L"combat: target {} lost health, {} to {}", i, c.health[i], health[i]);
+            c.health = health;
             return sum;
         }
 
@@ -762,23 +835,22 @@ namespace qa::features
             std::vector<std::wstring> parts;
             for (const Target* t : Standing(c))
             {
-                const Sight s = Look(beam, t->actor);
+                const Sight s = Look(beam, t->actor, true);
                 if (!s.placed) continue;
-                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {}", t->index, std::fabs(s.horizontal),
-                                            s.horizontal >= 0 ? L"right" : L"left", std::fabs(s.vertical), s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres,
-                                            s.onTarget ? L"on target" : L"off target"));
+                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {} (torch {:.1f} off, {}; camera {:.1f} off, {})",
+                                            t->index, std::fabs(s.horizontal), s.horizontal >= 0 ? L"right" : L"left", std::fabs(s.vertical),
+                                            s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres, s.onTarget ? L"on target" : L"off target", s.torchAngle,
+                                            s.torchOn ? L"on" : L"off", s.cameraAngle, s.cameraOn ? L"on" : L"off"));
             }
             std::wstring aim = L"no aim point";
             Vec pos;
             if (obj::IsLive(c.replicator) && ReadVecProperty(c.replicator, L"TargetPos", pos) && (pos.x != 0.0 || pos.y != 0.0 || pos.z != 0.0))
             {
-                const Vec f = Forward(beam.pitch, beam.yaw);
-                const double d = Distance(beam.from, pos);
-                const double along = d > 0.0 ? ((pos.x - beam.from.x) * f.x + (pos.y - beam.from.y) * f.y + (pos.z - beam.from.z) * f.z) / d : 1.0;
-                aim = std::format(L"aim point ({:.0f}, {:.0f}, {:.0f}) {:.1f} m from the {}, {:.1f} deg off its beam", pos.x, pos.y, pos.z, d / 100.0,
-                                  beam.source, std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi);
+                aim = std::format(L"aim point ({:.0f}, {:.0f}, {:.0f}) {:.1f} m off, {:.1f} deg off the torch", pos.x, pos.y, pos.z,
+                                  Distance(beam.from, pos) / 100.0, beam.torchPlaced ? AngleOff(beam.from, Forward(beam.torchPitch, beam.torchYaw), pos) : 0.0);
             }
-            log::Info(L"combat: {}: {} yaw {:.1f} pitch {:.1f}; {}; {}", when, beam.source, beam.yaw, beam.pitch, str::Join(parts, L"; "), aim);
+            log::Info(L"combat: {}: {} yaw {:.1f} pitch {:.1f} (torch yaw {:.1f} pitch {:.1f}, camera yaw {:.1f} pitch {:.1f}); {}; {}", when, beam.source,
+                      beam.yaw, beam.pitch, beam.torchYaw, beam.torchPitch, beam.cameraYaw, beam.cameraPitch, str::Join(parts, L"; "), aim);
         }
 
         void Shot(Combat& c, int64_t number, const wchar_t* how)
@@ -898,18 +970,29 @@ namespace qa::features
             if (c.automatic) return;
             const Beam beam = AimLine(Pawn());
             if (!beam.placed) return;
-            // The sound leads to the target nearest the beam, and keeps to it until another is
-            // nearer by a clear margin, so that two targets side by side do not take the sound
-            // in turns.
+            // The sound leads to the target the shot line is on, whichever it was leading to,
+            // since that is the target a shot would take; else to the one chosen by key; else
+            // to the nearest, kept until another is nearer by a clear margin in proportion,
+            // so that two targets side by side do not take the sound in turns. The margin is
+            // in proportion because the bottles of the shooting range stand two or three
+            // degrees apart: a margin of degrees kept the sound on a bottle the line had
+            // left while the next one stood on it.
             const Target* led = nullptr;
             Sight best;
             const Target* kept = nullptr;
             Sight keptSight;
+            const Target* on = nullptr;
+            Sight onSight;
             for (const Target* t : Standing(c))
             {
                 if (c.chosen >= 0 && t->index != c.chosen) continue;
                 const Sight s = Look(beam, t->actor);
                 if (!s.placed) continue;
+                if (s.onTarget && (!on || s.angle < onSight.angle))
+                {
+                    on = t;
+                    onSight = s;
+                }
                 if (t->index == c.leading)
                 {
                     kept = t;
@@ -921,7 +1004,12 @@ namespace qa::features
                     best = s;
                 }
             }
-            if (kept && led != kept && best.angle > keptSight.angle - 5.0)
+            if (on)
+            {
+                led = on;
+                best = onSight;
+            }
+            else if (kept && led != kept && best.angle > keptSight.angle * 0.6)
             {
                 led = kept;
                 best = keptSight;
@@ -930,32 +1018,37 @@ namespace qa::features
             {
                 c.leading = -1;
                 c.sight = Sight{};
+                c.onSince = -1.0;
                 return;
             }
             if (led->index != c.leading)
             {
                 log::Info(L"combat: the sound leads to target {}", led->index);
                 c.fireCalled = false;
+                c.onSince = -1.0;
             }
             c.leading = led->index;
             c.sight = best;
-            // The word to fire: once, the moment the beam meets the target the sound leads
-            // to, and again only after the beam has been off it for a second. It comes with
-            // the aim sound on or off and with the aiming setting on or off, short of the
-            // one that fights by itself.
+            // The word to fire: once the shot line has been on the target the sound leads to
+            // for a fifth of a second, so that a line swept across a target does not call it,
+            // and again only after the line has been off the target for a second. It comes
+            // with the aim sound on or off and with the aiming setting on or off, short of
+            // the one that fights by itself.
             if (best.onTarget)
             {
+                if (c.onSince < 0.0) c.onSince = now;
                 c.onTargetAt = now;
-                if (!c.fireCalled)
+                if (!c.fireCalled && now - c.onSince >= 0.2)
                 {
                     c.fireCalled = true;
-                    log::Info(L"combat: the beam meets target {}, the word to fire", led->index);
+                    log::Info(L"combat: the shot line has been on target {} for a fifth of a second, the word to fire", led->index);
                     speech::Announce(locale::Mod(L"combat.fire"));
                 }
             }
-            else if (c.fireCalled && now - c.onTargetAt > 1.0)
+            else
             {
-                c.fireCalled = false;
+                c.onSince = -1.0;
+                if (c.fireCalled && now - c.onTargetAt > 1.0) c.fireCalled = false;
             }
             if (now - c.loggedAt >= 0.5)
             {
