@@ -39,4 +39,6 @@ namespace qa::features
     void WhereIsCombatTarget();
     // Switches the aim sound off and on, and says which.
     void ToggleAimSound();
+    // Whether the aim sound is on; a look-around is led by the same sound.
+    bool AimSoundOn();
 }

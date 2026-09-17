@@ -1179,4 +1179,9 @@ namespace qa::features
         if (!cfg::Persist(L"Combat", L"AimSound", g_aimSound ? L"1" : L"0"))
             log::Error(L"combat: the aim sound setting could not be saved to QuarryAccess.ini");
     }
+
+    bool AimSoundOn()
+    {
+        return g_aimSound;
+    }
 }

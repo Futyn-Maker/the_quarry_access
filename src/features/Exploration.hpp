@@ -39,6 +39,9 @@ namespace qa::features
     // True while the player is walking the character freely and no screen or mechanic of the
     // game is in the way.
     bool ExplorationActive();
+    // True while a look-around is on: the view turned by the stick over a fixed spot, under
+    // the game's bar, the phone camera, the binoculars or the rifle scope.
+    bool LookAroundActive();
     // Switches the beacon off and on, and says which.
     void ToggleBeacon();
     // Records that the game has offered its own place navigation (its prompts appeared).

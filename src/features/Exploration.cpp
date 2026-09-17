@@ -1,5 +1,7 @@
 #include "features/Exploration.hpp"
 
+#include "features/Combat.hpp"
+
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -137,8 +139,15 @@ namespace qa::features
             double yawTolerance = 5.0;
             double pitchTolerance = 5.0;
             bool completesOnFind = false; // the game takes over the moment it is in view
-            bool found = false;           // the game said so
-            bool inFrame = false;         // at the last poll
+            // The flow's own judgement of the point, where it has one: a condition that asks
+            // whether the view is within so many degrees of the actor, and for how long it
+            // must stay there. Where the point does not end the look-around by itself, that
+            // condition is what the press earns: the campfire photo counts by it alone.
+            double cone = 0.0;
+            double hold = 0.0;
+            double coneSince = -1.0; // when the view came within the cone, -1 while outside
+            bool found = false;      // the game said so
+            bool inFrame = false;    // at the last poll
             double outOfFrameAt = -1000.0;
             bool called = false; // the in-frame word was said, until the view leaves the point
         };
@@ -262,6 +271,20 @@ namespace qa::features
         {
             const double flat = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
             return std::atan2(to.z - from.z, flat) * 180.0 / std::numbers::pi;
+        }
+
+        // Degrees between the line of the view and the line from the eye to a point: how far
+        // off the view the point stands, whichever way.
+        double ConeDegrees(const Vec& eye, double pitch, double yaw, const Vec& to)
+        {
+            const double p = pitch * std::numbers::pi / 180.0;
+            const double y = yaw * std::numbers::pi / 180.0;
+            const double fx = std::cos(p) * std::cos(y), fy = std::cos(p) * std::sin(y), fz = std::sin(p);
+            const double dx = to.x - eye.x, dy = to.y - eye.y, dz = to.z - eye.z;
+            const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (length < 1e-3) return 0.0;
+            const double dot = std::clamp((fx * dx + fy * dy + fz * dz) / length, -1.0, 1.0);
+            return std::acos(dot) * 180.0 / std::numbers::pi;
         }
 
         // Degrees to the right of a heading, from one point to another (the engine's yaw
@@ -1889,7 +1912,10 @@ namespace qa::features
         // level, and lie within the action's own look limits from where the view starts, are
         // the ones that can be found now: the treehouse from the campfire, the fire on the
         // island through the binoculars, the pins of the office billboard. Twins of one
-        // action in several sub-flows name the same actors and count once.
+        // action in several sub-flows name the same actors and count once. The flow's
+        // looking-at conditions name the actors they judge, and a point named by one is
+        // judged by it: at the campfire the flow never reads the point's own tolerance,
+        // it sets the flag by its condition, the treehouse within 20 degrees of the view.
         struct PointsRequest
         {
             Vec eye;
@@ -1951,6 +1977,21 @@ namespace qa::features
                                              points.push_back(std::move(p));
                                          });
             }
+            for (UObject* condition : obj::FindAllLive(L"GFConditionIsLookingAt"))
+            {
+                std::wstring named;
+                int64_t degrees = 0;
+                if (!ReadActorReference(condition, L"LookTarget", named) || named.empty()) continue;
+                if (!obj::ReadInt(condition, L"AngleDegrees", degrees) || degrees <= 0) continue;
+                double hold = 0.0;
+                obj::ReadFloat(condition, L"HoldDuration", hold);
+                for (Point& p : points)
+                {
+                    if (!IsNamed(p.actor, named)) continue;
+                    if (p.cone <= 0.0 || static_cast<double>(degrees) < p.cone) p.cone = static_cast<double>(degrees);
+                    if (hold > p.hold) p.hold = hold;
+                }
+            }
         }
 
         void BeginLook(UObject* instance, bool photo)
@@ -1970,8 +2011,13 @@ namespace qa::features
             if (CameraLine(request.eye, request.pitch, request.yaw)) obj::SafeInvokeLogged(L"explore.GatherPoints", &GatherPoints, &request);
             std::vector<std::wstring> names;
             for (const auto& p : g_look.points)
-                names.push_back(
-                    std::format(L"{} ({:.0f} by {:.0f} deg{})", p.name, p.yawTolerance, p.pitchTolerance, p.completesOnFind ? L", found is done" : L""));
+            {
+                std::wstring judged;
+                if (p.cone > 0.0) judged = std::format(L", the flow judges it within {:.0f} deg", p.cone);
+                if (p.cone > 0.0 && p.hold > 0.0) judged += std::format(L" held {:.1f} s", p.hold);
+                names.push_back(std::format(L"{} ({:.0f} by {:.0f} deg{}{})", p.name, p.yawTolerance, p.pitchTolerance,
+                                            p.completesOnFind ? L", found is done" : L"", judged));
+            }
             log::Info(L"explore: looking around begins{} with {} point(s){}{}", photo ? L" through the phone camera" : L"", g_look.points.size(),
                       names.empty() ? L"" : L": ", str::Join(names, L", "));
         }
@@ -2020,7 +2066,7 @@ namespace qa::features
                     if (std::fabs(bearing) < std::fabs(best)) best = bearing;
                 }
                 if (best > 1e8) return;
-                if (g_beacon && now - g_beaconAt >= cfg::Get().beaconIntervalMs / 1000.0)
+                if (AimSoundOn() && now - g_beaconAt >= cfg::Get().beaconIntervalMs / 1000.0)
                 {
                     g_beaconAt = now;
                     const double radians = best * std::numbers::pi / 180.0;
@@ -2032,6 +2078,7 @@ namespace qa::features
             double best = 1e9;
             double bestAcross = 0.0;
             double bestUp = 0.0;
+            double bestApart = 0.0;
             for (size_t i = 0; i < look.points.size(); ++i)
             {
                 Point& p = look.points[i];
@@ -2039,11 +2086,24 @@ namespace qa::features
                 if (!obj::IsLive(p.actor) || !ActorLocation(p.actor, at)) continue;
                 const double across = BearingDegrees(eye, at, yaw);
                 const double up = NormalizeDegrees(ElevationDegrees(eye, at) - pitch);
-                const bool inFrame = std::fabs(across) <= p.yawTolerance && std::fabs(up) <= p.pitchTolerance;
+                const double apart = ConeDegrees(eye, pitch, yaw, at);
+                bool inFrame = false;
+                if (p.cone > 0.0 && !p.completesOnFind)
+                {
+                    // Judged as the flow judges it: within its cone, for as long as it asks.
+                    const bool within = apart <= p.cone;
+                    if (within && p.coneSince < 0.0) p.coneSince = now;
+                    if (!within) p.coneSince = -1.0;
+                    inFrame = within && now - p.coneSince >= p.hold;
+                }
+                else
+                {
+                    inFrame = std::fabs(across) <= p.yawTolerance && std::fabs(up) <= p.pitchTolerance;
+                }
                 if (inFrame && !p.called)
                 {
                     p.called = true;
-                    log::Info(L"explore: \"{}\" is in frame, {:.0f} deg across and {:.0f} up", p.name, across, up);
+                    log::Info(L"explore: \"{}\" is in frame, {:.0f} deg across and {:.0f} up, {:.0f} off the view", p.name, across, up, apart);
                     speech::Announce(locale::Mod(look.photo && !p.completesOnFind ? L"explore.frame.shoot" : L"explore.frame"));
                 }
                 if (!inFrame)
@@ -2062,6 +2122,7 @@ namespace qa::features
                     led = static_cast<int>(i);
                     bestAcross = across;
                     bestUp = up;
+                    bestApart = apart;
                 }
             }
             if (led < 0) return;
@@ -2074,9 +2135,11 @@ namespace qa::features
             if (now - look.loggedAt >= 1.0)
             {
                 look.loggedAt = now;
-                log::Info(L"explore: look at \"{}\": {:.0f} deg across, {:.0f} up, {}", p.name, bestAcross, bestUp, p.inFrame ? L"in frame" : L"off");
+                log::Info(L"explore: look at \"{}\": {:.0f} deg across, {:.0f} up, {:.0f} off the view, {}", p.name, bestAcross, bestUp, bestApart,
+                          p.inFrame ? L"in frame" : L"off");
             }
-            if (!g_beacon) return;
+            // The look-around's sound is the fights' aim sound and follows its setting.
+            if (!AimSoundOn()) return;
             const double interval = p.inFrame ? 0.12 : 0.09 + 0.4 * std::clamp(best / 25.0, 0.0, 1.0);
             if (now - look.blipAt < interval) return;
             look.blipAt = now;
@@ -2400,6 +2463,13 @@ namespace qa::features
         }
         if (!g_exploring && !g_look.on) return;
         const auto& s = cfg::Get();
+        if (!g_exploring)
+        {
+            // A look-around has one key of the mod's: the aim sound.
+            out.push_back(
+                locale::Mod(L"help.look", input::CurrentScheme() == input::Scheme::Gamepad ? input::KeyDisplayName(s.padExploreBeacon) : s.keyBeacon));
+            return;
+        }
         if (input::CurrentScheme() == input::Scheme::Gamepad)
         {
             out.push_back(locale::Mod(L"help.explore.pad", {input::KeyDisplayName(s.padExploreNext), input::KeyDisplayName(s.padExplorePrevious),
@@ -2461,6 +2531,11 @@ namespace qa::features
     bool ExplorationActive()
     {
         return g_exploring;
+    }
+
+    bool LookAroundActive()
+    {
+        return g_look.on;
     }
 
     void ToggleBeacon()

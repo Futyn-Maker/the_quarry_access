@@ -309,9 +309,14 @@ crashed car at night.
     "Снимок сделан, цель в кадре." or "Снимок сделан, цель не в кадре."; the campfire talk
     that follows differs with it. Chapter 3, the binoculars at the boathouse: the same sound
     leads to the point on the island and "В кадре." is said as the game zooms in; the office
-    billboard and the camp arrival window behave alike. T turns the sound off and on, the
-    words stay. The log names the points at the start, `explore: looking around begins ...
-    with N point(s): ...`, the point in frame, and the picture's verdict.
+    billboard and the camp arrival window behave alike. The sound follows the aim sound
+    setting of the fights, not the walk's beacon: T during the look-around switches it, and F8
+    names the key. At the campfire the treehouse stands about 23 degrees left of the view as
+    the camera comes up, outside the 20 degrees the flow asks for, so nothing is said until the
+    stick brings it in. The log names the points at the start, `explore: looking around begins
+    ... with N point(s): L_TakeTreehousePhoto (30 by 20 deg, the flow judges it within 20
+    deg)`, every second `explore: look at "...": N deg across, N up, N off the view, in frame`
+    or `off`, and the picture's verdict.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>

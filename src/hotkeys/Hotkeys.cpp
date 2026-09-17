@@ -130,8 +130,9 @@ namespace qa::hotkeys
             if (keyhook::Active())
             {
                 // The exploration letters are the game's, or a text field's, outside
-                // exploration and the fights; the hook leaves them alone there.
-                keyhook::SetContext(features::ExplorationActive() || features::CombatActive());
+                // exploration, the fights and the look-arounds; the hook leaves them alone
+                // there.
+                keyhook::SetContext(features::ExplorationActive() || features::CombatActive() || features::LookAroundActive());
                 for (const int id : keyhook::TakePresses())
                 {
                     if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
@@ -195,7 +196,8 @@ namespace qa::hotkeys
             const input::PadReading pad = GameWindowInForeground() ? input::ReadPad() : input::PadReading{};
             const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
             PollBindings(pad, g_padBindings, pad.valid && chord);
-            PollBindings(pad, g_exploreBindings, pad.valid && !chord && (features::ExplorationActive() || features::CombatActive()));
+            PollBindings(pad, g_exploreBindings,
+                         pad.valid && !chord && (features::ExplorationActive() || features::CombatActive() || features::LookAroundActive()));
         }
     }
 
@@ -353,7 +355,7 @@ namespace qa::hotkeys
                 if (features::ExplorationActive()) features::WalkToTarget();
                 break;
             case Command::Beacon:
-                if (features::CombatActive())
+                if (features::CombatActive() || features::LookAroundActive())
                     features::ToggleAimSound();
                 else if (features::ExplorationActive())
                     features::ToggleBeacon();
