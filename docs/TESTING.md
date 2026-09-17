@@ -302,12 +302,22 @@ crashed car at night.
     the trail is never listed. The log names a road through a waiting place with
     `explore: the road to "..." runs through ..., which the scene is waiting on`, and a better
     spot with `explore: "..." is better reached at another spot of its box`.
+16. Chapter 2, Kaitlyn at the campfire with the phone camera: the aim sound of the fights leads
+    the right stick to the treehouse, on the side it lies, higher or lower as it stands above or
+    below the view, faster as the view nears it, and the double ping while it is in frame; "В
+    кадре, снимайте!" is said once as it comes into frame, and after A the picture is judged,
+    "Снимок сделан, цель в кадре." or "Снимок сделан, цель не в кадре."; the campfire talk
+    that follows differs with it. Chapter 3, the binoculars at the boathouse: the same sound
+    leads to the point on the island and "В кадре." is said as the game zooms in; the office
+    billboard and the camp arrival window behave alike. T turns the sound off and on, the
+    words stay. The log names the points at the start, `explore: looking around begins ...
+    with N point(s): ...`, the point in frame, and the picture's verdict.
 
 Expected log lines: `explore: ... under the player's control`, one `explore: use location
 "..."` or `explore: destination "..."` per thing listed, `prompts: ... set up with <action>
 style <n>` for every prompt the game shows (the destination prompts carry the
 `ExporationDestination...` actions), `explore: reached "..."`, `explore: looking around begins`,
-`explore: point of interest found`, `explore: reading pane opened`,
+`explore: point of interest N found`, `explore: reading pane opened`,
 `input: the gamepad the game reads through ... is shared with the mod`, one
 `explore: a way ... is missed by the nearest road by ... cm and is offered/not offered` per
 way, and no `ERROR`.
@@ -353,6 +363,10 @@ from the torch, N deg off its beam` line twice a second and one more `combat: at
 (the fight's replicator is gone)`, and no `ERROR`. If the fight's targets are reported `(not found)`, the aim is read
 from the camera rather than the torch, or the sound leads nowhere, send the log: the lines
 above name what the game held.
+6. The moment the beam meets the target the sound leads to, "Огонь!" is said once, with the aim
+    sound on or off and with aim assist on or off; it comes again only after the beam has been
+    off the target for a second. In the automatic setting nothing is said. The log has
+    `combat: the beam meets target N, the word to fire`.
 
 ## Tarot visions
 

@@ -105,6 +105,8 @@ namespace qa::features
             double blipAt = 0.0;
             double quietUntil = 0.0; // the aim sound waits while a cue plays
             double loggedAt = 0.0;
+            bool fireCalled = false; // the word to fire was said and the beam has not left the target since
+            double onTargetAt = 0.0; // the last moment the beam met the target it leads to
         };
         Combat g_combat;
         bool g_aimSound = true;
@@ -893,7 +895,7 @@ namespace qa::features
         // while the beam is on the target.
         void Guide(Combat& c, double now)
         {
-            if (c.automatic || !g_aimSound) return;
+            if (c.automatic) return;
             const Beam beam = AimLine(Pawn());
             if (!beam.placed) return;
             // The sound leads to the target nearest the beam, and keeps to it until another is
@@ -930,15 +932,37 @@ namespace qa::features
                 c.sight = Sight{};
                 return;
             }
-            if (led->index != c.leading) log::Info(L"combat: the sound leads to target {}", led->index);
+            if (led->index != c.leading)
+            {
+                log::Info(L"combat: the sound leads to target {}", led->index);
+                c.fireCalled = false;
+            }
             c.leading = led->index;
             c.sight = best;
+            // The word to fire: once, the moment the beam meets the target the sound leads
+            // to, and again only after the beam has been off it for a second. It comes with
+            // the aim sound on or off and with the aiming setting on or off, short of the
+            // one that fights by itself.
+            if (best.onTarget)
+            {
+                c.onTargetAt = now;
+                if (!c.fireCalled)
+                {
+                    c.fireCalled = true;
+                    log::Info(L"combat: the beam meets target {}, the word to fire", led->index);
+                    speech::Announce(locale::Mod(L"combat.fire"));
+                }
+            }
+            else if (c.fireCalled && now - c.onTargetAt > 1.0)
+            {
+                c.fireCalled = false;
+            }
             if (now - c.loggedAt >= 0.5)
             {
                 c.loggedAt = now;
                 LogAim(c, L"aim");
             }
-            if (now < c.quietUntil) return;
+            if (!g_aimSound || now < c.quietUntil) return;
             const double interval = best.onTarget ? 0.12 : 0.09 + 0.4 * std::clamp(best.angle / 25.0, 0.0, 1.0);
             if (now - c.blipAt < interval) return;
             c.blipAt = now;

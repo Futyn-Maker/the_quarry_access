@@ -126,7 +126,36 @@ namespace qa::features
         double g_stepHeightAt = -10.0;
         std::vector<UObject*> g_glints;
         double g_glintsScannedAt = -10.0;
-        UObject* g_static = nullptr;
+
+        // A point a look-around is about: the actor the flow names, and the game's own
+        // tolerance for having it in view.
+        struct Point
+        {
+            int index = -1; // its place in the action's list, which the game's found event names
+            std::wstring name;
+            UObject* actor = nullptr;
+            double yawTolerance = 5.0;
+            double pitchTolerance = 5.0;
+            bool completesOnFind = false; // the game takes over the moment it is in view
+            bool found = false;           // the game said so
+            bool inFrame = false;         // at the last poll
+            double outOfFrameAt = -1000.0;
+            bool called = false; // the in-frame word was said, until the view leaves the point
+        };
+
+        // A look-around: the view turned by the stick over a fixed spot, with the game's
+        // look-around bar, the phone camera, the binoculars or the rifle scope over it.
+        struct LookAround
+        {
+            bool on = false;
+            UObject* hud = nullptr; // the bar or the overlay that opened it
+            bool photo = false;     // the phone camera: the press takes the picture
+            std::vector<Point> points;
+            int led = -1;
+            double blipAt = 0.0;
+            double loggedAt = 0.0;
+        };
+        LookAround g_look;
         UObject* g_readingPane = nullptr;
         std::wstring g_pageText;
         std::wstring g_pageRead;
@@ -198,11 +227,41 @@ namespace qa::features
             return ok;
         }
 
+        bool RotationOf(UObject* target, const wchar_t* function, double& pitch, double& yaw)
+        {
+            bool ok = false;
+            obj::CallReturn(target, function,
+                            [&](void* params, FProperty* returnValue)
+                            {
+                                void* value = obj::ValuePtrAt(params, returnValue);
+                                if (value)
+                                    ok = obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Pitch"), pitch) &&
+                                         obj::ReadFloatAt(value, obj::StructMember(returnValue, L"Yaw"), yaw);
+                            });
+            return ok;
+        }
+
+        // Where the view is and which way it points.
+        bool CameraLine(Vec& eye, double& pitch, double& yaw)
+        {
+            UObject* controller = obj::LocalPlayerController();
+            UObject* camera = nullptr;
+            if (!controller || !obj::ReadObject(controller, L"PlayerCameraManager", camera) || !obj::IsLive(camera)) return false;
+            return ActorLocation(camera, eye) && RotationOf(camera, L"GetCameraRotation", pitch, yaw);
+        }
+
         double NormalizeDegrees(double a)
         {
             a = std::fmod(a + 180.0, 360.0);
             if (a < 0) a += 360.0;
             return a - 180.0;
+        }
+
+        // Degrees a point stands above the level line from a spot.
+        double ElevationDegrees(const Vec& from, const Vec& to)
+        {
+            const double flat = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
+            return std::atan2(to.z - from.z, flat) * 180.0 / std::numbers::pi;
         }
 
         // Degrees to the right of a heading, from one point to another (the engine's yaw
@@ -1825,35 +1884,205 @@ namespace qa::features
 
         // ---- looking around --------------------------------------------------------------
 
+        // The points of the look-around that is running. Every look-around action of the
+        // loaded flows names its points by actor, so the points whose actors stand in this
+        // level, and lie within the action's own look limits from where the view starts, are
+        // the ones that can be found now: the treehouse from the campfire, the fire on the
+        // island through the binoculars, the pins of the office billboard. Twins of one
+        // action in several sub-flows name the same actors and count once.
+        struct PointsRequest
+        {
+            Vec eye;
+            double pitch = 0.0;
+            double yaw = 0.0;
+            std::vector<Point>* out = nullptr;
+        };
+
+        void GatherPoints(void* context)
+        {
+            auto* request = static_cast<PointsRequest*>(context);
+            std::vector<Point>& points = *request->out;
+            const auto actors = obj::FindAllLive(L"Actor");
+            for (UObject* action : obj::FindAllLive(L"GFActionStaticExplorationSMG026"))
+            {
+                double yawMin = 0.0, yawMax = 0.0, pitchMin = 0.0, pitchMax = 0.0;
+                UObject* logic = nullptr;
+                if (obj::ReadObject(action, L"FreeLookLogic", logic) && obj::IsLive(logic))
+                {
+                    if (auto* limits = obj::FindProperty(logic, L"LookLimits"))
+                    {
+                        void* ptr = obj::ValuePtr(logic, limits);
+                        obj::ReadFloatAt(ptr, obj::StructMember(limits, L"LookLimitYawMin"), yawMin);
+                        obj::ReadFloatAt(ptr, obj::StructMember(limits, L"LookLimitYawMax"), yawMax);
+                        obj::ReadFloatAt(ptr, obj::StructMember(limits, L"LookLimitPitchMin"), pitchMin);
+                        obj::ReadFloatAt(ptr, obj::StructMember(limits, L"LookLimitPitchMax"), pitchMax);
+                    }
+                }
+                const bool yawLimited = yawMax > yawMin;
+                const bool pitchLimited = pitchMax > pitchMin;
+                int index = -1;
+                obj::ForEachArrayElement(action, obj::FindProperty(action, L"POIObjects"),
+                                         [&](void* element, FProperty* inner)
+                                         {
+                                             ++index;
+                                             Point p;
+                                             p.index = index;
+                                             auto* object = obj::StructMember(inner, L"Object");
+                                             void* ref = object ? obj::ValuePtrAt(element, object) : nullptr;
+                                             if (!ref || !obj::ReadStringAt(ref, obj::StructMember(object, L"ActorName"), p.name) || p.name.empty()) return;
+                                             obj::ReadFloatAt(element, obj::StructMember(inner, L"LookAtYawTolerance"), p.yawTolerance);
+                                             obj::ReadFloatAt(element, obj::StructMember(inner, L"LookAtPitchTolerance"), p.pitchTolerance);
+                                             obj::ReadBoolAt(element, obj::StructMember(inner, L"bCompleteActionOnFind"), p.completesOnFind);
+                                             for (UObject* actor : actors)
+                                             {
+                                                 if (IsNamed(actor, p.name))
+                                                 {
+                                                     p.actor = actor;
+                                                     break;
+                                                 }
+                                             }
+                                             Vec at;
+                                             if (!obj::IsLive(p.actor) || !ActorLocation(p.actor, at)) return;
+                                             const double across = BearingDegrees(request->eye, at, request->yaw);
+                                             const double up = NormalizeDegrees(ElevationDegrees(request->eye, at) - request->pitch);
+                                             if (yawLimited && (across < yawMin - 5.0 || across > yawMax + 5.0)) return;
+                                             if (pitchLimited && (up < pitchMin - 5.0 || up > pitchMax + 5.0)) return;
+                                             if (std::any_of(points.begin(), points.end(), [&](const Point& q) { return q.actor == p.actor; })) return;
+                                             points.push_back(std::move(p));
+                                         });
+            }
+        }
+
+        void BeginLook(UObject* instance, bool photo)
+        {
+            if (g_look.on)
+            {
+                if (photo) g_look.photo = true;
+                return;
+            }
+            g_look = LookAround{};
+            g_look.on = true;
+            g_look.hud = instance;
+            g_look.photo = photo;
+            g_glintsScannedAt = -10.0;
+            PointsRequest request;
+            request.out = &g_look.points;
+            if (CameraLine(request.eye, request.pitch, request.yaw)) obj::SafeInvokeLogged(L"explore.GatherPoints", &GatherPoints, &request);
+            std::vector<std::wstring> names;
+            for (const auto& p : g_look.points)
+                names.push_back(
+                    std::format(L"{} ({:.0f} by {:.0f} deg{})", p.name, p.yawTolerance, p.pitchTolerance, p.completesOnFind ? L", found is done" : L""));
+            log::Info(L"explore: looking around begins{} with {} point(s){}{}", photo ? L" through the phone camera" : L"", g_look.points.size(),
+                      names.empty() ? L"" : L": ", str::Join(names, L", "));
+        }
+
+        void EndLook(UObject* instance)
+        {
+            if (!g_look.on || (g_look.hud != instance && obj::IsLive(g_look.hud))) return;
+            // The picture is judged as the game judges it: by what was in frame at the press.
+            if (g_look.photo && !g_look.points.empty())
+            {
+                const bool hit = std::any_of(g_look.points.begin(), g_look.points.end(), [](const Point& p) { return p.inFrame; });
+                log::Info(L"explore: the picture {} its point", hit ? L"has" : L"missed");
+                speech::Announce(locale::Mod(hit ? L"explore.photo.hit" : L"explore.photo.miss"));
+            }
+            log::Info(L"explore: looking around ends");
+            g_look = LookAround{};
+        }
+
+        // Leads the view to the point nearest it with the aim sound of the fights: the blip on
+        // the side of the point, higher when it is above the view and lower when below, faster
+        // as the view nears it, and the quick double ping while it is in frame. The in-frame
+        // word is said once as the view comes onto a point, and again only after the view has
+        // been off it for a second. Without points named, the glints the game shows are all
+        // there is to lead to.
         void PollStatic(double now)
         {
-            if (!obj::IsLive(g_static) || watch::CurrentScreen() != nullptr) return;
-            if (now - g_glintsScannedAt > 1.0)
-            {
-                g_glints = obj::FindAllLive(L"StaticExplorationGlintActorSMG");
-                g_glintsScannedAt = now;
-            }
-            UObject* controller = obj::LocalPlayerController();
-            UObject* camera = nullptr;
-            if (!controller || !obj::ReadObject(controller, L"PlayerCameraManager", camera) || !obj::IsLive(camera)) return;
+            LookAround& look = g_look;
+            if (!look.on || watch::CurrentScreen() != nullptr) return;
             Vec eye;
+            double pitch = 0.0;
             double yaw = 0.0;
-            if (!ActorLocation(camera, eye) || !YawOf(camera, L"GetCameraRotation", yaw)) return;
+            if (!CameraLine(eye, pitch, yaw)) return;
+            if (look.points.empty())
+            {
+                if (now - g_glintsScannedAt > 1.0)
+                {
+                    g_glints = obj::FindAllLive(L"StaticExplorationGlintActorSMG");
+                    g_glintsScannedAt = now;
+                }
+                double best = 1e9;
+                for (auto* glint : g_glints)
+                {
+                    Vec at;
+                    if (!obj::IsLive(glint) || !ActorLocation(glint, at)) continue;
+                    const double bearing = BearingDegrees(eye, at, yaw);
+                    if (std::fabs(bearing) < std::fabs(best)) best = bearing;
+                }
+                if (best > 1e8) return;
+                if (g_beacon && now - g_beaconAt >= cfg::Get().beaconIntervalMs / 1000.0)
+                {
+                    g_beaconAt = now;
+                    const double radians = best * std::numbers::pi / 180.0;
+                    sounds::Beacon(std::sin(radians), 1.0 - std::clamp(std::fabs(best) / 90.0, 0.0, 1.0), std::cos(radians) < 0.0);
+                }
+                return;
+            }
+            int led = -1;
             double best = 1e9;
-            for (auto* glint : g_glints)
+            double bestAcross = 0.0;
+            double bestUp = 0.0;
+            for (size_t i = 0; i < look.points.size(); ++i)
             {
+                Point& p = look.points[i];
                 Vec at;
-                if (!obj::IsLive(glint) || !ActorLocation(glint, at)) continue;
-                const double bearing = BearingDegrees(eye, at, yaw);
-                if (std::fabs(bearing) < std::fabs(best)) best = bearing;
+                if (!obj::IsLive(p.actor) || !ActorLocation(p.actor, at)) continue;
+                const double across = BearingDegrees(eye, at, yaw);
+                const double up = NormalizeDegrees(ElevationDegrees(eye, at) - pitch);
+                const bool inFrame = std::fabs(across) <= p.yawTolerance && std::fabs(up) <= p.pitchTolerance;
+                if (inFrame && !p.called)
+                {
+                    p.called = true;
+                    log::Info(L"explore: \"{}\" is in frame, {:.0f} deg across and {:.0f} up", p.name, across, up);
+                    speech::Announce(locale::Mod(look.photo && !p.completesOnFind ? L"explore.frame.shoot" : L"explore.frame"));
+                }
+                if (!inFrame)
+                {
+                    if (p.inFrame) p.outOfFrameAt = now;
+                    if (p.called && now - p.outOfFrameAt > 1.0) p.called = false;
+                }
+                p.inFrame = inFrame;
+                // A point the game has found and closed is done with; one that waits for the
+                // press keeps the lead.
+                if (p.found && p.completesOnFind) continue;
+                const double off = std::hypot(across, up);
+                if (off < best)
+                {
+                    best = off;
+                    led = static_cast<int>(i);
+                    bestAcross = across;
+                    bestUp = up;
+                }
             }
-            if (best > 1e8) return;
-            if (g_beacon && now - g_beaconAt >= cfg::Get().beaconIntervalMs / 1000.0)
+            if (led < 0) return;
+            if (led != look.led)
             {
-                g_beaconAt = now;
-                const double radians = best * std::numbers::pi / 180.0;
-                sounds::Beacon(std::sin(radians), 1.0 - std::clamp(std::fabs(best) / 90.0, 0.0, 1.0), std::cos(radians) < 0.0);
+                look.led = led;
+                log::Info(L"explore: the sound leads to \"{}\"", look.points[static_cast<size_t>(led)].name);
             }
+            const Point& p = look.points[static_cast<size_t>(led)];
+            if (now - look.loggedAt >= 1.0)
+            {
+                look.loggedAt = now;
+                log::Info(L"explore: look at \"{}\": {:.0f} deg across, {:.0f} up, {}", p.name, bestAcross, bestUp, p.inFrame ? L"in frame" : L"off");
+            }
+            if (!g_beacon) return;
+            const double interval = p.inFrame ? 0.12 : 0.09 + 0.4 * std::clamp(best / 25.0, 0.0, 1.0);
+            if (now - look.blipAt < interval) return;
+            look.blipAt = now;
+            const double pan = std::clamp(bestAcross / std::max(12.0, p.yawTolerance), -1.0, 1.0);
+            const double level = 0.5 + std::clamp(bestUp / std::max(12.0, p.pitchTolerance) * 0.5, -0.5, 0.5);
+            sounds::Aim(pan, level, p.inFrame, std::fabs(bestAcross) > 90.0);
         }
 
         // The scene turns a use location on when the player may walk to it, and off when it
@@ -1878,11 +2107,20 @@ namespace qa::features
             if (g_useLocationState.size() > 256) std::erase_if(g_useLocationState, [](const auto& item) { return !obj::IsLive(item.first); });
         }
 
-        void OnPoiFound(UObject*, FFrame&)
+        void OnPoiFound(UObject*, FFrame& stack)
         {
-            log::Info(L"explore: point of interest found");
+            int64_t index = -1;
+            params::Int(stack, L"InFoundPOIIndex", index);
+            log::Info(L"explore: point of interest {} found", index);
             sounds::Play(sounds::Cue::Confirm);
-            speech::Announce(locale::Mod(L"explore.found"));
+            Point* point = nullptr;
+            for (auto& p : g_look.points)
+            {
+                if (p.index == index) point = &p;
+            }
+            if (point) point->found = true;
+            // The in-frame word, when it has just been said, is the same news.
+            if (!point || !point->called) speech::Announce(locale::Mod(L"explore.found"));
         }
 
         // ---- the reading pane ------------------------------------------------------------
@@ -1945,11 +2183,17 @@ namespace qa::features
                     StopWalk(nullptr, false); // the keys belong to the game the moment it wants them
                 }
             }
-            if (obj::IsA(ev.hud, L"ActionHUDStaticExplorationSMG026"))
+            // A look-around shows the game's bar, or the phone camera, the binoculars or the
+            // rifle scope over the view; whichever it is, the view is turned by the stick and
+            // the points are the flow's.
+            const bool phone = obj::IsA(ev.hud, L"ActionHUDPhoneCameraOverlaySMG026");
+            if (phone || obj::IsA(ev.hud, L"ActionHUDStaticExplorationSMG026") || obj::IsA(ev.hud, L"ActionHUDBinocularsOverlaySMG026") ||
+                obj::IsA(ev.hud, L"ActionHUDRifleScopeOverlaySMG026"))
             {
-                g_static = ev.appeared ? ev.instance : nullptr;
-                g_glintsScannedAt = -10.0;
-                log::Info(L"explore: looking around {}", ev.appeared ? L"begins" : L"ends");
+                if (ev.appeared)
+                    BeginLook(ev.instance, phone);
+                else
+                    EndLook(ev.instance);
             }
             else if (obj::IsA(ev.hud, L"ActionHUDReadingPaneSMG026"))
             {
@@ -2154,7 +2398,7 @@ namespace qa::features
             if (!next.empty() && !close.empty()) out.push_back(locale::Mod(L"help.reading", next, close));
             return;
         }
-        if (!g_exploring && !obj::IsLive(g_static)) return;
+        if (!g_exploring && !g_look.on) return;
         const auto& s = cfg::Get();
         if (input::CurrentScheme() == input::Scheme::Gamepad)
         {
