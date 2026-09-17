@@ -78,6 +78,21 @@ namespace qa::features
             {L"ChoiceWidgetInstance", L"ButtonPromptLeft", L"dir.left", nullptr, nullptr},
         };
 
+        // A choice whose options stand for something painted on the set rather than named in
+        // the interface. The numbers on the cages of the Hackett basement are such a case:
+        // the breakers are labelled, the cages they belong to are not, and what tells them
+        // apart is painted above the cages, where only the eye reaches it. The option's own
+        // locale key says which choice this is; the note tells what is written there and who
+        // is behind which number, and no more than that.
+        struct Note
+        {
+            const wchar_t* optionKey; // what the option's locale key starts with
+            const wchar_t* text;      // the mod string saying what the set shows
+        };
+        const Note kNotes[] = {
+            {L"SMG_CHOICE_ACT_8_HACKETTBASEMENT_BASEMENTENCOUNTER_SWITCH_", L"choice.cages"},
+        };
+
         bool Shown(UObject* widget)
         {
             return obj::IsLive(widget) && obj::IsWidgetShown(widget, true);
@@ -127,6 +142,34 @@ namespace qa::features
                 }
             }
             return str::Join(parts, L", ");
+        }
+
+        // The locale key an option's first label was resolved from: the game's own name for
+        // the option, which does not change with the language.
+        std::wstring OptionKey(UObject* option)
+        {
+            auto* info = obj::FindProperty(option, L"Info");
+            if (!info || obj::PropertyTypeName(info) != L"StructProperty") return {};
+            auto* label = obj::StructMember(info, L"LocaleLabel1");
+            if (!label) return {};
+            std::wstring key;
+            obj::ReadStringAt(obj::ValuePtrAt(obj::ValuePtr(option, info), label), obj::StructMember(label, L"Key"), key);
+            return key;
+        }
+
+        // What the set says, for a choice the mod holds a note for.
+        std::wstring NoteText(const Choice& choice)
+        {
+            for (const auto& option : choice.options)
+            {
+                if (!Shown(option.widget)) continue;
+                const auto key = OptionKey(option.widget);
+                for (const auto& note : kNotes)
+                {
+                    if (key.starts_with(note.optionKey)) return locale::Mod(note.text);
+                }
+            }
+            return {};
         }
 
         // The key shown next to an option, when the game shows it: what its prompt glyph
@@ -202,12 +245,13 @@ namespace qa::features
             return str::JoinSentences(parts);
         }
 
-        // The whole readout: the heading, then the options.
+        // The whole readout: the heading, what the set shows when the choice needs it, then
+        // the options.
         std::wstring ChoiceText(const Choice& choice)
         {
             const auto options = OptionsText(choice);
             if (options.empty()) return {};
-            return str::JoinSentences({HeadingText(choice), options});
+            return str::JoinSentences({HeadingText(choice), NoteText(choice), options});
         }
 
         // Whether an option shows every label the game holds for it. The game writes both
@@ -337,7 +381,16 @@ namespace qa::features
                     return;
                 }
                 if (++choice.stablePolls < 2) return;
-                const auto text = choice.headingSaid ? OptionsText(choice) : ChoiceText(choice);
+                std::wstring text;
+                if (choice.headingSaid)
+                {
+                    const auto options = OptionsText(choice);
+                    if (!options.empty()) text = str::JoinSentences({NoteText(choice), options});
+                }
+                else
+                {
+                    text = ChoiceText(choice);
+                }
                 if (text.empty()) return;
                 choice.announced = true;
                 choice.keys = KeyHints(choice);

@@ -162,6 +162,12 @@ Tester script (Russian UI). Play the prologue from the start.
    "Вправо: ...", "Вниз: ...", "Влево: ..."). Press F8: the keys of the four places.
 7. Press F6 during a choice: the choice is read again; during a prompt: the prompt.
 8. After a choice, pause and return to the game: the choice is not read again.
+9. The breakers of the Hackett basement, chapter 8, after "ПОМОЧЬ ДЖЕЙКОБУ": each of the
+   four-way choices is read as "Выбор. На клетках номера: в 3 Джейкоб, средняя 5 пуста, в 7
+   оборотень." and then the four breakers with their places. The line comes with every one
+   of these choices, the first breaker and the second, in every round, and F6 repeats it. It
+   is not said at the "БРОСИТЬ / ПРОДОЛЖИТЬ" choice between rounds, nor at any other
+   choice in the game.
 
 Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
 ChoiceCommitLeft`, `choices: ... announced, its phrases still to come` and then `choices: ...
