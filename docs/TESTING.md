@@ -168,6 +168,12 @@ Tester script (Russian UI). Play the prologue from the start.
    of these choices, the first breaker and the second, in every round, and F6 repeats it. It
    is not said at the "БРОСИТЬ / ПРОДОЛЖИТЬ" choice between rounds, nor at any other
    choice in the game.
+10. At those breakers, push a direction and hold it: the option is named as the game highlights
+    it, a short two-note tone marks the commit, and "<переключатель>, выбрано." follows when the
+    direction is released. A press without a hold only names the option. Press F8: the help
+    names the four directions and says to hold. After a door has opened, the next round adds
+    "Уже открыто: 3." for the doors that stand open, and the game itself offers only the
+    breakers not yet flipped, so three are read where there were four.
 
 Expected log lines: `hud: appeared ... ChoiceContainerWidgetInstance`, `prompts: ... set up with
 ChoiceCommitLeft`, `choices: ... announced, its phrases still to come` and then `choices: ...

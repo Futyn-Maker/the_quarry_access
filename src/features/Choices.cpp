@@ -1,5 +1,6 @@
 #include "features/Choices.hpp"
 
+#include "core/Flow.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -59,12 +60,16 @@ namespace qa::features
             bool headingSaid = false;   // the heading was said by itself, the options still to come
             double seenAt = -1.0;       // when the options were first seen
             bool finished = false;      // decided: nothing more to read until new options come
-            std::wstring keys;          // the key hints last read
-            std::wstring message;       // the countdown message or the time remaining last read
-            std::wstring pendingChosen; // what was chosen, waiting for the held key to be released
+            std::wstring keys;    // the key hints last read
+            std::wstring message; // the countdown message or the time remaining last read
         };
 
         std::vector<Choice> g_choices;
+
+        // What was chosen, waiting for the held key to be released. It is kept apart from the
+        // choice it came from: a four-way choice takes its widgets off screen the moment it is
+        // committed, and the word must still be said.
+        std::wstring g_pendingChosen;
 
         const Option kTwoWay[] = {
             {L"ChoiceAWidgetInstance", L"ChoiceLeft", L"dir.left", L"ButtonPromptLeft", L"ChoiceCommitLeft"},
@@ -78,19 +83,43 @@ namespace qa::features
             {L"ChoiceWidgetInstance", L"ButtonPromptLeft", L"dir.left", nullptr, nullptr},
         };
 
+        // The cage doors of the Hackett basement that stand open, which the room shows plainly
+        // once a door has swung. The scene's flow keeps one bool per door and branches on them.
+        std::wstring OpenCages()
+        {
+            struct Door
+            {
+                const wchar_t* variable;
+                const wchar_t* number;
+            };
+            const Door doors[] = {
+                {L"b_jacobdooropen", L"3"},
+                {L"b_middledooropen", L"5"},
+                {L"b_nickdooropen", L"7"},
+            };
+            std::vector<std::wstring> open;
+            for (const auto& door : doors)
+            {
+                bool value = false;
+                if (flow::Bool(door.variable, value) && value) open.push_back(door.number);
+            }
+            return open.empty() ? std::wstring() : locale::Mod(L"choice.cages.open", str::Join(open, L", "));
+        }
+
         // A choice whose options stand for something painted on the set rather than named in
         // the interface. The numbers on the cages of the Hackett basement are such a case:
         // the breakers are labelled, the cages they belong to are not, and what tells them
         // apart is painted above the cages, where only the eye reaches it. The option's own
         // locale key says which choice this is; the note tells what is written there and who
-        // is behind which number, and no more than that.
+        // is behind which number, and what the room has come to since, and no more than that.
         struct Note
         {
-            const wchar_t* optionKey; // what the option's locale key starts with
-            const wchar_t* text;      // the mod string saying what the set shows
+            const wchar_t* optionKey;     // what the option's locale key starts with
+            const wchar_t* text;          // the mod string saying what the set shows
+            std::wstring (*changed)();    // what has changed on the set since, empty when nothing has
         };
         const Note kNotes[] = {
-            {L"SMG_CHOICE_ACT_8_HACKETTBASEMENT_BASEMENTENCOUNTER_SWITCH_", L"choice.cages"},
+            {L"SMG_CHOICE_ACT_8_HACKETTBASEMENT_BASEMENTENCOUNTER_SWITCH_", L"choice.cages", &OpenCages},
         };
 
         bool Shown(UObject* widget)
@@ -166,7 +195,8 @@ namespace qa::features
                 const auto key = OptionKey(option.widget);
                 for (const auto& note : kNotes)
                 {
-                    if (key.starts_with(note.optionKey)) return locale::Mod(note.text);
+                    if (!key.starts_with(note.optionKey)) continue;
+                    return str::JoinSentences({locale::Mod(note.text), note.changed ? note.changed() : std::wstring()});
                 }
             }
             return {};
@@ -317,14 +347,6 @@ namespace qa::features
         {
             ResolveOptions(choice);
 
-            // A tone marks the commit itself, since a held key keeps the reader silent; what
-            // was chosen is said once the key is released.
-            if (!choice.pendingChosen.empty() && !input::InputHeld())
-            {
-                speech::Announce(choice.pendingChosen);
-                choice.pendingChosen.clear();
-            }
-
             const auto labels = Labels(choice);
             if (labels != choice.labels)
             {
@@ -410,12 +432,12 @@ namespace qa::features
             // The option the player is committing lights up; the chosen one stays lit.
             for (auto& option : choice.options)
             {
-                if (!Shown(option.widget)) continue;
+                if (!obj::IsLive(option.widget)) continue;
                 bool current = false;
                 bool chosen = false;
                 obj::ReadBool(option.widget, L"bCurrentChoice", current);
                 obj::ReadBool(option.widget, L"bChosen", chosen);
-                if (current && !option.current)
+                if (current && !option.current && Shown(option.widget))
                 {
                     const auto text = OptionText(option.widget);
                     if (!text.empty()) speech::Focus(text);
@@ -424,7 +446,7 @@ namespace qa::features
                 {
                     sounds::Play(sounds::Cue::Confirm);
                     const auto text = OptionText(option.widget);
-                    if (!text.empty()) choice.pendingChosen = locale::Mod(L"choice.chosen", text);
+                    if (!text.empty()) g_pendingChosen = locale::Mod(L"choice.chosen", text);
                     choice.finished = true;
                     log::Info(L"choices: chosen \"{}\"", text);
                 }
@@ -483,6 +505,14 @@ namespace qa::features
         void PollImpl()
         {
             if (gamethread::FrameCount() % 2 != 0) return;
+
+            // A tone marks the commit itself, since a held key keeps the reader silent; what
+            // was chosen is said once the key is released.
+            if (!g_pendingChosen.empty() && !input::InputHeld())
+            {
+                speech::Announce(g_pendingChosen);
+                g_pendingChosen.clear();
+            }
             for (auto it = g_choices.begin(); it != g_choices.end();)
             {
                 if (!obj::IsLive(it->widget) || !obj::IsLive(it->hud))

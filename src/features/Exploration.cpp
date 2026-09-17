@@ -3,6 +3,7 @@
 #include "features/Combat.hpp"
 
 #include "core/Config.hpp"
+#include "core/Flow.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -2030,42 +2031,6 @@ namespace qa::features
             }
         }
 
-        // The game's blackboard library answers for a bool or a flag by its variable object.
-        bool ReadFlowValue(UObject* variable, bool flag, bool& out)
-        {
-            UObject* library = obj::FindObject(L"/Script/SMGGameFlow.Default__GFBlackboardBlueprintLibrary");
-            auto* fn = library ? obj::FindFunction(library, flag ? L"GetGlobalBlackboardFlag" : L"GetGlobalBlackboardBool") : nullptr;
-            UObject* context = obj::LocalPlayerController();
-            if (!fn || !context || !obj::IsLive(variable)) return false;
-            bool ok = false;
-            obj::Call(
-                library, fn,
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (!prop) continue;
-                        const auto name = prop->GetName();
-                        if (name == L"WorldContextObject")
-                            *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = context;
-                        else if (name == L"VariableRef")
-                        {
-                            auto* member = obj::StructMember(prop, L"Variable");
-                            void* ref = obj::ValuePtrAt(params, prop);
-                            if (member && ref) *static_cast<UObject**>(obj::ValuePtrAt(ref, member)) = variable;
-                        }
-                    }
-                },
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (prop && prop->GetName() == L"ReturnValue") ok = obj::ReadBoolAt(params, prop, out);
-                    }
-                });
-            return ok;
-        }
-
         void BeginFlowWatch(const std::vector<UObject*>& flows)
         {
             g_flowWatch = FlowWatch{};
@@ -2078,7 +2043,7 @@ namespace qa::features
                     v.variable = variable;
                     v.name = obj::ObjectName(variable);
                     v.flag = flag;
-                    if (!ReadFlowValue(variable, flag, v.value)) continue;
+                    if (!flow::Value(variable, flag, v.value)) continue;
                     g_flowWatch.values.push_back(std::move(v));
                 }
             }
@@ -2099,7 +2064,7 @@ namespace qa::features
             for (FlowValue& v : watch.values)
             {
                 bool value = false;
-                if (!ReadFlowValue(v.variable, v.flag, value) || value == v.value) continue;
+                if (!flow::Value(v.variable, v.flag, value) || value == v.value) continue;
                 v.value = value;
                 log::Info(L"explore: the flow's {} \"{}\" {}{}", v.flag ? L"flag" : L"bool", v.name,
                           v.flag ? (value ? L"is raised" : L"is lowered") : (value ? L"is now true" : L"is now false"),

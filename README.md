@@ -1,4 +1,4 @@
-# The Quarry Access
+    # The Quarry Access
 
 A mod that makes _The Quarry_ (Supermassive Games, 2022, PC/Steam) playable by blind players.
 It reads the game's screens through your screen reader: NVDA, JAWS and other Tolk-supported
