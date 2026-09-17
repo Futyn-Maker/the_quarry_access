@@ -14,9 +14,12 @@
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
 
+#include <Unreal/NameTypes.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -56,38 +59,35 @@ namespace qa::features
             double metres = 0.0; // from the aim at the last look
         };
 
-        // The line a shot would take: the game shows it as the torch beam on the weapon, so the
-        // beam is read first and the camera's line of sight stands in where there is none.
+        // The line a shot takes, as the game fires it: from the muzzle of the weapon, along the
+        // rotation of the torch on the weapon, with the pellets spread about that line. The
+        // camera's line of sight is read beside it for the log.
         struct Beam
         {
             bool placed = false;
-            Vec from;
+            Vec from;               // the muzzle, or the torch where the weapon names no socket
+            Vec forward, right, up; // the torch's own axes
             double pitch = 0.0;
             double yaw = 0.0;
             const wchar_t* source = L"";
-            // The two lines the shot line is read against in the log: the torch beam as the
-            // weapon points it, and the camera's line of sight.
-            bool torchPlaced = false;
-            double torchPitch = 0.0;
-            double torchYaw = 0.0;
             bool cameraPlaced = false;
             Vec cameraFrom;
             double cameraPitch = 0.0;
             double cameraYaw = 0.0;
         };
 
-        // Where a target stands against the beam.
+        // Where a target stands against the shot.
         struct Sight
         {
             bool placed = false;
-            double horizontal = 0.0; // degrees to the right of the beam
+            double horizontal = 0.0; // degrees to the right of the line
             double vertical = 0.0;   // degrees above it
-            double angle = 0.0;      // degrees off the beam altogether
-            double metres = 0.0;     // from the aim
-            bool onTarget = false;   // the shot line meets the target's body
-            // Against the torch beam and the camera's line of sight, read for the log.
-            double torchAngle = 0.0;
-            bool torchOn = false;
+            double angle = 0.0;      // degrees off the line altogether
+            double metres = 0.0;     // from the muzzle
+            int pellets = 0;         // how many of the shot's pellets meet the target's body
+            int of = 0;              // of how many the shot throws
+            bool onTarget = false;   // a shot fired now would take the target
+            bool assisted = false;   // within the aim assist's reach: its sphere along the line touches the target
             double cameraAngle = 0.0;
             bool cameraOn = false;
         };
@@ -123,6 +123,15 @@ namespace qa::features
             double onTargetAt = 0.0;     // the last moment the beam met the target it leads to
             double onSince = -1.0;       // when the shot line came onto the target it leads to, -1 while off
             std::vector<int64_t> health; // each target's health at the last look
+            // The shot as the game fires it, read from the weapon's setup and the fight's action.
+            bool single = false;       // one pellet, thrown at random within the spread
+            int64_t pellets = 0;       // pellets per shot, as the setup counts them
+            double spread = 0.0;       // degrees
+            bool uniform = true;       // a fixed grid of pellets, else each thrown at random within the cone
+            double range = 0.0;        // how far a pellet flies, cm
+            double magnetism = 0.0;    // the aim assist's reach about the line, cm
+            int64_t aimSetting = 0;    // the aiming setting: 0 off, 1 assist, 2 automatic
+            std::wstring muzzleSocket; // the socket of the weapon's mesh the pellets leave from
         };
         Combat g_combat;
         bool g_aimSound = true;
@@ -218,13 +227,40 @@ namespace qa::features
             return nullptr;
         }
 
-        // The line a shot would take. The game sends the shot from the weapon to its own aim
-        // point, which the fight's replicator carries for the shot, so the line from the torch
-        // on the weapon to that point is the shot line. The torch beam, which the game shows
-        // as the aim, points near that line but not along it: at the shooting range it stood
-        // a third of a degree off, the width of a bottle at thirteen metres. The beam stands
-        // in until the aim point is set, and with no torch to read, the camera's line of
-        // sight, which the aim follows.
+        // Where the pellets leave the weapon: the socket its setup names on its mesh.
+        bool MuzzleLocation(UObject* weapon, Vec& out)
+        {
+            const Combat& c = g_combat;
+            UObject* mesh = nullptr;
+            if (c.muzzleSocket.empty() || c.muzzleSocket == L"None" || !obj::ReadObject(weapon, L"Mesh", mesh) || !obj::IsLive(mesh)) return false;
+            auto* fn = obj::FindFunction(mesh, L"GetSocketLocation");
+            if (!fn) return false;
+            bool ok = false;
+            obj::Call(
+                mesh, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"InSocketName")
+                            std::construct_at(reinterpret_cast<RC::Unreal::FName*>(obj::ValuePtrAt(params, prop)), c.muzzleSocket.c_str(),
+                                              RC::Unreal::FNAME_Add);
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") ok = ReadVec(obj::ValuePtrAt(params, prop), prop, out);
+                    }
+                });
+            return ok;
+        }
+
+        // The line a shot takes. The game fires from the socket its weapon setup names on the
+        // weapon's mesh, along the rotation of the torch on the weapon, and spreads the
+        // pellets about that line; the torch beam the game shows as the aim is that very
+        // line. With no torch to read, the camera's line of sight, which the aim follows.
         Beam AimLine(UObject* pawn)
         {
             Beam b;
@@ -232,16 +268,21 @@ namespace qa::features
             UObject* torch = nullptr;
             if (weapon && obj::ReadObject(weapon, L"TorchLightComponent", torch) && obj::IsLive(torch))
             {
-                Vec forward;
-                if (CallForVec(torch, L"K2_GetComponentLocation", b.from) && CallForVec(torch, L"GetForwardVector", forward))
+                Vec at;
+                if (CallForVec(torch, L"K2_GetComponentLocation", at) && CallForVec(torch, L"GetForwardVector", b.forward) &&
+                    CallForVec(torch, L"GetRightVector", b.right) && CallForVec(torch, L"GetUpVector", b.up))
                 {
-                    b.torchYaw = std::atan2(forward.y, forward.x) * 180.0 / std::numbers::pi;
-                    b.torchPitch = std::asin(std::clamp(forward.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-                    b.torchPlaced = true;
-                    b.yaw = b.torchYaw;
-                    b.pitch = b.torchPitch;
+                    b.from = at;
+                    b.yaw = std::atan2(b.forward.y, b.forward.x) * 180.0 / std::numbers::pi;
+                    b.pitch = std::asin(std::clamp(b.forward.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
                     b.source = L"torch";
                     b.placed = true;
+                    Vec muzzle;
+                    if (MuzzleLocation(weapon, muzzle))
+                    {
+                        b.from = muzzle;
+                        b.source = L"muzzle";
+                    }
                 }
             }
             if (UObject* camera = CameraManager(); camera && CallForVec(camera, L"GetCameraLocation", b.cameraFrom))
@@ -259,20 +300,13 @@ namespace qa::features
                 b.from = b.cameraFrom;
                 b.pitch = b.cameraPitch;
                 b.yaw = b.cameraYaw;
+                b.forward = Forward(b.pitch, b.yaw);
+                const double y = b.yaw * std::numbers::pi / 180.0;
+                b.right = Vec{-std::sin(y), std::cos(y), 0.0};
+                b.up = Vec{b.forward.y * b.right.z - b.forward.z * b.right.y, b.forward.z * b.right.x - b.forward.x * b.right.z,
+                           b.forward.x * b.right.y - b.forward.y * b.right.x};
                 b.source = L"camera";
                 b.placed = true;
-            }
-            Vec aim;
-            if (b.placed && obj::IsLive(g_combat.replicator) && ReadVecProperty(g_combat.replicator, L"TargetPos", aim) &&
-                (aim.x != 0.0 || aim.y != 0.0 || aim.z != 0.0))
-            {
-                const double d = Distance(b.from, aim);
-                if (d > 100.0)
-                {
-                    b.yaw = std::atan2(aim.y - b.from.y, aim.x - b.from.x) * 180.0 / std::numbers::pi;
-                    b.pitch = std::asin(std::clamp((aim.z - b.from.z) / d, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-                    b.source = L"aim point";
-                }
             }
             return b;
         }
@@ -299,8 +333,8 @@ namespace qa::features
             }
         }
 
-        // The middle of what the target's collision fills.
-        bool Centre(UObject* actor, Vec& out)
+        // The middle of what the target's collision fills, and how far it reaches from there.
+        bool Centre(UObject* actor, Vec& out, Vec* reach = nullptr)
         {
             auto* fn = obj::IsLive(actor) ? obj::FindFunction(actor, L"GetActorBounds") : nullptr;
             if (!fn) return false;
@@ -333,6 +367,7 @@ namespace qa::features
             }
             if (!read) return false;
             out = origin;
+            if (reach) *reach = extent;
             return true;
         }
 
@@ -430,43 +465,87 @@ namespace qa::features
             return std::acos(std::clamp(along, -1.0, 1.0)) * 180.0 / std::numbers::pi;
         }
 
+        // How far a point stands from a line, measured square to it.
+        double Beside(const Vec& from, const Vec& forward, const Vec& to)
+        {
+            const double along = (to.x - from.x) * forward.x + (to.y - from.y) * forward.y + (to.z - from.z) * forward.z;
+            const Vec foot{from.x + forward.x * along, from.y + forward.y * along, from.z + forward.z * along};
+            return Distance(foot, to);
+        }
+
         bool MeetsAlong(UObject* actor, const Vec& from, const Vec& forward)
         {
             const Vec far{from.x + forward.x * 20000.0, from.y + forward.y * 20000.0, from.z + forward.z * 20000.0};
             return Meets(actor, from, far);
         }
 
-        // Where a target stands against the shot line; with `others`, against the torch beam
-        // and the camera's line of sight as well, for the log.
+        // The pellets of one shot, as the game throws them: from the muzzle, about the torch's
+        // own axes, a grid of n by n pellets, n from the pellet count, a step of the spread
+        // over n degrees apart, each flown over the weapon's range and stopped by the first
+        // body it meets. The count of them that would meet the target's body is what a shot
+        // fired now would do to it. A weapon that throws its pellets at random within the
+        // spread, or a single one, has only its middle line to judge by.
+        int Pellets(const Beam& beam, UObject* actor, int& of)
+        {
+            const Combat& c = g_combat;
+            const double range = c.range > 0.0 ? c.range : 20000.0;
+            const auto flies = [&](double pitchOff, double yawOff)
+            {
+                const double p = pitchOff * std::numbers::pi / 180.0;
+                const double y = yawOff * std::numbers::pi / 180.0;
+                const Vec v{std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), std::sin(p)};
+                const Vec dir{beam.forward.x * v.x + beam.right.x * v.y + beam.up.x * v.z, beam.forward.y * v.x + beam.right.y * v.y + beam.up.y * v.z,
+                              beam.forward.z * v.x + beam.right.z * v.y + beam.up.z * v.z};
+                const Vec end{beam.from.x + dir.x * range, beam.from.y + dir.y * range, beam.from.z + dir.z * range};
+                return Meets(actor, beam.from, end);
+            };
+            if (c.single || !c.uniform || c.pellets <= 0)
+            {
+                of = 1;
+                return flies(0.0, 0.0) ? 1 : 0;
+            }
+            const int n = std::max(1, static_cast<int>(std::lrint(2.0 * std::sqrt(static_cast<double>(c.pellets)) - 0.5)) >> 1);
+            const double step = c.spread / n;
+            of = n * n;
+            int hits = 0;
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < n; ++j)
+                    if (flies((n / 2 - i) * step, (n / 2 - j) * step)) ++hits;
+            return hits;
+        }
+
+        // Where a target stands against the shot; with `others`, against the camera's line of
+        // sight as well, for the log.
         Sight Look(const Beam& beam, UObject* actor, bool others = false)
         {
             Sight s;
-            Vec centre;
-            if (!beam.placed || !Centre(actor, centre)) return s;
+            Vec centre, reach;
+            if (!beam.placed || !Centre(actor, centre, &reach)) return s;
+            const Combat& c = g_combat;
             const Vec& eye = beam.from;
             const double flat = std::sqrt((centre.x - eye.x) * (centre.x - eye.x) + (centre.y - eye.y) * (centre.y - eye.y));
             const double bearing = std::atan2(centre.y - eye.y, centre.x - eye.x) * 180.0 / std::numbers::pi;
             const double elevation = std::atan2(centre.z - eye.z, flat) * 180.0 / std::numbers::pi;
             s.horizontal = NormalizeDegrees(bearing - beam.yaw);
             s.vertical = NormalizeDegrees(elevation - beam.pitch);
-            const Vec f = Forward(beam.pitch, beam.yaw);
-            s.metres = Distance(eye, centre) / 100.0;
-            s.angle = AngleOff(eye, f, centre);
-            s.onTarget = s.angle < 45.0 && MeetsAlong(actor, eye, f);
-            if (others)
+            const double d = Distance(eye, centre);
+            s.metres = d / 100.0;
+            s.angle = AngleOff(eye, beam.forward, centre);
+            const double radius = std::sqrt(reach.x * reach.x + reach.y * reach.y + reach.z * reach.z);
+            const double radiusDegrees = d > 0.0 ? std::atan(radius / d) * 180.0 / std::numbers::pi : 90.0;
+            // The pellets are traced only where the shot could reach: within its spread of the
+            // line, plus the target's own size.
+            if (s.angle <= c.spread + radiusDegrees + 1.0)
+                s.pellets = Pellets(beam, actor, s.of);
+            else
+                s.of = c.single || !c.uniform || c.pellets <= 0 ? 1 : 0;
+            s.onTarget = s.pellets > 0;
+            s.assisted = c.aimSetting == 1 && c.magnetism > 0.0 && s.angle < 90.0 && Beside(eye, beam.forward, centre) - radius <= c.magnetism;
+            if (others && beam.cameraPlaced)
             {
-                if (beam.torchPlaced)
-                {
-                    const Vec t = Forward(beam.torchPitch, beam.torchYaw);
-                    s.torchAngle = AngleOff(eye, t, centre);
-                    s.torchOn = s.torchAngle < 45.0 && MeetsAlong(actor, eye, t);
-                }
-                if (beam.cameraPlaced)
-                {
-                    const Vec c = Forward(beam.cameraPitch, beam.cameraYaw);
-                    s.cameraAngle = AngleOff(beam.cameraFrom, c, centre);
-                    s.cameraOn = s.cameraAngle < 45.0 && MeetsAlong(actor, beam.cameraFrom, c);
-                }
+                const Vec f = Forward(beam.cameraPitch, beam.cameraYaw);
+                s.cameraAngle = AngleOff(beam.cameraFrom, f, centre);
+                s.cameraOn = s.cameraAngle < 45.0 && MeetsAlong(actor, beam.cameraFrom, f);
             }
             s.placed = true;
             return s;
@@ -873,20 +952,20 @@ namespace qa::features
             {
                 const Sight s = Look(beam, t->actor, true);
                 if (!s.placed) continue;
-                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {} (torch {:.1f} off, {}; camera {:.1f} off, {})",
+                parts.push_back(std::format(L"target {} {:.1f} deg {}, {:.1f} deg {}, {:.1f} off, {:.1f} m, {} of {} pellets, {}{} (camera {:.1f} off, {})",
                                             t->index, std::fabs(s.horizontal), s.horizontal >= 0 ? L"right" : L"left", std::fabs(s.vertical),
-                                            s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres, s.onTarget ? L"on target" : L"off target", s.torchAngle,
-                                            s.torchOn ? L"on" : L"off", s.cameraAngle, s.cameraOn ? L"on" : L"off"));
+                                            s.vertical >= 0 ? L"up" : L"down", s.angle, s.metres, s.pellets, s.of, s.onTarget ? L"on target" : L"off target",
+                                            s.assisted ? L", in the assist's reach" : L"", s.cameraAngle, s.cameraOn ? L"on" : L"off"));
             }
             std::wstring aim = L"no aim point";
             Vec pos;
             if (obj::IsLive(c.replicator) && ReadVecProperty(c.replicator, L"TargetPos", pos) && (pos.x != 0.0 || pos.y != 0.0 || pos.z != 0.0))
             {
-                aim = std::format(L"aim point ({:.0f}, {:.0f}, {:.0f}) {:.1f} m off, {:.1f} deg off the torch", pos.x, pos.y, pos.z,
-                                  Distance(beam.from, pos) / 100.0, beam.torchPlaced ? AngleOff(beam.from, Forward(beam.torchPitch, beam.torchYaw), pos) : 0.0);
+                aim = std::format(L"aim point ({:.0f}, {:.0f}, {:.0f}) {:.1f} m off, {:.1f} deg off the line", pos.x, pos.y, pos.z,
+                                  Distance(beam.from, pos) / 100.0, AngleOff(beam.from, beam.forward, pos));
             }
-            log::Info(L"combat: {}: {} yaw {:.1f} pitch {:.1f} (torch yaw {:.1f} pitch {:.1f}, camera yaw {:.1f} pitch {:.1f}); {}; {}", when, beam.source,
-                      beam.yaw, beam.pitch, beam.torchYaw, beam.torchPitch, beam.cameraYaw, beam.cameraPitch, str::Join(parts, L"; "), aim);
+            log::Info(L"combat: {}: {} yaw {:.1f} pitch {:.1f} (camera yaw {:.1f} pitch {:.1f}); {}; {}", when, beam.source, beam.yaw, beam.pitch,
+                      beam.cameraYaw, beam.cameraPitch, str::Join(parts, L"; "), aim);
         }
 
         void Shot(Combat& c, int64_t number, const wchar_t* how)
@@ -988,12 +1067,43 @@ namespace qa::features
             c.shots = ShotsFired(c.status);
             c.healthSum = Health(c);
             c.modifierSeen = g_modifierOn;
+            // The shot as the game fires it: the weapon's setup gives the pellets, their spread
+            // and the muzzle they leave from, the action how far they fly and how far the aim
+            // assist reaches.
+            c.aimSetting = setting;
+            UObject* setup = nullptr;
+            if (UObject* weapon = Weapon(pawn); weapon && obj::ReadObject(weapon, L"WeaponSetup", setup) && obj::IsLive(setup))
+            {
+                obj::ReadBool(setup, L"bSingleShot", c.single);
+                obj::ReadInt(setup, L"ProjectilesPerShot", c.pellets);
+                obj::ReadFloat(setup, L"Spread", c.spread);
+                obj::ReadBool(setup, L"bUniformSpread", c.uniform);
+                obj::ReadString(setup, L"MuzzleSocket", c.muzzleSocket);
+            }
+            int64_t channel = -1;
+            if (c.action)
+            {
+                obj::ReadFloat(c.action, L"WeaponEffectiveRange", c.range);
+                obj::ReadFloat(c.action, L"AimAssistMagnetismRadius", c.magnetism);
+                obj::ReadInt(c.action, L"TargetCollisionChannel", channel);
+            }
             const Beam beam = AimLine(pawn);
             log::Info(L"combat: begins on {} for {} ({}) with {}; aiming setting {}; state \"{}\"; {} target(s): {}; time limit {}; status {} at {} shot(s); "
                       L"aim read from the {}",
                       sign, pawn ? obj::ObjectName(pawn) : L"<no pawn>", RegisteredName(pawn), WeaponText(pawn), setting, wantedState, c.targets.size(),
                       str::Join(names, L", "), c.hasTimeLimit ? std::format(L"{:.1f} s", c.timeLimit) : L"none",
                       c.status ? obj::ObjectName(c.status) : L"<none>", c.shots, beam.placed ? beam.source : L"nothing");
+            const int grid = c.single || !c.uniform || c.pellets <= 0
+                                 ? 1
+                                 : std::max(1, static_cast<int>(std::lrint(2.0 * std::sqrt(static_cast<double>(c.pellets)) - 0.5)) >> 1);
+            log::Info(
+                L"combat: the shot: {} pellet(s) as set up, {}, {:.2f} deg spread, from socket \"{}\" over {:.0f} m on channel {}; the aim assist reaches "
+                L"{:.0f} cm about the line",
+                c.pellets,
+                grid > 1 ? std::format(L"a grid of {} by {} pellets {:.2f} deg apart, the outer ones {:.2f} deg off the line", grid, grid, c.spread / grid,
+                                       (grid / 2) * c.spread / grid)
+                         : std::wstring(c.single ? L"one pellet at random within the spread" : L"each pellet at random within the spread"),
+                c.spread, c.muzzleSocket, c.range / 100.0, channel, c.magnetism);
             // Only the word for aiming: a fight leaves seconds, and they belong to the game's
             // own prompt and the aim sound. What there is to shoot at is a key away (H, F6).
             speech::Announce(locale::Mod(c.automatic ? L"combat.auto" : L"combat.aim"));

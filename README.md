@@ -55,7 +55,7 @@ chord there, because the game leaves those buttons unused while you walk.
 | T        | D-pad down  | Beacon on or off                          |
 
 During a fight the same keys serve the fight: N and P switch between its targets, H says
-where the current one stands against the aim, and T switches the aim sound off and on; the moment the beam meets the target, "Fire!" is said once. During a look-around, with the phone camera, the binoculars or the game's own bar, the same aim sound leads the view to the point the scene is about, and T switches it. Outside
+where the current one stands against the aim, and T switches the aim sound off and on; the moment a shot fired would take the target, judged with the game's own pellet pattern, "Fire!" is said once. During a look-around, with the phone camera, the binoculars or the game's own bar, the same aim sound leads the view to the point the scene is about, and T switches it. Outside
 a fight, a look-around and walking the character they do nothing.
 
 All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`. The mod takes its keys

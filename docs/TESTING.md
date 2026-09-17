@@ -345,10 +345,13 @@ between 1.6 and 8 seconds each. Settings → Доступность → Помо
    timer bar. The game draws no crosshair: your aim is the torch beam on the
    weapon. A blip sounds in the ear on the side of the target: higher when the target is above
    the beam, lower when below, faster as the beam nears it. Move the mouse (or the right stick)
-   toward the sound. When the shot line is on the target's body the blip becomes a quick double
-   ping in both ears: fire. The sound leads to one target at a time: the one the line is on,
-   else the one chosen with N or P, else the nearest to the line, which it keeps until another
-   is clearly nearer; the double ping and "Огонь!" are for that target only.
+   toward the sound. When a shot fired this moment would take the target, the blip becomes a
+   quick double ping in both ears: fire. That is judged as the game judges a shot: the pellets
+   of one shot are thrown in thought from the weapon's muzzle along the torch, in the game's
+   own grid, and counted where they meet the target's bodies. The sound leads to one target
+   at a time: the one a shot would take, else the one chosen with N or P, else the nearest to
+   the line, which it keeps until another is clearly nearer; the double ping and "Огонь!" are
+   for that target only.
 2. Each shot is answered: a rising tone with "Попадание." or a falling one with "Промах." When
    a timed fight ends without a hit you hear a falling tone and "Время вышло."
 3. Press H during a fight: "Цель: 6 м, справа выше." or "На цели." Press N or P when the
@@ -379,16 +382,20 @@ above name what the game held.
     nothing is said. The log has `combat: the shot line has been on target N for a fifth of a
     second, the word to fire`.
 7. The shooting range, chapter 2: nine targets, six bottles and three melons, all about 13 m
-    away, so H says 13 m for every one of them; the character does not walk here. The aim
-    assist's lock reaches 7 m, so nothing is locked here whatever the setting. A bottle is five
-    centimetres wide, a fifth of a degree at that range, so the double ping on a bottle needs a
-    steady stick; a melon is three times as wide. The `combat: begins` line names each target's
-    bodies (`bodies: Capsule (CapsuleComponent), Mesh (SkeletalMeshComponent)`). The sound
-    leads along the row; with the line between two bottles it leads to the nearer one. Hold
-    the double ping on a bottle or a melon and fire, and fire once more with the blips fast but
-    no double ping: "Попадание." or "Промах." answers each, and the log at the shot shows the
-    three lines against every target with the target that lost health, which is what settles
-    the shot line. The scene goes on after the shots whatever they hit.
+    away, so H says 13 m for every one of them; the character does not walk here. With the aim
+    assist on, the game pulls the aim onto any target its magnetism sphere, 60 cm wide about
+    the torch line, touches, so a shot with the stick untouched lands on a bottle by itself
+    after a moment; with it off, nothing moves the aim. A bottle is five centimetres wide, a
+    fifth of a degree at that range, and the shot's grid of pellets reaches about a degree to
+    each side of the line, so the double ping comes while the line is within about a degree of
+    a bottle. The `combat: begins` line names each target's bodies and the next line the
+    shot: `combat: the shot: 35 pellet(s) as set up, a grid of 5 by 5 pellets 0.54 deg apart,
+    the outer ones 1.08 deg off the line, 2.70 deg spread, from socket "Barrel_socket" over
+    N m on channel N; the aim assist reaches 60 cm about the line`. Twice a second every
+    target is logged with `N of 25 pellets` and `in the assist's reach` where the sphere
+    touches it. Hold the double ping on a bottle or a melon and fire: "Попадание." answers;
+    fire with the blips fast but no double ping: "Промах.", unless the assist pulled the aim
+    on in the meantime. The scene goes on after the shots whatever they hit.
 
 ## Tarot visions
 
