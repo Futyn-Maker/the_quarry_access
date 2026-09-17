@@ -57,11 +57,11 @@ namespace qa::features
             std::wstring labels; // the option labels at the last poll, the choice's identity
             int stablePolls = 0;
             bool announced = false;
-            bool headingSaid = false;   // the heading was said by itself, the options still to come
-            double seenAt = -1.0;       // when the options were first seen
-            bool finished = false;      // decided: nothing more to read until new options come
-            std::wstring keys;    // the key hints last read
-            std::wstring message; // the countdown message or the time remaining last read
+            bool headingSaid = false; // the heading was said by itself, the options still to come
+            double seenAt = -1.0;     // when the options were first seen
+            bool finished = false;    // decided: nothing more to read until new options come
+            std::wstring keys;        // the key hints last read
+            std::wstring message;     // the countdown message or the time remaining last read
         };
 
         std::vector<Choice> g_choices;
@@ -114,9 +114,9 @@ namespace qa::features
         // is behind which number, and what the room has come to since, and no more than that.
         struct Note
         {
-            const wchar_t* optionKey;     // what the option's locale key starts with
-            const wchar_t* text;          // the mod string saying what the set shows
-            std::wstring (*changed)();    // what has changed on the set since, empty when nothing has
+            const wchar_t* optionKey;  // what the option's locale key starts with
+            const wchar_t* text;       // the mod string saying what the set shows
+            std::wstring (*changed)(); // what has changed on the set since, empty when nothing has
         };
         const Note kNotes[] = {
             {L"SMG_CHOICE_ACT_8_HACKETTBASEMENT_BASEMENTENCOUNTER_SWITCH_", L"choice.cages", &OpenCages},
