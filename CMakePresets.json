@@ -1,0 +1,36 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 22,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "shipping",
+            "displayName": "Shipping (Ninja, MSVC x64)",
+            "description": "The one configuration UE4SS and the mod are built in for the game: Game__Shipping__Win64.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Game__Shipping__Win64"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "shipping",
+            "displayName": "Mod, UE4SS and its loader",
+            "configurePreset": "shipping",
+            "targets": ["QuarryAccess", "proxy"]
+        }
+    ]
+}

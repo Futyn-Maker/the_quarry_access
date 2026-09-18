@@ -29,13 +29,6 @@ set_target_properties(${TARGET} PROPERTIES
 if(MSVC)
     target_compile_options(${TARGET} PRIVATE /W4 /utf-8 /permissive-)
     # A linker map next to main.dll lets crash offsets from minidumps be resolved to functions.
-    target_link_options(${TARGET} PRIVATE /MAP)
-endif()
-
-if(QA_GAME_DIR)
-    set(QA_MOD_DLL_DIR "${QA_GAME_DIR}/SMG026/Binaries/Win64/Mods/QuarryAccess/dlls")
-    add_custom_command(TARGET ${TARGET} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${QA_MOD_DLL_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${TARGET}>" "${QA_MOD_DLL_DIR}/main.dll"
-        COMMENT "Copying main.dll to ${QA_MOD_DLL_DIR}")
+    # main.dll names its symbol file without the folder it was built in.
+    target_link_options(${TARGET} PRIVATE /MAP /PDBALTPATH:%_PDB%)
 endif()

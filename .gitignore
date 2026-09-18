@@ -1,6 +1,7 @@
-# Build output
-build/
-out/
+# Build output (scripts\build.cmd) and release archives (scripts\package.ps1)
+/build/
+/dist/
+/out/
 *.pdb
 *.ilk
 *.obj
@@ -13,6 +14,3 @@ CMakeUserPresets.json
 
 # Local artifacts
 *.log
-dist/
-dumps/
-tests/actual/

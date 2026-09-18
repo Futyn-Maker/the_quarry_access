@@ -1,0 +1,7 @@
+# Windows scripts are checked out with CRLF line endings: cmd.exe can lose its place in a
+# batch file with bare LF endings and jump to the wrong label.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.dll binary

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-# The Quarry Accessibility Mod (QuarryAccess) — a UE4SS C++ mod that voices
+# The Quarry Access (QuarryAccess) — a UE4SS C++ mod that voices
 # The Quarry's UI and gameplay prompts through Tolk (NVDA / JAWS / SAPI).
 project(QuarryAccessMod LANGUAGES C CXX)
 
@@ -10,21 +10,15 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" QA_VERSION LIMIT_COUNT 1)
 string(STRIP "${QA_VERSION}" QA_VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
-# Where the RE-UE4SS source tree lives. Defaults to the pinned git submodule;
-# developers with an existing checkout (and its UEPseudo submodule) can point
-# here to avoid a second full UE4SS build, e.g.
-#   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Game__Shipping__Win64 -DQA_UE4SS_SOURCE_DIR=D:/QuarryTools/RE-UE4SS
+# The RE-UE4SS source tree. The mod and UE4SS.dll are built from the same tree, since the mod
+# links against it; the default is the pinned submodule.
 set(QA_UE4SS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/RE-UE4SS" CACHE PATH "Path to the RE-UE4SS source tree")
 
-# Optional: game root. When set, a post-build step copies main.dll into
-# <game>/SMG026/Binaries/Win64/Mods/QuarryAccess/dlls/ (scripts/deploy.ps1 does the full deploy).
-set(QA_GAME_DIR "" CACHE PATH "The Quarry install directory (optional, enables post-build copy)")
-
-if(NOT EXISTS "${QA_UE4SS_SOURCE_DIR}/CMakeLists.txt")
+if(NOT EXISTS "${QA_UE4SS_SOURCE_DIR}/deps/first/Unreal/CMakeLists.txt")
     message(FATAL_ERROR
-        "RE-UE4SS source not found at '${QA_UE4SS_SOURCE_DIR}'. "
-        "Run 'git submodule update --init --recursive' (requires a GitHub account linked to Epic Games for the UEPseudo submodule) "
-        "or pass -DQA_UE4SS_SOURCE_DIR=<path to an existing RE-UE4SS checkout>.")
+        "The RE-UE4SS source tree at '${QA_UE4SS_SOURCE_DIR}' is incomplete. "
+        "Run scripts\\setup.cmd to fetch the submodules (UE4SS's UEPseudo submodule needs a "
+        "GitHub account linked to Epic Games), or pass -DQA_UE4SS_SOURCE_DIR=<an RE-UE4SS checkout>.")
 endif()
 
 add_subdirectory("${QA_UE4SS_SOURCE_DIR}" RE-UE4SS)
