@@ -12,7 +12,15 @@ set "ROOT=%~dp0.."
 call "%~dp0env.cmd" || goto :fail
 
 if defined QA_UE4SS_SOURCE_DIR goto :have_source
-if not exist "%ROOT%\third_party\RE-UE4SS\deps\first\Unreal\CMakeLists.txt" call "%~dp0setup.cmd" || goto :fail
+rem Missing submodules are fetched. One checked out at another commit than the repository pins
+rem is built as it is, since that is how a newer UE4SS gets tried, and said.
+set "MISSING="
+set "MOVED="
+if not exist "%ROOT%\third_party\RE-UE4SS\deps\first\Unreal\CMakeLists.txt" set "MISSING=1"
+git -C "%ROOT%" submodule status --recursive 2>nul | findstr /b /c:"-" >nul && set "MISSING=1"
+if defined MISSING call "%~dp0setup.cmd" || goto :fail
+git -C "%ROOT%" submodule status --recursive 2>nul | findstr /b /c:"+" >nul && set "MOVED=1"
+if defined MOVED echo Note: a submodule is checked out at another commit than the repository pins, and is built as it is. scripts\setup.cmd checks out the pinned commits.
 set "QA_UE4SS_SOURCE_DIR=%ROOT%\third_party\RE-UE4SS"
 :have_source
 for %%i in ("%QA_UE4SS_SOURCE_DIR%") do set "QA_UE4SS_SOURCE_DIR=%%~fi"
@@ -20,7 +28,8 @@ set "QA_UE4SS_SOURCE_DIR=%QA_UE4SS_SOURCE_DIR:\=/%"
 
 pushd "%ROOT%"
 rem The build directory is configured when it is new or when asked, and again when UE4SS is to
-rem come from another tree than last time or something else (an IDE) configured it another way.
+rem come from another tree than last time, when the preset changed, or when something else (an
+rem IDE) configured it another way. Otherwise Ninja itself reruns CMake when a CMakeLists changed.
 set "CONFIGURE="
 set "LAST_SOURCE="
 if /i "%~1"=="configure" set "CONFIGURE=1"
@@ -28,9 +37,11 @@ if not exist build\build.ninja set "CONFIGURE=1"
 if exist build\CMakeCache.txt findstr /b /c:"CMAKE_BUILD_TYPE:STRING=Game__Shipping__Win64" build\CMakeCache.txt >nul || set "CONFIGURE=1"
 if exist build\ue4ss-source.txt set /p LAST_SOURCE=<build\ue4ss-source.txt
 if /i not "%LAST_SOURCE%"=="%QA_UE4SS_SOURCE_DIR%" set "CONFIGURE=1"
+fc /b CMakePresets.json build\presets-used.json >nul 2>nul || set "CONFIGURE=1"
 if not defined CONFIGURE goto :build
 cmake --preset shipping "-DQA_UE4SS_SOURCE_DIR=%QA_UE4SS_SOURCE_DIR%" || goto :fail_popd
 <nul set /p "=%QA_UE4SS_SOURCE_DIR%" > build\ue4ss-source.txt
+copy /y CMakePresets.json build\presets-used.json >nul
 :build
 cmake --build --preset shipping || goto :fail_popd
 for %%f in (build\src\main.dll build\Game__Shipping__Win64\bin\UE4SS.dll build\Game__Shipping__Win64\bin\dwmapi.dll) do (

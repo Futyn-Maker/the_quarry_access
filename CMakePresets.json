@@ -9,7 +9,7 @@
         {
             "name": "shipping",
             "displayName": "Shipping (Ninja, MSVC x64)",
-            "description": "The one configuration UE4SS and the mod are built in for the game: Game__Shipping__Win64.",
+            "description": "The one configuration UE4SS and the mod are built in for the game: Game__Shipping__Win64. The libraries UE4SS downloads are fetched once and not updated when the build directory is configured again.",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "architecture": {
@@ -21,7 +21,8 @@
                 "strategy": "external"
             },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Game__Shipping__Win64"
+                "CMAKE_BUILD_TYPE": "Game__Shipping__Win64",
+                "FETCHCONTENT_UPDATES_DISCONNECTED": "ON"
             }
         }
     ],
