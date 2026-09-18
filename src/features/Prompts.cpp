@@ -10,6 +10,7 @@
 #include "features/Exploration.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
+#include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
@@ -88,13 +89,22 @@ namespace qa::features
         }
 
         // A prompt for the keys of an axis, the mouse or the stick reads as its labels around
-        // the key caps it shows, else around the device.
+        // the key caps it shows, else around the device. On a gamepad the prompt draws a stick
+        // instead of key caps and says in its own field which stick it drew, the left one for
+        // walking and the right one for looking; that field is the picture the player sees.
         std::wstring AxisPromptText(UObject* prompt)
         {
             const auto left = ui::PropertyText(prompt, L"LeftLabel");
             const auto right = ui::PropertyText(prompt, L"RightLabel");
             auto keys = ui::AxisPromptKeys(prompt);
-            if (keys.empty()) keys = input::PointerName();
+            if (keys.empty())
+            {
+                int64_t stick = 0;
+                if (obj::ReadInt(prompt, L"DisplayAxisInputType", stick) && (stick == 1 || stick == 2))
+                    keys = locale::Mod(stick == 1 ? L"input.leftstick" : L"input.rightstick");
+                else
+                    keys = input::PointerName();
+            }
             if (left.empty() && right.empty()) return keys;
             return str::JoinWords({left, keys, right});
         }
