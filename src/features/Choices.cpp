@@ -58,12 +58,14 @@ namespace qa::features
             std::wstring labels; // the option labels at the last poll, the choice's identity
             int stablePolls = 0;
             bool announced = false;
-            bool headingSaid = false; // the heading was said by itself, the options still to come
-            double seenAt = -1.0;     // when the options were first seen
-            bool finished = false;    // decided: nothing more to read until new options come
-            std::wstring keys;        // the key hints last read
-            std::wstring message;     // the countdown message or the time remaining last read
-            std::wstring lastCurrent; // the option the player was last pushing toward
+            bool headingSaid = false;            // the heading was said by itself, the options still to come
+            double seenAt = -1.0;                // when the options were first seen
+            bool finished = false;               // decided: nothing more to read until new options come
+            std::wstring keys;                   // the key hints last read
+            std::wstring message;                // the countdown message or the time remaining last read
+            std::wstring lastCurrent;            // the option the player was last pushing toward
+            std::vector<std::wstring> votesSeen; // the voting lines at the last poll
+            std::vector<std::wstring> votesSaid; // the voting lines last read out
         };
 
         std::vector<Choice> g_choices;
@@ -88,6 +90,26 @@ namespace qa::features
             {L"ChoiceWidgetInstance", L"ButtonPromptUp", L"dir.topright", nullptr, nullptr},
             {L"ChoiceWidgetInstance", L"ButtonPromptLeft", L"dir.bottomleft", nullptr, nullptr},
             {L"ChoiceWidgetInstance", L"ButtonPromptRight", L"dir.bottomright", nullptr, nullptr},
+        };
+
+        // A Wolf Pack votes on a choice together. The choice shows the pack's mode, what it
+        // is waiting for, whether voting is open, the votes cast, who voted for each side
+        // and, at the end, the share each side won; each option shows the votes it drew.
+        // These lines are read as they change, the player's own vote in or not. In a game
+        // played alone they stay hidden and say nothing.
+        struct VoteLine
+        {
+            const wchar_t* direction; // locale key of the side it belongs to, null for the choice itself
+            const wchar_t* first;
+            const wchar_t* second;
+        };
+        const VoteLine kVoteLines[] = {
+            {nullptr, L"PackName_txt", nullptr},
+            {nullptr, L"InfoText", nullptr},
+            {nullptr, L"NotificationText", nullptr},
+            {nullptr, L"VoteTotal", nullptr},
+            {L"dir.left", L"LeftPlayerList", L"LeftPercent_txt"},
+            {L"dir.right", L"RightPlayerList", L"RightPercent_txt"},
         };
 
         // The cage doors of the Hackett basement that stand open, which the room shows plainly
@@ -268,6 +290,57 @@ namespace qa::features
             }
         }
 
+        std::wstring Sided(const wchar_t* direction, const std::wstring& text)
+        {
+            return text.empty() || !direction ? text : locale::Mod(direction) + L": " + text;
+        }
+
+        // The voting lines as the choice shows them now, empty where nothing is shown.
+        std::vector<std::wstring> VoteTexts(const Choice& choice)
+        {
+            std::vector<std::wstring> texts;
+            for (const auto& line : kVoteLines)
+            {
+                std::vector<std::wstring> parts;
+                for (const wchar_t* property : {line.first, line.second})
+                {
+                    if (!property) continue;
+                    const auto text = str::CollapseWhitespace(ui::PropertyText(choice.widget, property));
+                    if (!text.empty()) parts.push_back(text);
+                }
+                texts.push_back(Sided(line.direction, str::Join(parts, L", ")));
+            }
+            for (const auto& option : choice.options)
+            {
+                const auto votes = Shown(option.widget) ? str::CollapseWhitespace(ui::PropertyText(option.widget, L"VoteInfo")) : std::wstring();
+                texts.push_back(Sided(option.direction, votes));
+            }
+            return texts;
+        }
+
+        // A line is read once it has held for two polls, so a count climbing through several
+        // votes at once is read at the number it settles on.
+        void PollVotes(Choice& choice)
+        {
+            if (!choice.announced) return;
+            const auto texts = VoteTexts(choice);
+            choice.votesSeen.resize(texts.size());
+            choice.votesSaid.resize(texts.size());
+            for (size_t i = 0; i < texts.size(); ++i)
+            {
+                if (texts[i] != choice.votesSeen[i])
+                {
+                    choice.votesSeen[i] = texts[i];
+                    continue;
+                }
+                if (texts[i] == choice.votesSaid[i]) continue;
+                choice.votesSaid[i] = texts[i];
+                if (texts[i].empty()) continue;
+                log::Info(L"choices: vote line \"{}\"", texts[i]);
+                speech::Announce(texts[i]);
+            }
+        }
+
         // The option labels alone: what identifies one choice against the next.
         std::wstring Labels(const Choice& choice)
         {
@@ -420,6 +493,8 @@ namespace qa::features
                     choice.announced = false;
                     choice.finished = false;
                     choice.keys.clear();
+                    choice.votesSeen.clear();
+                    choice.votesSaid.clear();
                     for (auto& option : choice.options)
                     {
                         option.current = option.chosen = false;
@@ -427,6 +502,7 @@ namespace qa::features
                     }
                 }
             }
+            PollVotes(choice);
             if (choice.finished) return;
 
             if (!choice.announced)
@@ -533,7 +609,6 @@ namespace qa::features
                 return;
             }
             if (choice.finished) return;
-            if (choice.finished) return;
 
             // The seconds left, once the game starts showing them.
             const auto remaining = ui::PropertyText(choice.widget, L"TimeRemaining");
@@ -637,9 +712,16 @@ namespace qa::features
     {
         for (const auto& choice : g_choices)
         {
-            if (!obj::IsLive(choice.widget) || choice.finished) continue;
-            const auto text = choice.kind == Kind::Impending ? choice.message : ChoiceText(choice);
-            if (!text.empty()) out.push_back(text);
+            if (!obj::IsLive(choice.widget)) continue;
+            if (!choice.finished)
+            {
+                const auto text = choice.kind == Kind::Impending ? choice.message : ChoiceText(choice);
+                if (!text.empty()) out.push_back(text);
+            }
+            if (choice.kind == Kind::Impending) continue;
+            // The vote goes on after the player's own vote is in, so it is read either way.
+            const auto votes = str::JoinSentences(VoteTexts(choice));
+            if (!votes.empty()) out.push_back(votes);
         }
     }
 
