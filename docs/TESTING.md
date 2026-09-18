@@ -153,7 +153,8 @@ Tester script (Russian UI). Play the prologue from the start.
    it decides to: when its key caps appear you hear them, "A, D", with the keys as bound.
 3. Hold A or D: the option you are committing is read as it lights up (NVDA cuts speech while
    a letter key repeats, so it may come out short). Hold until a short two-note tone marks the
-   commit, then release the key: "<option>, выбрано." follows the release.
+   commit, then release the key: "<option>, выбрано." follows the release, naming the
+   option alone and not the line under it, which was read with the options.
 4. When the game starts showing the seconds left, each value is read. When the time runs out
    with nothing held, the game shows nothing more and nothing is said.
 5. Before a choice on the road you may hear "Выбор через 5 с" and then "Скоро придётся сделать

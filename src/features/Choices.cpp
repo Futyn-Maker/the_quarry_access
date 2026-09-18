@@ -180,6 +180,15 @@ namespace qa::features
             return str::Join(parts, L", ");
         }
 
+        // The option's first label alone, which is what the choice is called. The second label
+        // is the line the character will say, and the word that a choice has been taken names
+        // only the first, since the line has just been read out with the options.
+        std::wstring OptionTitle(UObject* option)
+        {
+            const auto title = str::Trim(ui::PropertyText(option, L"TitleText"));
+            return title.empty() ? OptionText(option) : title;
+        }
+
         // The locale key an option's first label was resolved from: the game's own name for
         // the option, which does not change with the language.
         std::wstring OptionKey(UObject* option)
@@ -499,19 +508,19 @@ namespace qa::features
                     const auto text = OptionText(option.widget);
                     if (!text.empty())
                     {
-                        choice.lastCurrent = text;
+                        choice.lastCurrent = OptionTitle(option.widget);
                         speech::Focus(text);
                     }
                 }
                 const double commit = CommitOf(option.widget);
                 if ((chosen || clicked) && !option.chosen)
                 {
-                    taken = OptionText(option.widget);
+                    taken = OptionTitle(option.widget);
                     log::Info(L"choices: chosen \"{}\"{}", taken, clicked ? L" by its button" : L"");
                 }
                 else if (commit >= 0.995 && option.commit < 0.995)
                 {
-                    taken = OptionText(option.widget);
+                    taken = OptionTitle(option.widget);
                     log::Info(L"choices: held to the end on \"{}\"", taken);
                 }
                 option.current = lit;
