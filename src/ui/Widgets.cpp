@@ -168,6 +168,10 @@ namespace qa::ui
         // The prompt is rendered as "left text [glyph] right text"; the key name goes where the glyph is.
         std::wstring ComposePrompt(UObject* promptWidget, const std::wstring& key)
         {
+            // A prompt that collapses its words shows its key alone; the words it would
+            // fall back to are the placeholder from the editor.
+            bool collapsed = false;
+            if (obj::ReadBool(promptWidget, L"CollapseText", collapsed) && collapsed) return {};
             const auto left = str::Trim(VisibleTextProperty(promptWidget, L"PromptTextLeft"));
             const auto right = str::Trim(VisibleTextProperty(promptWidget, L"PromptTextRight"));
             std::wstring label;
@@ -599,10 +603,18 @@ namespace qa::ui
             for (const wchar_t* className :
                  {L"UIInteractableWidgetBaseSMG026", L"EditableTextBox", L"MenuPromptWidget_C", L"MenuBarBottom_C", L"PauseTabWidget_C"})
             {
+                // Taken whether or not they are drawn this moment: a bar fading in or out
+                // still holds a placeholder the body must not pick up.
                 for (auto* widget : obj::FindAllLive(className))
                 {
-                    if (OnScreen(widget, roots)) collect(widget);
+                    if (obj::IsLive(widget) && UnderRoots(widget, roots)) collect(widget);
                 }
+            }
+            // The description beside a selector is read with that selector.
+            for (auto* root : roots)
+            {
+                UObject* description = nullptr;
+                if (obj::ReadObject(root, L"ModeDescription_txt", description) && obj::IsLive(description)) collect(description);
             }
             return texts;
         }
@@ -684,7 +696,32 @@ namespace qa::ui
                     add(text);
             }
         }
+        // A selector the tab keys turn wherever the focus is belongs to the screen rather
+        // than to the selection, so its setting is part of what the screen says.
+        for (auto* selector : TabSelectors(screen))
+            add(Speak(Describe(selector)));
         return JoinLines(parts);
+    }
+
+    std::vector<UObject*> TabSelectors(UObject* screen)
+    {
+        std::vector<UObject*> selectors;
+        if (!screen) return selectors;
+        const auto roots = ScreenRoots(screen);
+        for (auto* selector : obj::FindAllLive(L"MenuCarousel_New_C"))
+        {
+            if (!OnScreen(selector, roots)) continue;
+            for (const wchar_t* property : {L"PromptNext", L"PromptPrev"})
+            {
+                UObject* prompt = nullptr;
+                if (obj::ReadObject(selector, property, prompt) && obj::IsLive(prompt) && obj::IsWidgetShown(prompt))
+                {
+                    selectors.push_back(selector);
+                    break;
+                }
+            }
+        }
+        return selectors;
     }
 
     bool HasTextField(UObject* screen)
@@ -968,9 +1005,12 @@ namespace qa::ui
             if (!duplicate) prompts.push_back(p);
         }
         // The wordless pair is named by what it turns on this screen, as the game names its
-        // other prompts by what they do.
-        if (!tabLeft.empty() && !tabRight.empty())
+        // other prompts by what they do. At either end of its list a selector hides the
+        // prompt that leads further, but the pair is still what turns it.
+        if (!tabLeft.empty() || !tabRight.empty())
         {
+            if (tabLeft.empty()) tabLeft = input::KeyForAction(L"UITabLeft");
+            if (tabRight.empty()) tabRight = input::KeyForAction(L"UITabRight");
             const wchar_t* what = nullptr;
             if (obj::FindOuterOfClass(tabPrompt, L"PauseTabSystemSMG026"))
                 what = L"ui.prompt.tabs";

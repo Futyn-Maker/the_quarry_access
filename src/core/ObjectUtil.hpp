@@ -87,7 +87,8 @@ namespace qa::obj
 
     // Widgets
     bool IsWidgetVisible(UObject* widget); // Visibility not Collapsed/Hidden (self only)
-    // Self and all outer user widgets visible; with `opaque`, none of them faded out either.
+    // Self and all outer user widgets visible and on the active page of any switcher above
+    // them; with `opaque`, none of them faded out either.
     bool IsWidgetShown(UObject* widget, bool opaque = false);
     // The opacity a widget is drawn with (its render opacity times its colour alpha).
     double WidgetOpacity(UObject* widget);

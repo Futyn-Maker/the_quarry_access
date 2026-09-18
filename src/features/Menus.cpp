@@ -54,16 +54,30 @@ namespace qa::features
         const wchar_t* const kScreenTexts[] = {L"Title", L"SubTitle", L"Subtitle", L"BodyText", L"Body"};
         std::vector<int> g_screenTextWatches;
 
+        // The switchers of the screen with the page each showed at the last poll: a screen
+        // that turns to another page of its own (the Wolf Pack host goes from its saves to
+        // the lobby) is read again, like a section opened inside it.
+        std::vector<std::pair<UObject*, int64_t>> g_pages;
+
         // A section opened inside a screen (a settings category, the director's chair) is
         // read like a screen; its title is repeated only when it changed.
         UObject* g_titleScreen = nullptr;
         std::wstring g_lastTitle;
+        std::wstring g_lastBody;
 
         // The character carousel of a screen (movie mode, couch co-op): turning it does
         // not move the focus, so the card it shows is read on its own.
         UObject* g_carousel = nullptr;
         UObject* g_carouselItem = nullptr;
         unsigned long long g_lastCarouselScan = 0;
+
+        // The selectors of the screen that the tab keys turn wherever the focus is (the
+        // mode of the Wolf Pack lobby), with what each said at the last poll: turning one
+        // does not move the focus either.
+        std::vector<std::pair<UObject*, std::wstring>> g_tabSelectors;
+        UObject* g_tabSelectorScreen = nullptr;
+        unsigned long long g_lastTabSelectorScan = 0;
+        std::wstring g_tabSelectorCandidate;
 
         // Screens announce themselves when they show. A screen class that overrides Show
         // declares its own function, so each of these is routed separately.
@@ -78,7 +92,7 @@ namespace qa::features
 
         std::wstring DescribeFocused(UObject* interactable)
         {
-            if (!interactable || IsTab(interactable) || !obj::IsWidgetVisible(interactable)) return {};
+            if (!interactable || IsTab(interactable) || !obj::IsWidgetShown(interactable)) return {};
             auto description = ui::Describe(interactable);
             // A text field with no hint of its own is still announced, as a text field.
             if (description.label.empty() && description.kind != ui::Kind::Edit) return {};
@@ -104,10 +118,19 @@ namespace qa::features
             g_promptCandidate.clear();
         }
 
-        // The screen's own words are watched from the moment it opens, so that a screen
-        // which rewrites them in place says them again instead of falling silent.
-        void WatchScreenText(UObject* screen)
+        // The screen's own words and pages are watched from the moment it opens, so that a
+        // screen which rewrites them in place says them again instead of falling silent.
+        void WatchScreen(UObject* screen)
         {
+            g_pages.clear();
+            obj::WalkWidgetTree(screen, 16,
+                                [](UObject* widget, int)
+                                {
+                                    int64_t page = -1;
+                                    if (obj::IsA(widget, L"WidgetSwitcher") && obj::ReadInt(widget, L"ActiveWidgetIndex", page))
+                                        g_pages.emplace_back(widget, page);
+                                    return true;
+                                });
             for (int id : g_screenTextWatches)
                 watch::UnwatchText(id);
             g_screenTextWatches.clear();
@@ -129,7 +152,7 @@ namespace qa::features
         {
             if (!screen || screen == g_screen) return;
             g_screen = screen;
-            WatchScreenText(screen);
+            WatchScreen(screen);
             StartArrival();
             log::Verbose(L"menus: screen via {} -> {}", source, obj::ClassName(screen));
         }
@@ -205,17 +228,26 @@ namespace qa::features
                 g_lastFocusText = focusText;
             }
             std::vector<std::wstring> parts = g_heading;
+            const bool heading = !g_heading.empty();
             g_heading.clear();
             const auto title = ui::ScreenTitle(g_screen);
-            const bool sameTitle = g_screen == g_titleScreen && title == g_lastTitle;
+            const auto body = ui::ScreenBody(g_screen);
+            const bool sameScreen = g_screen == g_titleScreen;
+            const bool sameTitle = sameScreen && title == g_lastTitle;
+            const bool sameBody = sameTitle && body == g_lastBody;
             g_titleScreen = g_screen;
             g_lastTitle = title;
-            if (!title.empty() && !sameTitle && !RepeatsTab(title)) parts.push_back(title);
-            parts.push_back(ui::ScreenBody(g_screen));
-            parts.push_back(focusText);
+            g_lastBody = body;
             const auto prompts = CurrentPromptText();
             g_lastPromptText = prompts;
             g_promptCandidate = prompts;
+            // A screen read again with nothing new on it (a page turned and back) says nothing.
+            if (sameBody && focusText.empty() && !heading) return;
+            if (!title.empty() && !sameTitle && !RepeatsTab(title)) parts.push_back(title);
+            if (!sameBody) parts.push_back(body);
+            // A control the screen already names in its text (a selector the tab keys turn)
+            // is not named again as the selection.
+            if (body.find(focusText) == std::wstring::npos) parts.push_back(focusText);
             parts.push_back(prompts);
             SpeakSequence(parts);
         }
@@ -243,6 +275,22 @@ namespace qa::features
             if (now - g_promptCandidateAt < kSettleSeconds || now - g_focusChangedAt < kSettleSeconds) return;
             g_lastPromptText = text;
             if (!text.empty()) speech::Announce(text);
+        }
+
+        void PollPagesImpl()
+        {
+            if (!obj::IsLive(g_screen) || gamethread::FrameCount() % 8 != 0) return;
+            for (auto& [switcher, page] : g_pages)
+            {
+                int64_t current = -1;
+                if (!obj::IsLive(switcher) || !obj::ReadInt(switcher, L"ActiveWidgetIndex", current) || current == page) continue;
+                page = current;
+                // Pages turned while the screen is being read are part of that reading.
+                if (g_arrivalPending || !obj::IsWidgetShown(switcher)) continue;
+                log::Verbose(L"menus: {} turned to page {}", obj::ObjectName(switcher), current);
+                ArriveWith({});
+                return;
+            }
         }
 
         // Changing a setting keeps the focus on the same control, so the new value and the
@@ -328,6 +376,50 @@ namespace qa::features
             if (!text.empty()) speech::Focus(text);
         }
 
+        void PollTabSelectorsImpl()
+        {
+            const auto frame = gamethread::FrameCount();
+            if (frame % 4 != 0 || !obj::IsLive(g_screen)) return;
+            if (g_screen != g_tabSelectorScreen || frame - g_lastTabSelectorScan > 30)
+            {
+                // What a selector said is kept across scans; one found anew is taken as it
+                // is, since the screen that shows it reads it.
+                std::vector<std::pair<UObject*, std::wstring>> found;
+                for (auto* selector : ui::TabSelectors(g_screen))
+                {
+                    const auto known = std::find_if(g_tabSelectors.begin(), g_tabSelectors.end(), [&](const auto& s) { return s.first == selector; });
+                    const bool keep = g_screen == g_tabSelectorScreen && known != g_tabSelectors.end();
+                    found.emplace_back(selector, keep ? known->second : ui::Speak(ui::Describe(selector)));
+                }
+                g_tabSelectors = std::move(found);
+                g_tabSelectorScreen = g_screen;
+                g_lastTabSelectorScan = frame;
+            }
+            UObject* focused = ui::Interactable(watch::CurrentFocused());
+            for (auto& [selector, said] : g_tabSelectors)
+            {
+                if (!obj::IsLive(selector) || selector == focused) continue;
+                const auto text = ui::Speak(ui::Describe(selector));
+                if (text == said) continue;
+                // The description beside the selector is written a moment after its value,
+                // so a new reading is taken once it holds for two polls.
+                if (text != g_tabSelectorCandidate)
+                {
+                    g_tabSelectorCandidate = text;
+                    continue;
+                }
+                said = text;
+                if (g_arrivalPending) continue;
+                g_focusChangedAt = gamethread::NowSeconds();
+                speech::Focus(text);
+            }
+        }
+
+        void PollTabSelectors(float)
+        {
+            obj::SafeInvokeLogged(L"menus.PollTabSelectorsImpl", [](void*) { PollTabSelectorsImpl(); }, nullptr);
+        }
+
         void PollArrival(float)
         {
             obj::SafeInvokeLogged(L"menus.PollArrivalImpl", [](void*) { PollArrivalImpl(); }, nullptr);
@@ -341,6 +433,11 @@ namespace qa::features
         void PollPrompts(float)
         {
             obj::SafeInvokeLogged(L"menus.PollPromptsImpl", [](void*) { PollPromptsImpl(); }, nullptr);
+        }
+
+        void PollPages(float)
+        {
+            obj::SafeInvokeLogged(L"menus.PollPagesImpl", [](void*) { PollPagesImpl(); }, nullptr);
         }
 
         void PollValue(float)
@@ -372,12 +469,17 @@ namespace qa::features
         g_lastValue.clear();
         g_lastLength = 0;
         g_screenTextWatches.clear();
+        g_pages.clear();
         g_heading.clear();
         g_arrivalPending = false;
         g_titleScreen = nullptr;
         g_lastTitle.clear();
+        g_lastBody.clear();
         g_carousel = nullptr;
         g_carouselItem = nullptr;
+        g_tabSelectors.clear();
+        g_tabSelectorScreen = nullptr;
+        g_tabSelectorCandidate.clear();
     }
 
     void MenusFeature::Install()
@@ -395,6 +497,8 @@ namespace qa::features
         gamethread::AddPoller(L"menus.carousel", &PollCarousel);
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);
         gamethread::AddPoller(L"menus.value", &PollValue);
+        gamethread::AddPoller(L"menus.pages", &PollPages);
+        gamethread::AddPoller(L"menus.tabselectors", &PollTabSelectors);
     }
 
     void MenusFeature::Describe(std::vector<std::wstring>& out)
@@ -410,7 +514,8 @@ namespace qa::features
             if (!body.empty()) out.push_back(body);
             auto description = ui::Describe(interactable);
             if (description.tip.empty()) description.tip = ui::ContextLine(screen);
-            out.push_back(ui::Speak(description));
+            const auto focused = ui::Speak(description);
+            if (body.find(focused) == std::wstring::npos) out.push_back(focused);
         }
         else
         {

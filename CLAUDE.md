@@ -55,7 +55,7 @@ The game folder comes from `-GameDir`, then `QA_GAME_DIR`, then Steam's library 
 ## Game Facts That Shape Everything
 
 - The frontend and the gameplay are one persistent map (`Uberlevel`): leaving to the main menu fires no LoadMap and keeps the controller and HUD widgets, so state is judged by what is on screen. Actors of other scenes stay loaded: a name match is not enough, take the nearest.
-- The game leaves finished widgets alive and flag-visible. On screen means `obj::IsWidgetShown`: every ancestor visible, a slot-less widget drawn only as its tree's root or while `IsInViewport`, and during play an opacity above 0.02. A text in a dump is no proof that it is shown.
+- The game leaves finished widgets alive and flag-visible. On screen means `obj::IsWidgetShown`: every ancestor visible and on the active page of any `WidgetSwitcher` above it, a slot-less widget drawn only as its tree's root or while `IsInViewport`, and during play an opacity above 0.02. A text in a dump is no proof that it is shown.
 - `Text` and `LocalisedText` properties hold English design-time placeholders; the player sees the rendered child text blocks. Bound texts never update their `Text`: call the getter.
 - Cached pointers go stale. `obj::IsLive` checks that the object-array slot points back to the object, and `ProcessEvent` on a freed widget crashes inside UE4SS. Keep no widgets across screens, and run pollers, hooks and commands under `SafeInvokeLogged`.
 - Flow `FActorReference` names resolve through the actor's `ActorRegister.ActorName`; level actors carry instance numbers (`UL_FindOldTrunk_2` is registered as `UL_FindOldTrunk`).

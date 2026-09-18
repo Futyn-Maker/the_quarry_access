@@ -750,6 +750,15 @@ namespace qa::obj
             UObject* parent = nullptr;
             if (ReadObject(cur, L"Slot", slot) && slot && IsLive(slot) && ReadObject(slot, L"Parent", parent) && parent)
             {
+                // A switcher draws only its active page; the others keep their flags.
+                if (IsA(parent, L"WidgetSwitcher"))
+                {
+                    int64_t active = -1;
+                    std::vector<UObject*> pages;
+                    ReadInt(parent, L"ActiveWidgetIndex", active);
+                    ReadObjectArray(parent, L"Slots", pages);
+                    if (active < 0 || active >= static_cast<int64_t>(pages.size()) || pages[static_cast<size_t>(active)] != slot) return false;
+                }
                 cur = parent;
                 continue;
             }
@@ -970,6 +979,21 @@ namespace qa::obj
             if (IsA(widget, L"UserWidget"))
             {
                 CollectTexts(WidgetTreeRoot(widget), depth + 1, maxDepth, out);
+            }
+            // A switcher draws only its active page.
+            if (IsA(widget, L"WidgetSwitcher"))
+            {
+                int64_t active = -1;
+                std::vector<UObject*> pages;
+                ReadInt(widget, L"ActiveWidgetIndex", active);
+                ReadObjectArray(widget, L"Slots", pages);
+                UObject* content = nullptr;
+                if (active >= 0 && active < static_cast<int64_t>(pages.size()) && IsLive(pages[static_cast<size_t>(active)]) &&
+                    ReadObject(pages[static_cast<size_t>(active)], L"Content", content))
+                {
+                    CollectTexts(content, depth + 1, maxDepth, out);
+                }
+                return;
             }
             for (auto* child : ChildWidgets(widget))
                 CollectTexts(child, depth + 1, maxDepth, out);
