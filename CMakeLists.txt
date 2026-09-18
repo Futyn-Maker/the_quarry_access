@@ -22,4 +22,35 @@ if(NOT EXISTS "${QA_UE4SS_SOURCE_DIR}/deps/first/Unreal/CMakeLists.txt")
 endif()
 
 add_subdirectory("${QA_UE4SS_SOURCE_DIR}" RE-UE4SS)
+
+# The release's DLLs name no folder of the machine that built them. The linker records UE4SS's
+# and its loader's symbol files by name alone, as the mod's own, and the Rust code in UE4SS (its
+# pattern scanner) records its sources below Cargo's home, which lies in the user's profile, and
+# below the UE4SS tree by those short names instead of full paths. RUSTFLAGS splits at spaces,
+# so a folder whose path has a space keeps its full path.
+if(MSVC)
+    foreach(qa_target UE4SS proxy)
+        target_link_options(${qa_target} PRIVATE /PDBALTPATH:%_PDB%)
+    endforeach()
+endif()
+if(DEFINED ENV{CARGO_HOME})
+    set(qa_cargo_home "$ENV{CARGO_HOME}")
+else()
+    set(qa_cargo_home "$ENV{USERPROFILE}/.cargo")
+endif()
+set(qa_rustflags "")
+foreach(qa_remap IN ITEMS "cargo|${qa_cargo_home}" "RE-UE4SS|${QA_UE4SS_SOURCE_DIR}")
+    string(REPLACE "|" ";" qa_remap "${qa_remap}")
+    list(GET qa_remap 0 qa_name)
+    list(GET qa_remap 1 qa_path)
+    file(TO_NATIVE_PATH "${qa_path}" qa_path)
+    string(FIND "${qa_path}" " " qa_space)
+    if(qa_space EQUAL -1)
+        list(APPEND qa_rustflags "--remap-path-prefix=${qa_path}=${qa_name}")
+    endif()
+endforeach()
+if(qa_rustflags AND TARGET patternsleuth_bind AND COMMAND corrosion_add_target_rustflags)
+    corrosion_add_target_rustflags(patternsleuth_bind ${qa_rustflags})
+endif()
+
 add_subdirectory(src)
