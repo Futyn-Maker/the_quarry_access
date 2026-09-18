@@ -1,16 +1,22 @@
 <#
 .SYNOPSIS
-  Launches The Quarry through Steam and waits until the mod reports readiness.
+  Launches The Quarry and waits until the mod reports readiness.
   Detects a crash (process gone, UE4SS fatal error, or the engine's crash dialog)
   and, with -AutoDismissCrash, closes the dialog/process so nothing stays blocked.
+  A game in a Steam library is started through Steam, any other copy through TheQuarry.exe.
+.PARAMETER GameDir
+  The game's folder, the one with TheQuarry.exe. Without it: the QA_GAME_DIR environment
+  variable, else the Steam library that has the game.
 .PARAMETER TimeoutSec
   Seconds to wait for "[QuarryAccess] ready" in UE4SS.log.
 #>
 param(
-    [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\The Quarry",
+    [string]$GameDir,
     [int]$TimeoutSec = 120,
     [switch]$AutoDismissCrash
 )
+. (Join-Path $PSScriptRoot "common.ps1")
+$GameDir = Resolve-QuarryGameDir $GameDir
 
 Add-Type -TypeDefinition @"
 using System;
@@ -40,12 +46,17 @@ public static class QaWin {
 }
 "@
 
-$win64 = Join-Path $GameDir "SMG026\Binaries\Win64"
-$log = Join-Path $win64 "UE4SS.log"
-if (Get-Process -Name "TheQuarry-Win64-Shipping" -ErrorAction SilentlyContinue) {
+$win64 = Get-QuarryWin64Dir $GameDir
+$ue4ssDir = Get-QuarryUE4SSDir $win64
+$log = Join-Path $ue4ssDir "UE4SS.log"
+if (Get-Process -Name $QaExeName -ErrorAction SilentlyContinue) {
     Write-Host "Game already running."
+} elseif ($GameDir -match '\\steamapps\\common\\') {
+    Start-Process "steam://rungameid/$QaSteamAppId"
+} elseif (Test-Path (Join-Path $GameDir "TheQuarry.exe")) {
+    Start-Process (Join-Path $GameDir "TheQuarry.exe") -WorkingDirectory $GameDir
 } else {
-    Start-Process "steam://rungameid/1577120"
+    Start-Process (Join-Path $win64 "$QaExeName.exe") -WorkingDirectory $win64
 }
 $launchedAt = Get-Date
 $deadline = $launchedAt.AddSeconds($TimeoutSec)
@@ -53,7 +64,7 @@ $sawProcess = $false
 $result = "timeout"
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
-    $proc = Get-Process -Name "TheQuarry-Win64-Shipping" -ErrorAction SilentlyContinue
+    $proc = Get-Process -Name $QaExeName -ErrorAction SilentlyContinue
     if ($proc) { $sawProcess = $true }
     $crashWnd = [QaWin]::FindContaining("has crashed")
     if ($crashWnd -ne [IntPtr]::Zero) {
@@ -62,7 +73,7 @@ while ((Get-Date) -lt $deadline) {
         if ($AutoDismissCrash) {
             [QaWin]::PostMessage($crashWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # WM_CLOSE
             Start-Sleep -Seconds 2
-            Stop-Process -Name "TheQuarry-Win64-Shipping" -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name $QaExeName -Force -ErrorAction SilentlyContinue
         }
         break
     }
@@ -79,7 +90,7 @@ switch ($result) {
     "timeout" { Write-Host "Timed out waiting for QuarryAccess ready." }
 }
 # Last mod log lines help to locate a crash.
-$modLog = Join-Path $win64 "Mods\QuarryAccess\QuarryAccess.log"
+$modLog = Join-Path $ue4ssDir "Mods\QuarryAccess\QuarryAccess.log"
 if (($result -ne "ready") -and (Test-Path $modLog)) {
     Write-Host "--- last mod log lines ---"
     Get-Content $modLog -Tail 8 -Encoding UTF8
