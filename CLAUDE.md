@@ -18,6 +18,7 @@ The maintainer tests every change in the game with NVDA and the Russian interfac
 - Never bind plain F10 (the window menu freezes the game), F11 (fullscreen toggle) or F12 (Steam screenshot). Before theorizing about a key, read the game's `SMG026/Config/DefaultInput.ini`.
 - Do not drive the game with injected keys to test: the maintainer is at the machine, and synthetic Enter does not pass the title screen. Never deploy or launch while `TheQuarry-Win64-Shipping` runs, and close the game after every self-test. Never touch saves while the game runs; back them up first.
 - Commit each finished item on its own, corrections in their own commits, with an imperative subject in the style of `git log` and no attribution lines. Do not push.
+- Every commit carries the documentation its change needs, without being asked: `README.md` when players see a difference (a feature, a key, a setting, a behaviour), `.claude/rules/` and this file when a developer would need the lesson (how the game works, a pitfall, a changed mechanism), and `mod/QuarryAccess.ini` comments for a new or changed setting. Check them before every commit.
 
 ## Commands
 
