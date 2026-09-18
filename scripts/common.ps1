@@ -73,7 +73,7 @@ function Get-QuarryWin64Dir([string]$GameDir) {
     return (Join-Path $GameDir "SMG026\Binaries\Win64")
 }
 
-# Where UE4SS lives in the game: Binaries\Win64\ue4ss, as UE4SS's releases and this mod's archive
+# Where UE4SS lives in the game: Binaries\Win64\ue4ss, as UE4SS's releases and this mod's release
 # install it, or Binaries\Win64 itself for an older install. A game without UE4SS gets the
 # ue4ss folder.
 function Get-QuarryUE4SSDir([string]$Win64) {

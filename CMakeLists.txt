@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.22)
 project(QuarryAccessMod LANGUAGES C CXX)
 
 # The mod's version is the first line of the VERSION file and is written nowhere else: the
-# mod reports it at start and the release archive carries it in its name.
+# mod reports it at start and the release folder carries it in its name.
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" QA_VERSION LIMIT_COUNT 1)
 string(STRIP "${QA_VERSION}" QA_VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")

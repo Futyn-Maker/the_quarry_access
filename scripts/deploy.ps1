@@ -2,7 +2,7 @@
 .SYNOPSIS
   Installs the last build into the game: the loader, UE4SS, the mod and Tolk.
 .DESCRIPTION
-  Copies the files of the release archive (scripts\package.ps1), taken from the last build
+  Copies the files of the release (scripts\package.ps1), taken from the last build
   (scripts\build.cmd), into the game. UE4SS's files go where the game already has UE4SS
   (Binaries\Win64\ue4ss, or Binaries\Win64 itself for an older install), or into
   Binaries\Win64\ue4ss when it has none. Program files are replaced; settings files that already

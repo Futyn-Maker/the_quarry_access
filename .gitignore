@@ -1,4 +1,4 @@
-# Build output (scripts\build.cmd) and release archives (scripts\package.ps1)
+# Build output (scripts\build.cmd) and release folders (scripts\package.ps1)
 /build/
 /dist/
 /out/
