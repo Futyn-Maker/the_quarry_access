@@ -773,10 +773,26 @@ namespace qa::obj
         return true;
     }
 
+    std::wstring BoundText(UObject* widget, std::wstring_view property)
+    {
+        if (!IsLive(widget)) return {};
+        FProperty* delegate = FindProperty(widget, std::wstring(property) + L"Delegate");
+        if (!delegate || PropertyTypeName(delegate) != L"DelegateProperty") return {};
+        auto* bound = static_cast<RC::Unreal::FScriptDelegate*>(ValuePtr(widget, delegate));
+        if (!bound) return {};
+        UObject* target = bound->GetUObject();
+        const auto getter = bound->GetFunctionName().ToString();
+        if (!IsLive(target) || getter.empty() || getter == L"None") return {};
+        return CallForText(target, getter);
+    }
+
     std::wstring TextOf(UObject* textWidget)
     {
         if (!textWidget) return {};
-        std::wstring text;
+        // A bound text keeps its design-time value in the property for good; what the
+        // player is shown comes from the delegate beside it.
+        std::wstring text = BoundText(textWidget, L"Text");
+        if (!text.empty()) return text;
         if (ReadString(textWidget, L"Text", text)) return text;
         return {};
     }

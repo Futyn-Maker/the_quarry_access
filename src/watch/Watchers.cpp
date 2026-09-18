@@ -188,6 +188,13 @@ namespace qa::watch
         std::vector<TextWatch> g_textWatches;
         int g_nextTextId = 1;
 
+        // The text as the tree walk reads it, so that blocks drawing a locale key or a
+        // bound getter are followed as well as plain ones.
+        std::wstring WatchedText(UObject* textWidget)
+        {
+            return str::StripMarkup(str::Join(obj::DescendantTexts(textWidget, 0), L" "));
+        }
+
         void PollText(float)
         {
             if (gamethread::FrameCount() % 2 != 0) return;
@@ -198,7 +205,7 @@ namespace qa::watch
                     it = g_textWatches.erase(it);
                     continue;
                 }
-                const auto text = str::StripMarkup(obj::TextOf(it->widget));
+                const auto text = WatchedText(it->widget);
                 if (!it->initialized || text != it->last)
                 {
                     const bool fire = it->initialized || !text.empty();
@@ -230,6 +237,7 @@ namespace qa::watch
         UObject* g_focused = nullptr;
         std::vector<UObject*> g_screenCandidates;
         std::vector<UObject*> g_controlCandidates;
+        std::vector<UObject*> g_editCandidates;
         std::map<UObject*, UObject*> g_screenFocus;  // screen -> its last seen focused widget
         std::map<UObject*, bool> g_controlHighlight; // control -> was it highlighted
         unsigned long long g_lastScreenScan = 0;
@@ -276,6 +284,7 @@ namespace qa::watch
             const auto previous = g_screenCandidates;
             g_screenCandidates = obj::FindAllLive(L"SMGUIWidget");
             g_controlCandidates = obj::FindAllLive(L"UIInteractableWidgetBaseSMG026");
+            g_editCandidates = obj::FindAllLive(L"EditableTextBox");
             screensAreNew = g_screenCandidates.size() != previous.size();
             g_currentScreens.clear();
             for (auto* candidate : g_screenCandidates)
@@ -313,6 +322,15 @@ namespace qa::watch
                 if (highlighted && !wasHighlighted && !focused) focused = control;
             }
 
+            // A text field is never highlighted and the screen does not always record it,
+            // so the few of them there are are asked whether they hold the focus.
+            for (auto* field : g_editCandidates)
+            {
+                if (focused) break;
+                if (!obj::IsLive(field) || !obj::IsWidgetVisible(field) || !OnCurrentScreen(field)) continue;
+                if (obj::CallForBool(field, L"HasKeyboardFocus")) focused = field;
+            }
+
             // Otherwise take a screen whose focused widget changed (covers sections that
             // manage their own focus, and the arrival at a freshly created screen).
             for (auto* candidate : g_screenCandidates)
@@ -329,8 +347,14 @@ namespace qa::watch
                 if ((changed || (first && screensAreNew)) && !focused) focused = last;
             }
 
-            // Keep the current selection while it is still highlighted and on screen.
-            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetVisible(g_focused) && OnCurrentScreen(g_focused)) focused = g_focused;
+            // Keep the current selection while it is still highlighted and on screen. A
+            // text field is kept only while it still holds the focus, since leaving one
+            // does not always move the screen's own reference.
+            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetVisible(g_focused) && OnCurrentScreen(g_focused) &&
+                (!obj::IsA(g_focused, L"EditableTextBox") || obj::CallForBool(g_focused, L"HasKeyboardFocus")))
+            {
+                focused = g_focused;
+            }
 
             UObject* screen = focused ? obj::RootScreen(focused) : nullptr;
             if (screen != g_screen || focused != g_focused)
@@ -412,7 +436,7 @@ namespace qa::watch
         w.listener = std::move(listener);
         if (!fireInitial)
         {
-            w.last = str::StripMarkup(obj::TextOf(textWidget));
+            w.last = WatchedText(textWidget);
             w.initialized = true;
         }
         g_textWatches.push_back(std::move(w));
@@ -472,6 +496,7 @@ namespace qa::watch
         g_hudArrayState.clear();
         g_textWatches.clear();
         g_screenCandidates.clear();
+        g_editCandidates.clear();
         g_screen = nullptr;
         g_focused = nullptr;
     }

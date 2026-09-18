@@ -91,6 +91,10 @@ namespace qa::obj
     bool IsWidgetShown(UObject* widget, bool opaque = false);
     // The opacity a widget is drawn with (its render opacity times its colour alpha).
     double WidgetOpacity(UObject* widget);
+    // What UMG's property binding computes for a bound property. A binding leaves the
+    // property itself at its design-time value and feeds the widget from a companion
+    // delegate generated beside it ("Text" -> "TextDelegate"), which is what is drawn.
+    std::wstring BoundText(UObject* widget, std::wstring_view property);
     std::wstring TextOf(UObject* textWidget); // "Text" FText/FString of a text widget, else empty
     UObject* WidgetTreeRoot(UObject* userWidget);
     std::vector<UObject*> PanelChildren(UObject* panelWidget);

@@ -8,9 +8,12 @@
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
+#include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
+
+#include <algorithm>
 
 namespace qa::features
 {
@@ -40,9 +43,16 @@ namespace qa::features
         std::wstring g_promptCandidate;
         double g_promptCandidateAt = -1.0;
 
-        // The value of the focused control, to speak changes made with left/right.
+        // The value of the focused control, to speak changes made with left/right, and the
+        // length of a text field, which is all a password field gives away.
         UObject* g_valueWidget = nullptr;
         std::wstring g_lastValue;
+        size_t g_lastLength = 0;
+
+        // Text blocks a screen may rewrite while it stays open, watched so the new words
+        // are read: a failed sign-in turns the 2K account screen into its error form.
+        const wchar_t* const kScreenTexts[] = {L"Title", L"SubTitle", L"Subtitle", L"BodyText", L"Body"};
+        std::vector<int> g_screenTextWatches;
 
         // A section opened inside a screen (a settings category, the director's chair) is
         // read like a screen; its title is repeated only when it changed.
@@ -70,7 +80,8 @@ namespace qa::features
         {
             if (!interactable || IsTab(interactable) || !obj::IsWidgetVisible(interactable)) return {};
             auto description = ui::Describe(interactable);
-            if (description.label.empty()) return {};
+            // A text field with no hint of its own is still announced, as a text field.
+            if (description.label.empty() && description.kind != ui::Kind::Edit) return {};
             if (description.tip.empty() && cfg::Get().verbosity == cfg::Verbosity::Full) description.tip = ui::ContextLine(g_screen);
             return ui::Speak(description);
         }
@@ -93,10 +104,32 @@ namespace qa::features
             g_promptCandidate.clear();
         }
 
+        // The screen's own words are watched from the moment it opens, so that a screen
+        // which rewrites them in place says them again instead of falling silent.
+        void WatchScreenText(UObject* screen)
+        {
+            for (int id : g_screenTextWatches)
+                watch::UnwatchText(id);
+            g_screenTextWatches.clear();
+            for (const wchar_t* property : kScreenTexts)
+            {
+                UObject* block = nullptr;
+                if (!obj::ReadObject(screen, property, block) || !obj::IsLive(block)) continue;
+                g_screenTextWatches.push_back(watch::WatchText(block,
+                                                               [](UObject* changed, const std::wstring& text)
+                                                               {
+                                                                   if (g_arrivalPending || !obj::IsWidgetShown(changed)) return;
+                                                                   const auto line = str::CollapseWhitespace(str::StripMarkup(text));
+                                                                   if (!line.empty()) speech::Announce(line);
+                                                               }));
+            }
+        }
+
         void BeginArrival(UObject* screen, const wchar_t* source)
         {
             if (!screen || screen == g_screen) return;
             g_screen = screen;
+            WatchScreenText(screen);
             StartArrival();
             log::Verbose(L"menus: screen via {} -> {}", source, obj::ClassName(screen));
         }
@@ -222,8 +255,33 @@ namespace qa::features
             {
                 g_valueWidget = nullptr;
                 g_lastValue.clear();
+                g_lastLength = 0;
                 return;
             }
+            // A text field is followed as it is typed into: only what was added is read
+            // back. A password field draws a dot per letter, so it ticks instead.
+            if (ui::KindOf(interactable) == ui::Kind::Edit)
+            {
+                const auto edit = ui::EditField(interactable);
+                const bool same = interactable == g_valueWidget;
+                const auto previous = g_lastValue;
+                const size_t previousLength = g_lastLength;
+                g_valueWidget = interactable;
+                g_lastValue = edit.text;
+                g_lastLength = edit.length;
+                if (!same || edit.length == previousLength) return;
+                g_focusChangedAt = gamethread::NowSeconds();
+                if (edit.hidden)
+                {
+                    sounds::Tick(std::min(1.0, static_cast<double>(edit.length) / 16.0));
+                    return;
+                }
+                const bool appended = edit.length > previousLength && edit.text.compare(0, previous.size(), previous) == 0;
+                const auto said = appended ? edit.text.substr(previous.size()) : edit.text;
+                if (!said.empty()) speech::Focus(said);
+                return;
+            }
+
             const auto description = ui::Describe(interactable);
             if (interactable != g_valueWidget)
             {
@@ -312,6 +370,8 @@ namespace qa::features
         g_lastPromptText.clear();
         g_promptCandidate.clear();
         g_lastValue.clear();
+        g_lastLength = 0;
+        g_screenTextWatches.clear();
         g_heading.clear();
         g_arrivalPending = false;
         g_titleScreen = nullptr;
@@ -366,7 +426,12 @@ namespace qa::features
     {
         UObject* screen = watch::CurrentScreen();
         if (!screen) return;
-        out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"UINavigationConfirm"), input::KeyForAction(L"UINavigationCancel")));
+        // On a screen with a text field the arrow keys move the caret rather than the
+        // selection, and the game walks the screen with the tab key instead.
+        if (ui::HasTextField(screen))
+            out.push_back(locale::Mod(L"help.form", input::KeyDisplayName(L"Tab"), input::KeyForAction(L"UINavigationConfirm")));
+        else
+            out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"UINavigationConfirm"), input::KeyForAction(L"UINavigationCancel")));
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);
     }

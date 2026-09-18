@@ -36,6 +36,15 @@ namespace qa::ui
         std::wstring tip; // description line
     };
 
+    // What a text field holds. A password field draws dots instead of letters, so its
+    // text is not given out; only how much of it there is.
+    struct EditState
+    {
+        std::wstring text;
+        size_t length = 0;
+        bool hidden = false;
+    };
+
     struct Prompt
     {
         std::wstring label;
@@ -65,6 +74,9 @@ namespace qa::ui
     Kind KindOf(UObject* interactable);
     Description Describe(UObject* interactable);
 
+    // What a text field holds right now, read from the widget the game draws.
+    EditState EditField(UObject* field);
+
     // Spoken form of a description according to the configured verbosity.
     std::wstring Speak(const Description& description);
 
@@ -82,6 +94,9 @@ namespace qa::ui
 
     // Everything readable on a screen, for reading it out on request.
     std::wstring ScreenText(UObject* screen);
+
+    // True when the screen holds a text field, which the game walks with the tab key.
+    bool HasTextField(UObject* screen);
 
     // Visible prompt widgets of a screen (bottom bar and additional prompts).
     std::vector<Prompt> Prompts(UObject* screen);

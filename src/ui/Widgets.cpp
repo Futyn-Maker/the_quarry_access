@@ -39,6 +39,8 @@ namespace qa::ui
             {L"DnaPrimaryButton_C", Kind::Button},
             {L"DnaSecondaryButton_C", Kind::Button},
             {L"CollectablesButtonBase_C", Kind::Button},
+            {L"EditableTextBox", Kind::Edit},
+            {L"EditableText", Kind::Edit},
             {L"UIInteractableWidgetSMG026_C", Kind::Other},
             {L"UIInteractableWidgetBaseSMG026", Kind::Other},
         };
@@ -119,6 +121,22 @@ namespace qa::ui
                 if (str::Trim(out).empty()) out = obj::CallForText(widget, L"GetText");
                 if (str::Trim(out).empty()) out = gametext::ReadLocalized(widget, L"LocaleText");
                 out = str::CollapseWhitespace(str::StripMarkup(out));
+                return true;
+            }
+            // A localised block draws the game's string for its key; its Text property stays
+            // empty unless the game writes one there.
+            if (obj::IsA(widget, L"SMGLocalisedTextBlock") || obj::IsA(widget, L"LocalisedTextBlockQuarry"))
+            {
+                out = str::StripMarkup(obj::TextOf(widget));
+                if (str::Trim(out).empty()) out = gametext::ReadLocalized(widget, L"LocaleString");
+                out = str::CollapseWhitespace(str::StripMarkup(out));
+                return true;
+            }
+            // A text field holds what was typed only in the widget the game draws; its Text
+            // property keeps the placeholder from the editor forever.
+            if (obj::IsA(widget, L"EditableTextBox") || obj::IsA(widget, L"EditableText"))
+            {
+                out = EditField(widget).text;
                 return true;
             }
             return false;
@@ -222,6 +240,18 @@ namespace qa::ui
         return chars ? std::wstring(chars) : std::wstring();
     }
 
+    EditState EditField(UObject* field)
+    {
+        EditState edit;
+        bool password = false;
+        edit.hidden = obj::ReadBool(field, L"IsPassword", password) && password;
+        const auto text = str::CollapseWhitespace(str::StripMarkup(obj::CallForText(field, L"GetText")));
+        edit.length = text.size();
+        // A password field draws dots rather than letters, so its letters are not said either.
+        if (!edit.hidden) edit.text = text;
+        return edit;
+    }
+
     Kind KindOf(UObject* interactable)
     {
         for (const auto& rule : kKinds)
@@ -233,7 +263,7 @@ namespace qa::ui
 
     bool IsInteractable(UObject* widget)
     {
-        if (!widget || !obj::IsA(widget, L"UserWidget")) return false;
+        if (!widget) return false;
         for (const auto& rule : kKinds)
         {
             if (obj::IsA(widget, rule.className)) return true;
@@ -303,6 +333,14 @@ namespace qa::ui
             // mode), which is then its name and not to be said twice.
             if (str::EqualsNoCase(str::Trim(d.value), str::Trim(d.label))) d.value.clear();
         }
+        else if (d.kind == Kind::Edit)
+        {
+            // A text field is named by the hint it shows while it is empty, and says what
+            // it holds. The hint is bound to a getter, so the property itself is empty.
+            d.label = obj::BoundText(interactable, L"HintText");
+            if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"HintText", d.label);
+            d.value = EditField(interactable).text;
+        }
         else
         {
             // Buttons, tabs, save slots: everything the control shows (name, chapter, duration, ...).
@@ -313,16 +351,17 @@ namespace qa::ui
         if (str::Trim(d.label).empty()) d.label = gametext::ReadLocalized(interactable, L"LocalisedText");
         if (str::Trim(d.label).empty()) d.label = gametext::ReadLocalized(interactable, L"ItemTextLoc");
         // Rows without a key (key bindings, tutorials, the character tab) are read from
-        // their whole subtree, or from their named text blocks.
-        if (str::Trim(d.label).empty())
+        // their whole subtree, or from their named text blocks. A text field is left
+        // nameless instead: its subtree and its Text hold what it contains, not its name.
+        if (str::Trim(d.label).empty() && d.kind != Kind::Edit)
         {
             auto deep = DisplayTexts(obj::DescendantTexts(interactable, kLabelDepthDeep));
             if (deep.empty()) deep = NamedTexts(interactable);
             d.label = str::Join(deep, L", ");
+            // Last of all the unlocalized strings the designers typed in.
+            if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"ItemTextUnloc", d.label);
+            if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"Text", d.label);
         }
-        // Last of all the unlocalized strings the designers typed in.
-        if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"ItemTextUnloc", d.label);
-        if (str::Trim(d.label).empty()) obj::ReadString(interactable, L"Text", d.label);
         d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
 
         bool disabled = false;
@@ -497,8 +536,19 @@ namespace qa::ui
     {
         if (!screen) return {};
         const auto roots = ScreenRoots(screen);
-        // Like the prompts, the title widget is located by walking up from the live
-        // instances rather than down from the screen.
+        // A screen names its own title in a Title property: a menu title widget, or a text
+        // block of its own (the 2K account screens). It comes first, since a screen may
+        // head its lists with more title widgets (the Wolf Pack lobby's friends and lobby).
+        for (auto* root : roots)
+        {
+            UObject* own = nullptr;
+            if (!obj::ReadObject(root, L"Title", own) || !obj::IsLive(own) || !obj::IsWidgetShown(own)) continue;
+            const auto text =
+                StripTrailingColon(obj::IsA(own, L"MenuTitle_C") ? TextProperty(own, L"Title") : str::Join(DisplayTexts(obj::DescendantTexts(own, 0)), L" "));
+            if (!text.empty()) return text;
+        }
+        // Otherwise, like the prompts, the title widget is located by walking up from the
+        // live instances rather than down from the screen.
         for (auto* title : obj::FindAllLive(L"MenuTitle_C"))
         {
             if (!OnScreen(title, roots)) continue;
@@ -544,13 +594,15 @@ namespace qa::ui
                 for (const auto& text : obj::DescendantTexts(w, kLabelDepthDeep))
                     texts.push_back(str::CollapseWhitespace(str::StripMarkup(text)));
             };
-            for (auto* control : obj::FindAllLive(L"UIInteractableWidgetBaseSMG026"))
+            // The controls, the prompt bar, the description line and the pause tabs: each
+            // is read in its own place.
+            for (const wchar_t* className :
+                 {L"UIInteractableWidgetBaseSMG026", L"EditableTextBox", L"MenuPromptWidget_C", L"MenuBarBottom_C", L"PauseTabWidget_C"})
             {
-                if (IsInteractable(control) && OnScreen(control, roots)) collect(control);
-            }
-            for (auto* prompt : obj::FindAllLive(L"MenuPromptWidget_C"))
-            {
-                if (OnScreen(prompt, roots)) collect(prompt);
+                for (auto* widget : obj::FindAllLive(className))
+                {
+                    if (OnScreen(widget, roots)) collect(widget);
+                }
             }
             return texts;
         }
@@ -621,7 +673,29 @@ namespace qa::ui
             for (const auto& text : DisplayTexts(obj::DescendantTexts(waiting, kLabelDepthDeep)))
                 add(text);
         }
+        // A screen that says its piece in text blocks of its own rather than through one of
+        // the containers above (the 2K account screens) is read from its own tree, minus
+        // everything that is already spoken in its own place.
+        if (parts.empty())
+        {
+            for (auto* root : roots)
+            {
+                for (const auto& text : DisplayTexts(obj::DescendantTexts(root, kLabelDepthDeep)))
+                    add(text);
+            }
+        }
         return JoinLines(parts);
+    }
+
+    bool HasTextField(UObject* screen)
+    {
+        if (!screen) return false;
+        const auto roots = ScreenRoots(screen);
+        for (auto* field : obj::FindAllLive(L"EditableTextBox"))
+        {
+            if (OnScreen(field, roots)) return true;
+        }
+        return false;
     }
 
     std::wstring ScreenText(UObject* screen)
