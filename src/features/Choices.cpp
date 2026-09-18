@@ -21,7 +21,6 @@
 
 namespace qa::features
 {
-    using RC::Unreal::FProperty;
     using RC::Unreal::UObject;
 
     namespace
@@ -47,6 +46,7 @@ namespace qa::features
             UObject* widget = nullptr;
             bool current = false; // highlighted at the last poll
             bool chosen = false;
+            double commit = 0.0; // how far its own bar had filled at the last poll
         };
 
         struct Choice
@@ -64,7 +64,6 @@ namespace qa::features
             std::wstring keys;        // the key hints last read
             std::wstring message;     // the countdown message or the time remaining last read
             std::wstring lastCurrent; // the option the player was last pushing toward
-            double commit = 0.0;      // how far that push had come at the last poll
         };
 
         std::vector<Choice> g_choices;
@@ -221,24 +220,17 @@ namespace qa::features
             return ui::PromptKeyName(prompt, action.empty() ? std::wstring(option.action) : action);
         }
 
-        // How far the option the player is pushing toward has come to being taken. A four-way
-        // choice is committed by holding, and the game keeps one scalar per option, full when
-        // the option is taken. It never marks an option chosen the way a two-way choice does,
-        // so this is the only word the game gives that a choice has been made.
-        double CommitFraction(const Choice& choice)
+        // How far an option's own bar has filled toward taking it. A four-way choice is
+        // committed by holding, and each option carries the fraction of its hold; it never
+        // marks an option chosen the way a two-way choice does, so this is the only word the
+        // game gives that such a choice has been made.
+        double CommitOf(UObject* option)
         {
-            UObject* data = nullptr;
-            if (!obj::ReadObject(choice.widget, L"InfoDataInstance", data) || !obj::IsLive(data)) return 0.0;
-            auto* prop = obj::FindProperty(data, L"CommitScalars");
-            if (!prop) return 0.0;
-            double most = 0.0;
-            obj::ForEachArrayElement(data, prop,
-                                     [&](void* element, FProperty* inner)
-                                     {
-                                         double value = 0.0;
-                                         if (obj::ReadFloatAt(element, inner, value) && value > most) most = value;
-                                     });
-            return most;
+            auto* info = obj::FindProperty(option, L"Info");
+            if (!info || obj::PropertyTypeName(info) != L"StructProperty") return 0.0;
+            double value = 0.0;
+            if (!obj::ReadFloatAt(obj::ValuePtr(option, info), obj::StructMember(info, L"CommitFraction"), value)) return 0.0;
+            return value;
         }
 
         // What is done once a choice has been taken, whichever way it was taken: the tone, the
@@ -258,11 +250,13 @@ namespace qa::features
             choice.seenAt = -1.0;
             choice.labels.clear();
             choice.lastCurrent.clear();
-            // The bar is left full so that the same commit is not read twice, once by the
-            // button and once by the bar it also fills.
-            choice.commit = 1.0;
             for (auto& option : choice.options)
+            {
                 option.current = option.chosen = false;
+                // The bar is left full so that one commit is not read twice, once as it fills
+                // and once as the option comes back empty.
+                option.commit = 1.0;
+            }
         }
 
         // The option labels alone: what identifies one choice against the next.
@@ -418,7 +412,10 @@ namespace qa::features
                     choice.finished = false;
                     choice.keys.clear();
                     for (auto& option : choice.options)
+                    {
                         option.current = option.chosen = false;
+                        option.commit = 0.0;
+                    }
                 }
             }
             if (choice.finished) return;
@@ -506,13 +503,20 @@ namespace qa::features
                         speech::Focus(text);
                     }
                 }
+                const double commit = CommitOf(option.widget);
                 if ((chosen || clicked) && !option.chosen)
                 {
                     taken = OptionText(option.widget);
                     log::Info(L"choices: chosen \"{}\"{}", taken, clicked ? L" by its button" : L"");
                 }
+                else if (commit >= 0.995 && option.commit < 0.995)
+                {
+                    taken = OptionText(option.widget);
+                    log::Info(L"choices: held to the end on \"{}\"", taken);
+                }
                 option.current = lit;
                 option.chosen = option.chosen || chosen || clicked;
+                option.commit = commit;
             }
             if (!taken.empty())
             {
@@ -520,24 +524,6 @@ namespace qa::features
                 return;
             }
             if (choice.finished) return;
-            // A four-way choice is taken by holding a direction until its bar fills, and the
-            // game marks it nowhere else, so the bar is what tells of the commit. The choice is
-            // then read afresh, since the next of a chain comes back on the same widget.
-            if (choice.kind == Kind::Multi)
-            {
-                const double commit = CommitFraction(choice);
-                if (commit >= 0.999 && choice.commit < 0.999)
-                {
-                    log::Info(L"choices: held to the end on \"{}\"", choice.lastCurrent);
-                    Committed(choice, choice.lastCurrent);
-                }
-                else
-                {
-                    choice.commit = commit;
-                }
-                if (!choice.announced) return;
-            }
-
             if (choice.finished) return;
 
             // The seconds left, once the game starts showing them.
@@ -553,6 +539,19 @@ namespace qa::features
         {
             if (!ev.appeared)
             {
+                for (const auto& choice : g_choices)
+                {
+                    if (choice.widget != ev.instance || choice.kind != Kind::Multi || !g_pendingChosen.empty()) continue;
+                    double most = 0.0;
+                    for (const auto& option : choice.options)
+                        if (option.commit > most) most = option.commit;
+                    // The choice can go off screen in the very instant its bar fills, before a
+                    // poll sees it full; a bar well on its way and then gone is a commit.
+                    if (most < 0.5 || choice.lastCurrent.empty()) continue;
+                    log::Info(L"choices: gone at {:.0f}% on \"{}\", taken as chosen", most * 100.0, choice.lastCurrent);
+                    sounds::Play(sounds::Cue::Confirm);
+                    g_pendingChosen = locale::Mod(L"choice.chosen", choice.lastCurrent);
+                }
                 std::erase_if(g_choices, [&](const Choice& c) { return c.widget == ev.instance; });
                 return;
             }
