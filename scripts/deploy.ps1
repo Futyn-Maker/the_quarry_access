@@ -1,72 +1,46 @@
 <#
 .SYNOPSIS
-  Deploys the built mod into The Quarry's UE4SS Mods folder.
+  Installs the last build into the game: the loader, UE4SS, the mod and Tolk.
 .DESCRIPTION
-  Copies build\src\main.dll to Mods\QuarryAccess\dlls\main.dll, the mod\ folder
-  (enabled.txt, QuarryAccess.ini, lang\*) to Mods\QuarryAccess\, makes sure
-  mods.txt enables QuarryAccess (and disables the old QuarryTestMod), and copies
-  the Tolk runtime next to the game exe if it is missing.
-  Refuses to run while the game is running (main.dll would be locked).
+  Copies the files of the release archive (scripts\package.ps1), taken from the last build
+  (scripts\build.cmd), into the game. UE4SS's files go where the game already has UE4SS
+  (Binaries\Win64\ue4ss, or Binaries\Win64 itself for an older install), or into
+  Binaries\Win64\ue4ss when it has none. Program files are replaced; settings files that already
+  exist are kept, the mod's QuarryAccess.ini too unless -ResetConfig is given.
+  Refuses to run while the game is running, since its DLLs are locked then.
 .PARAMETER GameDir
-  The Quarry install directory.
+  The game's folder, the one with TheQuarry.exe. Without it: the QA_GAME_DIR environment
+  variable, else the Steam library that has the game.
 .PARAMETER ResetConfig
-  Overwrite an existing QuarryAccess.ini with the repository default.
+  Replaces an existing QuarryAccess.ini with the repository's default.
 #>
 param(
-    [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\The Quarry",
+    [string]$GameDir,
     [switch]$ResetConfig
 )
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSScriptRoot
-$win64 = Join-Path $GameDir "SMG026\Binaries\Win64"
-$modDir = Join-Path $win64 "Mods\QuarryAccess"
+. (Join-Path $PSScriptRoot "common.ps1")
 
-if (Get-Process -Name "TheQuarry-Win64-Shipping" -ErrorAction SilentlyContinue) {
-    throw "The Quarry is running. Close it before deploying (main.dll is locked while the game runs)."
+$GameDir = Resolve-QuarryGameDir $GameDir
+if (Get-Process -Name $QaExeName -ErrorAction SilentlyContinue) {
+    throw "The Quarry is running. Close it before deploying (its DLLs are locked while the game runs)."
 }
-if (-not (Test-Path (Join-Path $win64 "TheQuarry-Win64-Shipping.exe"))) {
-    throw "Game exe not found under $win64"
-}
-$dll = Join-Path $root "build\src\main.dll"
-if (-not (Test-Path $dll)) { throw "Build output not found: $dll (run scripts\build.cmd first)" }
+$win64 = Get-QuarryWin64Dir $GameDir
+$ue4ssDir = Get-QuarryUE4SSDir $win64
 
-New-Item -ItemType Directory -Force (Join-Path $modDir "dlls") | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $modDir "lang") | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $modDir "lang\tarot") | Out-Null
-Copy-Item $dll (Join-Path $modDir "dlls\main.dll") -Force
-Copy-Item (Join-Path $root "mod\enabled.txt") (Join-Path $modDir "enabled.txt") -Force
-Copy-Item (Join-Path $root "mod\lang\*.ini") (Join-Path $modDir "lang") -Force
-Copy-Item (Join-Path $root "mod\lang\tarot\*.ini") (Join-Path $modDir "lang\tarot") -Force
-Copy-Item (Join-Path $root "mod\screens.ini") (Join-Path $modDir "screens.ini") -Force
-$ini = Join-Path $modDir "QuarryAccess.ini"
-if ($ResetConfig -or -not (Test-Path $ini)) {
-    Copy-Item (Join-Path $root "mod\QuarryAccess.ini") $ini -Force
-}
-
-# mods.txt: enable QuarryAccess, disable the toolchain test mod.
-$modsTxt = Join-Path $win64 "Mods\mods.txt"
-if (Test-Path $modsTxt) {
-    $lines = Get-Content $modsTxt
-    $lines = $lines | ForEach-Object {
-        if ($_ -match '^\s*QuarryTestMod\s*:') { 'QuarryTestMod : 0' }
-        elseif ($_ -match '^\s*QuarryProbe\s*:') { 'QuarryProbe : 0' }
-        else { $_ }
+$copied = 0
+foreach ($file in Get-QaInstallFiles) {
+    if ($file.Dest.StartsWith("ue4ss\")) { $dest = Join-Path $ue4ssDir $file.Dest.Substring(6) }
+    else { $dest = Join-Path $win64 $file.Dest }
+    if ($file.Kind -eq "Settings" -and (Test-Path $dest)) {
+        $isModConfig = $file.Dest -eq "ue4ss\Mods\QuarryAccess\QuarryAccess.ini"
+        if (-not ($ResetConfig -and $isModConfig)) {
+            Write-Host "kept     $dest"
+            continue
+        }
     }
-    if (-not ($lines | Where-Object { $_ -match '^\s*QuarryAccess\s*:' })) {
-        $idx = [array]::IndexOf($lines, ($lines | Where-Object { $_ -match 'Built-in keybinds' } | Select-Object -First 1))
-        if ($idx -ge 0) { $lines = $lines[0..($idx-1)] + @('QuarryAccess : 1', '') + $lines[$idx..($lines.Count-1)] }
-        else { $lines += 'QuarryAccess : 1' }
-    } else {
-        $lines = $lines | ForEach-Object { if ($_ -match '^\s*QuarryAccess\s*:') { 'QuarryAccess : 1' } else { $_ } }
-    }
-    Set-Content $modsTxt $lines
+    New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
+    Copy-Item $file.Source $dest -Force
+    $copied++
 }
-
-# Tolk runtime next to the exe.
-foreach ($f in 'Tolk.dll', 'nvdaControllerClient64.dll', 'SAAPI64.dll') {
-    $dst = Join-Path $win64 $f
-    if (-not (Test-Path $dst)) { Copy-Item (Join-Path $root "third_party\tolk\$f") $dst }
-}
-
-Write-Host "Deployed to $modDir"
-Get-ChildItem $modDir -Recurse -File | Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host "Deployed $copied files; UE4SS in $ue4ssDir"
