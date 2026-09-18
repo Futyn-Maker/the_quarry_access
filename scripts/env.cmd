@@ -6,6 +6,11 @@ rem When a tool is missing it says which and ends with errorlevel 1.
 rem Called by the other scripts: call "%~dp0env.cmd" || exit /b 1
 rem Environment: QA_VSWHERE  vswhere.exe to ask instead of the one the Visual Studio installer keeps
 
+rem UE4SS's sources and its build reach 181 characters below the repository's folder, so a folder
+rem path longer than 78 characters takes them past the 260 that Git and the compilers work within.
+for %%i in ("%~dp0..") do set "QA_ROOT=%%~fi"
+if not "%QA_ROOT:~78,1%"=="" goto :too_deep
+
 if not defined QA_VSWHERE set "QA_VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%QA_VSWHERE%" goto :no_vs
 set "QA_VSDIR="
@@ -27,6 +32,12 @@ if exist "%QA_CARGO_BIN%\cargo.exe" set "PATH=%QA_CARGO_BIN%;%PATH%"
 where cargo >nul 2>nul && exit /b 0
 echo Rust was not found. Install it with rustup from https://rustup.rs and keep its default
 echo MSVC toolchain.
+exit /b 1
+
+:too_deep
+echo The repository's folder is too deep for UE4SS's long file names:
+echo   "%QA_ROOT%"
+echo Clone it into a folder whose path has 78 characters or fewer, such as C:\src\the_quarry_access.
 exit /b 1
 
 :no_vs
