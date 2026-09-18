@@ -42,9 +42,7 @@
 #include <filesystem>
 #include <memory>
 
-#ifndef QA_VERSION_STRING
-#define QA_VERSION_STRING "0.0.0"
-#endif
+// QA_VERSION_STRING comes from the VERSION file at the root of the repository, through CMake.
 
 using namespace RC;
 

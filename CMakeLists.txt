@@ -4,7 +4,11 @@ cmake_minimum_required(VERSION 3.22)
 # The Quarry's UI and gameplay prompts through Tolk (NVDA / JAWS / SAPI).
 project(QuarryAccessMod LANGUAGES C CXX)
 
-set(QA_VERSION "0.7.0")
+# The mod's version is the first line of the VERSION file and is written nowhere else: the
+# mod reports it at start and the release archive carries it in its name.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" QA_VERSION LIMIT_COUNT 1)
+string(STRIP "${QA_VERSION}" QA_VERSION)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
 # Where the RE-UE4SS source tree lives. Defaults to the pinned git submodule;
 # developers with an existing checkout (and its UEPseudo submodule) can point
