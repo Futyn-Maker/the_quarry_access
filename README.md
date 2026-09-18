@@ -1,106 +1,178 @@
-    # The Quarry Access
+[Download the latest version (the-quarry-access-windows.zip)](https://github.com/Futyn-Maker/the_quarry_access/releases/latest/download/the-quarry-access-windows.zip)
 
-A mod that makes _The Quarry_ (Supermassive Games, 2022, PC/Steam) playable by blind players.
-It reads the game's screens through your screen reader: NVDA, JAWS and other Tolk-supported
-readers, or through SAPI when no screen reader is running; F3 moves the speech to SAPI and
-back while a screen reader runs, and the choice is kept. The SAPI voice follows the game's
-language when the system's default voice speaks another. Speech and braille are both supported,
-and a braille display keeps its text while SAPI speaks. The menus, settings and pause menu are covered, with the focused item, its description
-and the available key prompts spoken as you move; captions, notifications, alerts, subtitles,
-button prompts, choices, quick-time events, button mashes and Don't Breathe prompts that the
-game shows during play are read as they appear, with short tones for what has to be fast.
-While exploring, the things the scene lets the player walk to are listed with their distance
-and direction, and a beacon leads to the chosen one; notes are read page by page.
+# The Quarry Access
 
-The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and [Tolk](https://github.com/dkager/tolk).
-It never changes the game's own settings: everything it says follows what the game displays,
-including the accessibility and subtitle options you choose in the game.
+The Quarry Access is a mod that makes [The Quarry](https://store.steampowered.com/app/1577120/The_Quarry/) playable without sight. It reads the game through your screen reader and adds sounds where the game relies on the picture: choices, quick-time events, exploration and aiming.
 
-See `CHANGELOG.md` for what each version includes.
+## Features
 
-## Installation (players)
+- Speech for all menus, settings and other interface elements
+- Pause menu with clues, evidence, tarot cards and paths
+- Subtitles
+- Scene captions, loading and saving, notifications and alerts
+- Button prompts and interruptions
+- Two-option and four-option choices
+- Quick-time events
+- Button mashing
+- Don't Breathe
+- Exploration with a sound beacon and automatic walking
+- Aiming in fights
+- Looking around with the phone camera and the binoculars
+- Notes and letters
+- Descriptions of the tarot card visions
+- Character fates in the epilogue
+- Text on in-game monitors, such as the newspaper in the epilogue
+- Credits
+- Couch co-op, Movie Mode and Wolf Pack screens
+- Keyboard and gamepad keys for all mod functions
+- NVDA, JAWS and other screen readers, SAPI and braille
 
-Release packages contain everything needed (UE4SS with the configuration for The Quarry,
-the Tolk runtime and the mod) plus an `install.cmd`. Developers can use the setup below.
+The mod works with all languages of the game and speaks in the language the game uses.
 
-## Hotkeys
+## Installation
 
-| Keyboard | Gamepad (hold Back and press) | Action                                  |
-| -------- | ----------------------------- | --------------------------------------- |
-| F5       | A                             | Repeat the last message                 |
-| F6       | X                             | Read the current screen                 |
-| F7       | B                             | Stop speech                             |
-| F8       | Y                             | Help for the current situation          |
-| F4       | Right bumper                  | Repeat the last subtitle line           |
-| F9       | Right trigger                 | Turn subtitle reading on or off         |
-| F3       | Right stick click             | Speech through the screen reader or SAPI |
-| Ctrl+F9  |                               | Write a screen dump for bug reports     |
-| Ctrl+F10 |                               | Toggle the function tracer (developers) |
-| Ctrl+F11 |                               | Cycle the log level                     |
+1. Download [the-quarry-access-windows.zip](https://github.com/Futyn-Maker/the_quarry_access/releases/latest/download/the-quarry-access-windows.zip).
+2. Unpack it into the game folder, the one that contains `TheQuarry.exe`. For Steam, this is `C:\Program Files (x86)\Steam\steamapps\common\The Quarry`. If the game is in another Steam library, right-click it in Steam and choose Manage > Browse local files.
+3. Start the game. After the opening videos, the mod says that it is loaded.
 
-While Back is held the game sees no button, so a chord never also presses something in the
-game, and the chords work in every menu as well as in play. The help and the hints name the
-keys of the device the last press came from: the F keys after a keyboard press, the chords
-after a gamepad press.
+If the game shows "Failed to load UE4SS.dll" at start, install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 
-These guide the exploration while the character walks freely. On the gamepad they need no
-chord there, because the game leaves those buttons unused while you walk.
+## How to Play
 
-| Keyboard | Gamepad     | Action                                    |
-| -------- | ----------- | ----------------------------------------- |
-| N        | D-pad right | Next thing to walk to                     |
-| P        | D-pad left  | Previous thing to walk to                 |
-| H        | D-pad up    | Where the target is now                   |
-| G        | X           | Walk there, and press again to stop       |
-| T        | D-pad down  | Beacon on or off                          |
+Use the arrow keys or the D-pad to move through menus, Enter or A to select, and Backspace or B to go back. Left and right change a setting. Escape or Start pauses the game, and in the pause menu [ and ] or LB and RB switch tabs. When a clue or a tarot card is found, Q or LB opens it. The mod reads the keys each screen offers.
 
-During a fight the same keys serve the fight: N and P switch between its targets, H says
-where the current one stands against the aim, and T switches the aim sound off and on; the double ping means a shot fired at that moment would take the target, judged with the game's own pellet pattern, and "Fire!" is said once when the hit also holds through the aim's own sway. During a look-around, with the phone camera, the binoculars or the game's own bar, the same aim sound leads the view to the point the scene is about, and T switches it. Outside
-a fight, a look-around and walking the character they do nothing.
+The game's Accessibility settings make many mechanics easier. Choice Timer, QTE Speed and Interrupt Speed give more time. Simple QTE's accepts any direction or passes quick-time events by itself. Button Mash can ask for holding or a single press instead of mashing. Don't Breathe and Aim Assist can be set to Auto.
 
-All keys can be changed in `Mods\QuarryAccess\QuarryAccess.ini`. The mod takes its keys
-ahead of the screen reader and the game, so a key that the screen reader or one of its
-add-ons has bound for itself still reaches the mod while the game is in front, and neither
-of them sees it. The exploration letters are taken only while the player walks the
-character or fights; everywhere else they go to the game as any other letter.
+### Mod Keys
 
-Short tones complement speech where speed matters: a rising two-note tone marks a choice
-committing or a challenge won, a falling one a challenge lost; a quick-time event plays its
-direction (notes climbing for up, falling for down, a note in the left or the right ear for
-the sides) at the same moment it is spoken; blips of rising or falling pitch follow the
-button-mash ring and the breath bars; in a fight a blip sounds in the ear on the side of the
-target, higher when it is above the weapon's torch beam and lower when below, faster as the
-beam nears it, and a quick double ping means the beam is on the target. Their volume is set in the same
-file, and 0 turns them off.
+| Keyboard | Gamepad | Action |
+| --- | --- | --- |
+| F5 | Back + A | Repeat the last message |
+| F6 | Back + X | Read the current screen |
+| F7 | Back + B | Stop speech |
+| F8 | Back + Y | Help for the current situation |
+| F9 | Back + RT | Turn subtitle reading on or off |
+| F4 | Back + RB | Repeat the last subtitle |
+| F3 | Back + right stick click | Switch speech between the screen reader and SAPI |
 
-## Languages
+On the gamepad, hold Back (View) and press the second button. The game does not see buttons pressed while Back is held.
 
-The mod follows the game's text language. Its own messages exist for all 20 game languages;
-English and Russian are maintained by the author, the others were machine-assisted and
-corrections are very welcome (edit `mod\lang\<code>.ini` and open a pull request). The
-descriptions of the fortune teller's visions are kept apart, in `mod\lang\tarot\<code>.ini`.
+These keys work while you walk and during fights:
 
-## Developer setup
+| Keyboard | Gamepad | Action |
+| --- | --- | --- |
+| N | D-pad right | Next target |
+| P | D-pad left | Previous target |
+| H | D-pad up | Where the target is |
+| G | X | Walk to the target, press again to stop |
+| T | D-pad down | Beacon or aim sound on or off |
 
-Requirements: Windows, Visual Studio 2022 Build Tools (C++ workload, MSVC 14.43+, Windows SDK,
-LLVM clang-format), CMake 3.22+, Ninja, Rust (for UE4SS), Git, and a GitHub account linked to
-Epic Games (UE4SS's `UEPseudo` submodule is only visible to linked accounts).
+All keys can be changed in `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.ini` in the game folder. The same file has the volume of the mod's sounds and other options, each described there.
 
-```cmd
-git clone --recurse-submodules https://github.com/Futyn-Maker/the_quarry_access.git
-cd the_quarry_access
-scripts\build.cmd
-powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
+### Two-Option Choices
+
+The mod reads the question and both options, left and right. Hold A for the left option, or D for the right one. On the gamepad, push a stick or the D-pad left or right. Keep holding until a two-note tone plays, then release.
+
+### Four-Option Choices
+
+The options are in the corners of the screen, and the mod reads each with its corner. Move the mouse to a corner and click, or push a stick toward a corner and hold it until the tone. The option under the mouse or the stick is read as it lights up.
+
+### Prompts and Interruptions
+
+When the game shows a button prompt or an interruption, the mod reads it with its key. Press the key to act. An interruption lasts only a moment.
+
+### Quick-Time Events
+
+The mod says the direction and plays a tone: rising for up, falling for down, in the left or right ear for the sides. Press the direction with WASD, or push a stick or the D-pad. The tone plays again when the game starts to accept the press, and a press before that is ignored. The direction is repeated every second until the event ends.
+
+### Button Mashing
+
+Press the key the mod names, usually the left mouse button or A, the way the game's Button Mash setting asks: repeatedly, held or once. Rising blips mean you keep up, falling blips mean you fall behind.
+
+### Don't Breathe
+
+Hold the left mouse button or A to hold your breath, and keep holding while there is danger. Blips follow your breath and fall as it runs out. A rising tone with "The danger has passed" means you can release. A falling tone with "Danger" means the danger is coming back.
+
+### Aiming
+
+> Aiming is accessible and voiced, but it is very hard: most fights last only a few seconds. It is recommended to set Aim Assist to Auto in the game's Accessibility settings. The game then aims and optionally shoots for you.
+
+The game has no crosshair. Your aim is the torch beam on the weapon. Move it with the mouse or the right stick. A blip sounds on the side of the target. It is higher when the target is above the beam and lower when it is below, and it gets faster as the beam gets closer. A double ping means a shot would hit, and the mod says "Fire!" when the hit is certain. Shoot with the left mouse button or the right trigger. With Aim Assist set to On, the game also pulls the aim onto a nearby target.
+
+### Exploration
+
+Walk with WASD or the left stick, and hold left Shift or LB to walk faster. The mouse or the right stick turns the camera. When the game offers an interaction, the mod reads it with its key, usually the left mouse button or A.
+
+When you get control of the character, the mod names the nearest place to go. N and P or left and right D-pad keys choose another one, and F6 or Back + X lists all of them with distance and direction. "Way on" is where the scene continues. You can get to the chosen place in two ways:
+
+- Press G or X on the gamepad to walk there automatically. Press G or X again or move to stop.
+- Follow the beacon. It sounds on the side of the next turn, rises as you get closer and drops an octave when the place is behind you. H or D-pad up says the distance and direction, and T or D-pad down turns the beacon off and on.
+
+Walking on your own with the beacon is freer, and it helps to find more tarot cards.
+
+Many objects have no name in the game, so the mod reads their internal names, which are in English. In most cases they still make clear what the object is.
+
+### Looking Around
+
+Some scenes ask you to look around or to take a photo. The aim sound from the fights leads you there: move the mouse or the right stick toward it. "In frame" means the point is in view. Take the photo with the key the game names. T turns the sound off and on.
+
+### Notes
+
+Notes and letters are read page by page. Enter or A turns the page, and Backspace or B closes the note.
+
+## Reporting Problems
+
+[Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9 while it is shown and attach the file it saves in the `dumps` folder next to the log.
+
+## Development
+
+### Prerequisites
+
+1. Visual Studio 2022 Build Tools with the C++ workload, which includes CMake and Ninja:
+
+   ```
+   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended"
+   ```
+
+   Visual Studio 2022 version 17.13 or newer with "Desktop development with C++" works too.
+
+2. Rust:
+
+   ```
+   winget install --id Rustlang.Rustup
+   ```
+
+3. A GitHub account linked to an Epic Games account. UE4SS uses a private repository of Epic Games. Link the accounts on the [Connections page](https://www.epicgames.com/account/connections) of your Epic Games account, then accept the invitation to the EpicGames organization that GitHub sends by email. Git asks you to sign in to GitHub the first time it downloads that repository.
+
+### Building from Source
+
+Clone the repository into a short path. It must be 78 characters or shorter, because UE4SS has long file names. Then run the build:
+
+```
+git clone https://github.com/Futyn-Maker/the_quarry_access.git
+scripts\package.cmd
 ```
 
-`build.cmd` uses `D:\QuarryTools\RE-UE4SS` when the `QA_UE4SS_SOURCE_DIR` environment variable is
-not set; set it to the submodule path (`third_party\RE-UE4SS`) or any RE-UE4SS checkout.
-`scripts\format.cmd` formats the sources with clang-format; run it before committing.
-The game needs UE4SS installed with the official "The Quarry" custom game config
-(`UE4SS_Signatures\StaticConstructObject.lua` and `VTableLayout.ini` from the RE-UE4SS repository).
+The first run downloads the dependencies and builds everything, which takes about 10 minutes. Later runs rebuild only what changed.
 
-Documentation: `docs/ARCHITECTURE.md`, `docs/TESTING.md`, `docs/HOOKS.md`.
+The result is in `dist\TheQuarryAccess-<version>`. Copy its contents into the game folder, as in the installation. `dist\TheQuarryAccess-<version>-symbols` holds the debug symbols of the same build.
+
+Before a pull request, run `scripts\format.cmd` to format the C++ code. It needs the "C++ Clang tools for Windows" component of Visual Studio.
+
+### Translation
+
+The mod's own messages are in `mod\lang`, one file per game language: `ru_RU.ini`, `de_DE.ini` and so on. `en_US.ini` is the reference. The descriptions of the tarot visions are in `mod\lang\tarot`, in the same way.
+
+Each line is `key=value`. Translate the value and keep the key. Keep `{0}`, `{1}` and so on: the mod puts names and keys there. Leave "The Quarry Access" as it is.
+
+To try a change without building, edit the same file in the game folder, in `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\lang`, and restart the game. The mod uses the file of the game's language. `Language` in `QuarryAccess.ini` can choose another one.
+
+Before a pull request, check from the repository folder that every file has the same keys as the English one:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\check-lang.ps1
+```
 
 ## License
 
-MIT (see `LICENSE`). Tolk is LGPL-3.0; UE4SS is MIT. Their licenses apply to the redistributed binaries.
+MIT. The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT) and uses [Tolk](https://github.com/dkager/tolk) (LGPL-3.0) for speech. Their licenses are included in the release.

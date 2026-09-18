@@ -1,0 +1,16 @@
+---
+paths:
+    - "src/features/{Choices,Prompts,Qte,ButtonMash,DontBreathe}.*"
+---
+
+# Choices, prompts, quick-time events, button mash, Don't Breathe
+
+- The options in play are the HUD element's pointers: `ActionHUDChoiceSMG026.ChoiceAWidgetInstance`, `ChoiceBWidgetInstance`, `ChoiceTimeoutWidgetInstance` (null means not offered) and `ActionHUDMultiChoiceSMG026.ChoiceWidgetInstance[]`. The game detaches an unused option from its panel and leaves its flags and opacity alone.
+- A two-way option (`ChoiceWidgetSMG026_C`) shows its `TitleText` label first and its `SubtitleText` line about half a second later: read the choice once when the lines are in. Key caps show only when `InfoDataInstance.bShowInputPrompt` is set (the `AxisInputPrompt`, one second in); never name a key the game does not display. `AxisInputPrompt.DisplayAxisInputType`: 0 none, 1 left stick, 2 right stick.
+- A choice commits when the option's own `Info.CommitFraction` fills while held (`bChosen` is never set for four-way choices, and `CommitScalars` stays empty). Holding a letter key silences NVDA, which cuts speech on every auto-repeat of a typed character: feedback that follows a hold waits until `input::InputHeld()` turns false.
+- Four-way layout: `ButtonPromptDown` is upper left, `ButtonPromptUp` upper right, `ButtonPromptLeft` lower left, `ButtonPromptRight` lower right. The sticks drive it (`TarotSelectionAxis*`), and so does the mouse (`bIsMouseHighlighted`, `bIsClicked`); the keyboard often does not.
+- Context for one particular choice goes in the notes table of `Choices.cpp`, keyed by the option's locale key, and only when the scene shows it (the chapter 8 cage numbers are painted in the scene).
+- Prompts: the hook on `InputActionInteractionPromptWidgetSMG026_C:SetButtonPrompt(ButtonInputMappingName, Labels, Style)` names the action. Styles: 0 Default, 1 Secondary, 2 STE, 3 UseLocation, 4 UseLocationHold, 5 Combat, 6 Interrupt. `$(prompt)` in a label is replaced with the key's name.
+- Quick-time events (`DirectionQTEViewportWidgetSMG026_C`): the accepted action comes from `GetActionMappingSuccess()`; the angle is 0 up, 90 right, 180 down, 270 left. The game takes the press only once the marker settles (about 0.8 seconds in), so the cue sounds again then, and the direction repeats every second until the result. Results come from the animation events `...SuccessAnim..._8` and `...FailureAnim..._9`, with `IsAnimationPlaying` polled as the twin. Primary and secondary displays show the same event: dedupe by angle and start time.
+- Button mash: the widget has no text, only a glyph and a ring scaled by `CommitFraction`; its words come through the prompt widget. `ButtonMashModeSetting`: 0 Standard, 1 Hold, 2 Tap, 3 Auto. Button bursts use W, A, S, D and E.
+- Don't Breathe: `GetDontBreatheInfo().DangerZones` are not drawn, but the game conveys them in picture and sound, so their ends and starts are announced. The bars are the lungs and the zone is the creature, independent of each other: success is reaching the end of the danger with air left, not letting go at a clever moment. The Bonus tutorial is a scripted demonstration that ignores input (`DontBreatheTutorialOverlay_C` or `TutorialVideo_C` on screen): say so and give no advice.

@@ -15,3 +15,5 @@ CMakeUserPresets.json
 # Local artifacts
 *.log
 /screenshots/
+# Tools, extracted game files, dumps and save backups for researching the game (CLAUDE.md)
+/research/

@@ -1,0 +1,71 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+The Quarry Access (`QuarryAccess`) is a UE4SS C++ mod that makes The Quarry (Supermassive Games, a UE 4.26 fork, project `SMG026`, Steam app 1577120) playable without sight. It speaks menus, HUD, subtitles and mechanics through Tolk (screen readers) or its own SAPI voice, and plays sounds where the game relies on the picture: quick-time event directions, the aim, the exploration beacon. Windows only, C++23, MSVC. `README.md` is the only user documentation (players: features, install, controls; developers: build, translation), written in simple, dry sentences.
+
+The maintainer tests every change in the game with NVDA and the Russian interface. Evidence comes from his logs and dumps, not from the screen. Lessons for each area of the code load from `.claude/rules/` when you open its files.
+
+## Rules
+
+- Equal access: say what a sighted player sees or hears, nothing more and nothing less. No data the screen does not show (names the game hides, hints, trigger names that would spoil a scare), and nothing shown is withheld. Text the game draws as a picture is transcribed (`mod/screens.ini`).
+- Prove how the game works from its data, its code or a log before coding or claiming it. Blueprint function names and widget trees mislead; bytecode, flows and logged values decide. When the data at hand cannot settle it, add logging and ask for one log.
+- Only the player's own input may interrupt speech: `speech::Focus` interrupts only after a press, `speech::Now` answers a request. Everything the mod says on its own is `speech::Announce`. Subtitles are spoken verbatim, never shortened, paced or queued by the mod. A time-critical prompt that stays on screen is repeated while it stays.
+- Every new mod string goes into all 20 `mod/lang/*.ini` tables. "The Quarry Access" is never translated.
+- No phases, plans, TODOs or "not yet" in code comments, strings or docs: every version reads as complete.
+- Never bind plain F10 (the window menu freezes the game), F11 (fullscreen toggle) or F12 (Steam screenshot). Before theorizing about a key, read the game's `SMG026/Config/DefaultInput.ini`.
+- Do not drive the game with injected keys to test: the maintainer is at the machine, and synthetic Enter does not pass the title screen. Never deploy or launch while `TheQuarry-Win64-Shipping` runs, and close the game after every self-test. Never touch saves while the game runs; back them up first.
+- Commit each finished item on its own, corrections in their own commits, with an imperative subject in the style of `git log` and no attribution lines. Do not push.
+
+## Commands
+
+Run from the repository root, in cmd or PowerShell. The repository path must be at most 78 characters.
+
+- `scripts\build.cmd [configure]`: builds `main.dll`, `UE4SS.dll` and `dwmapi.dll` with the CMake preset `shipping` (Ninja, `Game__Shipping__Win64`), fetching the submodules first when they are missing. A clean build takes about 10 minutes, a no-op 3 seconds. Redirect its output to a file: piping it into `Select-Object -First` cuts the build short.
+- `scripts\package.cmd`: builds, then lays out `dist\TheQuarryAccess-<VERSION>\` (its contents go into the game folder) and `dist\TheQuarryAccess-<VERSION>-symbols\` (PDBs and `main.map` of that build, for crash dumps).
+- `scripts\deploy.ps1 [-GameDir <dir>] [-ResetConfig]`: installs the last build into the game, replacing program files and keeping settings files.
+- `scripts\run-game.ps1 -AutoDismissCrash`: launches, waits for `[QuarryAccess] ready`, reports crashes. `scripts\stop-game.ps1` closes the game.
+- `scripts\tail-log.ps1 [-All] [-Last N]`: the SAY lines and errors of the mod log.
+- `scripts\check-lang.ps1`: every language table has exactly the keys of the English one.
+- `scripts\format.cmd [check]`: clang-format over `src\`.
+- `scripts\sendkeys.ps1`, `scripts\screenshot.ps1`: only when explicitly asked.
+
+The game folder comes from `-GameDir`, then `QA_GAME_DIR`, then Steam's library records. UE4SS lives in `SMG026\Binaries\Win64\ue4ss` (release layout) or in `Win64` itself (older installs); the scripts detect which. The version is the first line of `VERSION` and is written nowhere else. There are no unit tests: a change is checked by the build, `check-lang`, `format check`, the launch self-test and the maintainer's log.
+
+## Testing and Diagnosis
+
+- Self-test: `deploy.ps1`, `run-game.ps1 -AutoDismissCrash`, then check the last session of the mod log for the greeting `SAY`, `feature <name> installed` for each feature, `ready` and no `ERROR`, then `stop-game.ps1`. When handing a change over, say what to try in the game and which log lines will show it.
+- Mod log: `<UE4SS dir>\Mods\QuarryAccess\QuarryAccess.log`, appended per session (`---- QuarryAccess log opened ----`) and rotated at 5 MB. Every utterance is `SAY focus|announce|now|repeat "..."` with a timestamp, and features log what they read and decide. `UE4SS.log` sits beside `UE4SS.dll`.
+- After the maintainer plays, read his log and his Ctrl+F9 dumps (`<mod dir>\dumps\screen-*.txt`: every shown widget tree with texts, visibility, opacity and attachment, then the current screen and focus). Reconstruct what happened from the timestamps before theorizing.
+- Command file: lines written to `<mod dir>\command.txt` run in the game (polled twice a second, then deleted): `dump`, `read`, `help`, `trace on|off` (logs Blueprint calls of the classes in `[Diag] TraceClassPrefixes`), `loglevel Error|Info|Verbose|Trace`, `say <text>`, `subtitles on|off`, `explore`, `walkkeys`, `key <action>`, `props <object path or class name>` (every property of that object, or of the class's first live instance).
+- Crashes: `%LOCALAPPDATA%\TheQuarry\Saved\Crashes\UE4CC-*\UE4Minidump.dmp`. With `pip install minidump pefile`, read Rip (+0xF8) and Rsp (+0x98) from the exception context, then scan the whole crashing stack in 0x400-byte chunks for return addresses into `main.dll` (RVA + 0x180000000 against `main.map` of that exact build) and `UE4SS.dll` (`llvm-symbolizer` from the MSVC `bin\Hostx64\x64` folder, with the PDB beside the DLL).
+
+## Architecture
+
+- `src/dllmain.cpp`: the `CppUserModBase`. `on_unreal_init` reads `QuarryAccess.ini`, opens the log, loads Tolk, SAPI and the language tables, installs the pump, hooks, watchers, hotkeys and the command file, then registers the features. The mod folder is the parent of `dlls\`.
+- Threads: UE4SS calls `on_update` and its key events on its own thread. UObjects are touched on the game thread only: in the engine-tick pump (`core/GameThread`: `Post`, `AddPoller`) or in hook callbacks. Object-construction callbacks may come from loading threads and only record.
+- Detection is hooks plus polling, and polling is the authority. HUD elements (`UActionHUD*`) and GameFlow actions have no UFunctions, so their appearance and progress are native and invisible to hooks. `hooks/HookDispatcher` routes Blueprint function executions by declaring class and name (`OnScript`) and hooks natives by full name (`OnNative`, which fires only when the game calls through the UFunction). `watch/Watchers` polls the `*WidgetInstance` pointers of the player controller's HUD components, registered texts, the current screen and its focus.
+- `core/ObjectUtil` is name-based reflection over UE4SS: properties, struct members, arrays, `ProcessEvent` calls, widget trees, visibility, liveness, SEH guards. There are no hard-coded offsets.
+- `ui/Widgets` says what a menu control is (kind, label, value, position, description) and what a screen's title, body and prompts are. `features/*` hold one area each (Menus, Pause, Hud, Subtitles, Prompts, Choices, Qte, ButtonMash, DontBreathe, Exploration, Combat, Credits, Tarot, Screens): `Install()` sets hooks and pollers, `Describe()` feeds F6, `Help()` feeds F8, and `[Features]` in the ini can switch each off.
+- `speech/`: the policies (`Speech`), Tolk (`TolkBridge`), the mod's own SAPI thread (`Sapi`), tones through the sound card (`Sounds`). `locale/`: mod strings (`locale::Mod(key, args)` with English fallback) and the game's own strings and language (`GameText`, through `UIStaticsQuarry::FormatLocaleString`). `input/`: key names, input activity, the XInput detour. `hotkeys/`: the mod's keys. `core/Flow`: GameFlow blackboard values.
+- `mod/` ships beside `main.dll`: the `QuarryAccess.ini` defaults with their comments, `lang/`, `screens.ini`. UE4SS comes from the pinned submodule `third_party/RE-UE4SS` with its official The Quarry config; Tolk's binaries and licenses are in `third_party/tolk`.
+
+## Game Facts That Shape Everything
+
+- The frontend and the gameplay are one persistent map (`Uberlevel`): leaving to the main menu fires no LoadMap and keeps the controller and HUD widgets, so state is judged by what is on screen. Actors of other scenes stay loaded: a name match is not enough, take the nearest.
+- The game leaves finished widgets alive and flag-visible. On screen means `obj::IsWidgetShown`: every ancestor visible, a slot-less widget drawn only as its tree's root or while `IsInViewport`, and during play an opacity above 0.02. A text in a dump is no proof that it is shown.
+- `Text` and `LocalisedText` properties hold English design-time placeholders; the player sees the rendered child text blocks. Bound texts never update their `Text`: call the getter.
+- Cached pointers go stale. `obj::IsLive` checks that the object-array slot points back to the object, and `ProcessEvent` on a freed widget crashes inside UE4SS. Keep no widgets across screens, and run pollers, hooks and commands under `SafeInvokeLogged`.
+- Flow `FActorReference` names resolve through the actor's `ActorRegister.ActorName`; level actors carry instance numbers (`UL_FindOldTrunk_2` is registered as `UL_FindOldTrunk`).
+
+## Researching the Game
+
+Only the installed game is needed. Keep tools, extracted files, dumps and save backups in `research\` (git-ignored).
+
+- Paks: `SMG026\Content\Paks\pakchunk*-WindowsNoEditor.pak`, AES key `0xB916405788667A528F252B78348541929BAFD27FA88933543CE6016BB2388408`; the packages are versioned, so no mappings are needed. repak (`gh release download -R trumank/repak -p repak_cli-x86_64-pc-windows-msvc.zip`): `repak -a <key> list <pak>`, `repak -a <key> unpack <pak> -o <dir> -i SMG026/Content/UI`. UAssetGUI (`gh release download -R atenfyr/UAssetGUI -p UAssetGUI.exe`): `UAssetGUI.exe tojson <file.uasset or .umap> <out.json> VER_UE4_26`.
+- Where things are: widgets in `Content/UI/Widgets` (their Blueprint logic is ubergraph bytecode in the JSON), settings in `Content/UI/GameSettings`, strings in `Content/Locale/<code>` (`LocaleTextEntries`, interface text only), config in `SMG026/Config/Default*.ini`, scene logic in `Content/Maps/Acts/<act>/<scene>/` as GameFlow state machines (states, transitions, conditions, blackboard; `FActorReference` values are base64 raw structs: int32, FString, 2 bytes), levels in `.umap` files (an actor's `RootComponent` export holds its `RelativeLocation`; volumes keep `BrushBodySetup` boxes). Spoken dialogue exists only in the scenes' level sequences under `Content/Animations/Cinematics`, as plain ASCII runs inside the `.uexp`. Interface textures are BC7 (pip `texture2ddecoder`). Bink films are encrypted.
+- Live reflection: a temporary Lua mod, `<UE4SS dir>\Mods\Dumps\enabled.txt` plus `Scripts\main.lua` holding `ExecuteWithDelay(60000, function() ExecuteInGameThread(function() DumpAllObjects() GenerateSDK() end) end)`, writes `UE4SS_ObjectDump.txt` and `CXXHeaderDump\` (every class with member offsets) into the UE4SS folder; remove the mod afterwards. The `props` command reads live values.
+- Native code with no UFunction: disassemble `TheQuarry-Win64-Shipping.exe` (pip `pefile`, `capstone`), label member accesses with the offsets from `CXXHeaderDump`, and find functions by the members and constants they touch.
+- Saves: `%LOCALAPPDATA%\TheQuarry\Saved\SaveGames\SaveGame<n>.sav` is int32 0x53602673, int32 1, FString JSON metadata, FString "", one record per history entry (FString chapter, FString act, TArray<uint8> zlib-compressed GVAS blob, FString ""), the checkpoint record, 4 zero bytes, then a 32-character footer: lowercase MD5 of every non-zero byte before it, with bytes above 0x7F replaced by `?`. The loader rejects a wrong footer. A chapter key point's blob can replace the checkpoint to return to that chapter.
