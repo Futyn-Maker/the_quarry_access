@@ -37,6 +37,7 @@ Copy-Item $dll (Join-Path $modDir "dlls\main.dll") -Force
 Copy-Item (Join-Path $root "mod\enabled.txt") (Join-Path $modDir "enabled.txt") -Force
 Copy-Item (Join-Path $root "mod\lang\*.ini") (Join-Path $modDir "lang") -Force
 Copy-Item (Join-Path $root "mod\lang\tarot\*.ini") (Join-Path $modDir "lang\tarot") -Force
+Copy-Item (Join-Path $root "mod\screens.ini") (Join-Path $modDir "screens.ini") -Force
 $ini = Join-Path $modDir "QuarryAccess.ini"
 if ($ResetConfig -or -not (Test-Path $ini)) {
     Copy-Item (Join-Path $root "mod\QuarryAccess.ini") $ini -Force

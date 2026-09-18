@@ -19,6 +19,7 @@
 #include "features/Pause.hpp"
 #include "features/Prompts.hpp"
 #include "features/Qte.hpp"
+#include "features/Screens.hpp"
 #include "features/Subtitles.hpp"
 #include "features/Tarot.hpp"
 #include "hooks/HookDispatcher.hpp"
@@ -141,6 +142,7 @@ public:
         qa::features::Register(std::make_unique<qa::features::CreditsFeature>());
         qa::features::Register(std::make_unique<qa::features::CombatFeature>());
         qa::features::Register(std::make_unique<qa::features::TarotFeature>());
+        qa::features::Register(std::make_unique<qa::features::ScreensFeature>(m_modDir + L"\\screens.ini"));
         qa::features::InstallAll();
 
         Unreal::Hook::FCallbackOptions options{};

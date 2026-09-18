@@ -458,6 +458,28 @@ Tester script (Russian UI). Play the last chapter to its end.
 Expected log lines: `hud: appeared ActionHUDAftermathTextSMG026.AftermathTextInstance ->
 AftermathText_C ...` (at the verbose log level), one `SAY announce` per card, and no `ERROR`.
 
+## Screens
+
+Tester script (Russian UI).
+
+1. When the epilogue's podcast begins, the podcast studio's monitor shows the podcast's logo and
+   then the North Kill Gazette page the ending chose. Each is read as it comes on, in English as
+   the game draws it in every language, for example "North Kill Gazette. Psycho teens charged
+   after summer camp massacre. Teen counselors charged after local family slaughtered in their
+   own home. August 24th, 2021, 8.00 AM, by Jim Sweeney." Near the end the monitor shows the
+   page the episode closes on, chosen by the evidence found, and it is read the same way. A
+   page the podcast shows again is not read again; F6 reads the one on the monitor now.
+2. Chapter 7, the second night of the full moon, Laura in Travis's office: use the computer
+   before finding his birthday. The login is read with the hint the game shows: "Welcome to
+   Northkill Sheriffs Department. Username: T.Hackett. Password. ERROR! Hint! My Birthday. OK."
+   Once Laura has the birthday, the login goes through and the e-mail from Chris Hackett is
+   read, then the podcast in its media player.
+
+Expected log lines: `screens: 42 picture(s) with text` at start, `screens: watching ...
+(SM_Monitor_CRT_Screen)` when the podcast studio loads (`(AccessoriesTravisMonitor)` or
+`(SM_Travis_Monitor)` in the police station), one `screens: ... shows mi_...` per picture, and
+no `ERROR`.
+
 ## Overlays
 
 Tester script (Russian UI).
