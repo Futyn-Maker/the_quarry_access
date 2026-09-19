@@ -38,7 +38,7 @@ namespace qa::gametext
     {
         {
             std::lock_guard lock(g_mutex);
-            if (!g_locale.empty() && std::chrono::steady_clock::now() - g_localeAt < std::chrono::seconds(5)) return g_locale;
+            if (!g_locale.empty() && std::chrono::steady_clock::now() - g_localeAt < std::chrono::seconds(1)) return g_locale;
         }
         auto* statics = Statics();
         if (!statics) return {};

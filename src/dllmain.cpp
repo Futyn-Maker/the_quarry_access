@@ -165,7 +165,8 @@ public:
             },
             options);
 
-        // Startup: wait for the game's locale, then load the matching table and greet.
+        // Startup: wait for the game's locale, load the matching table and greet, then
+        // follow the locale for the rest of the session.
         qa::gamethread::AddPoller(L"startup", [this, forcedLanguage](float) { Startup(forcedLanguage); });
         qa::log::Info(L"initialization done; waiting for the game locale");
     }
@@ -173,14 +174,26 @@ public:
 private:
     void Startup(const std::wstring& forcedLanguage)
     {
-        if (m_started) return;
         const double now = qa::gamethread::NowSeconds();
         if (now - m_lastLocaleProbe < 0.5) return;
         m_lastLocaleProbe = now;
 
         std::wstring gameLocale = qa::gametext::CurrentLocale();
-        if (gameLocale.empty() && now < 8.0) return;
+        if (m_started)
+        {
+            FollowLocale(forcedLanguage, gameLocale);
+            return;
+        }
+        // The game starts on the system's locale and applies its own language (Steam's)
+        // a few seconds later, so an answer is taken only once it has held for two seconds.
+        if (gameLocale != m_candidateLocale)
+        {
+            m_candidateLocale = gameLocale;
+            m_candidateSince = now;
+        }
+        if (gameLocale.empty() ? now < 8.0 : now - m_candidateSince < 2.0) return;
         m_started = true;
+        m_gameLocale = gameLocale;
 
         const std::wstring language = !forcedLanguage.empty() ? forcedLanguage : (gameLocale.empty() ? L"en_US" : gameLocale);
         qa::locale::LoadTables(m_modDir + L"\\lang", language);
@@ -205,8 +218,26 @@ private:
         qa::log::Info(L"ready");
     }
 
+    // The language can still change after the start, so the mod follows it for the whole
+    // session: the game's strings are resolved anew, and the mod's tables and voice change.
+    void FollowLocale(const std::wstring& forcedLanguage, const std::wstring& gameLocale)
+    {
+        if (gameLocale.empty() || gameLocale == m_gameLocale) return;
+        qa::log::Info(L"game locale changed: {} -> {}", m_gameLocale.empty() ? L"<unknown>" : m_gameLocale, gameLocale);
+        m_gameLocale = gameLocale;
+        qa::gametext::ClearCache();
+        qa::input::InvalidateCache();
+        if (!forcedLanguage.empty()) return;
+        qa::locale::LoadTables(m_modDir + L"\\lang", gameLocale);
+        qa::sapi::SelectVoiceFor(qa::locale::CurrentCode());
+        qa::log::Info(L"mod language: {}", qa::locale::CurrentCode());
+    }
+
     std::wstring m_modDir;
     std::wstring m_reader;
+    std::wstring m_gameLocale;
+    std::wstring m_candidateLocale;
+    double m_candidateSince = 0.0;
     bool m_started = false;
     double m_lastLocaleProbe = -1.0;
 };
