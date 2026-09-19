@@ -124,7 +124,14 @@ Notes and letters are read page by page. Enter or A turns the page, and Backspac
 
 [Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9 while it is shown and attach the file it saves in the `dumps` folder next to the log.
 
-If the game crashed, attach the crash dump as well. After the window "The SMG026 Game has crashed and will close", the dump is in `%LOCALAPPDATA%\TheQuarry\Saved\Crashes`: attach the newest `UE4CC-Windows-...` folder there, zipped; it holds `UE4Minidump.dmp`. After a "Fatal Error!" window, the dump is the `crash_` file that window names, in `SMG026\Binaries\Win64\ue4ss` in the game folder. The `UE4CC-Windows-...` folders in `Saved\Config\CrashReportClient` are made at every start and hold no dump.
+If the game crashed, attach the crash dump as well. Where it is depends on the window the crash showed:
+
+- "The SMG026 Game has crashed and will close": copy the text of that window into the issue. The dump is in `%LOCALAPPDATA%\TheQuarry\Saved\Crashes`: attach the newest `UE4CC-Windows-...` folder there, zipped; it holds `UE4Minidump.dmp`.
+- "Fatal Error!": the window names the dump, a `crash_` file in `SMG026\Binaries\Win64\ue4ss` in the game folder. Attach that file.
+
+The `UE4CC-Windows-...` folders in `Saved\Config\CrashReportClient` are made at every start of the game and hold no dump.
+
+If the crash window says "Retry was NOT sucessful", part of the game's data on the disk is damaged. In Steam, open the game's Properties, then Installed Files, and choose "Verify integrity of game files"; reinstall the game if that finds nothing. The check does not touch the mod, which only adds files of its own.
 
 ## Development
 
