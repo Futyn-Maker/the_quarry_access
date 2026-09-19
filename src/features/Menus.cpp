@@ -23,6 +23,7 @@ namespace qa::features
     namespace
     {
         UObject* g_screen = nullptr;
+        double g_screenGoneAt = -1.0; // when the screen was first found no longer drawn
         UObject* g_focused = nullptr;
         std::wstring g_lastFocusText;
         std::wstring g_lastPromptText;
@@ -59,6 +60,10 @@ namespace qa::features
         // the lobby) is read again, like a section opened inside it.
         std::vector<std::pair<UObject*, int64_t>> g_pages;
 
+        // The group of the list the selection sits in (the clues are grouped by where they
+        // belong), so that moving into another group names it once, before the item.
+        UObject* g_group = nullptr;
+
         // A section opened inside a screen (a settings category, the director's chair) is
         // read like a screen; its title is repeated only when it changed.
         UObject* g_titleScreen = nullptr;
@@ -80,14 +85,32 @@ namespace qa::features
         std::wstring g_tabSelectorCandidate;
 
         // Screens announce themselves when they show. A screen class that overrides Show
-        // declares its own function, so each of these is routed separately.
-        const wchar_t* const kShowingScreens[] = {L"MenuBaseWidget_C",       L"PopupScreenBaseWidget_C", L"CouchCo-opHandover_C", L"PauseTabCollectablesBase_C",
-                                                  L"PauseTabRelationship_C", L"RewindPause_C",           L"RewindUnlocked_C"};
+        // declares its own function, so each of these is routed separately. The pause tabs
+        // are not among them: their content is shown before the menu around it is up, and the
+        // pause feature reads the menu as a whole once it is.
+        const wchar_t* const kShowingScreens[] = {L"MenuBaseWidget_C", L"PopupScreenBaseWidget_C", L"CouchCo-opHandover_C", L"RewindPause_C",
+                                                  L"RewindUnlocked_C"};
 
         // Pause tabs are reported as the heading of their screen, not as its selection.
         bool IsTab(UObject* interactable)
         {
             return interactable && ui::KindOf(interactable) == ui::Kind::Tab;
+        }
+
+        // The name of the group the selection has just moved into, once; a list that has no
+        // groups, and a move within one, say nothing.
+        std::wstring GroupHeading(UObject* interactable)
+        {
+            UObject* group = interactable ? obj::NearestAncestorOfClass(interactable, L"CollectablesGroup_C") : nullptr;
+            // A selection that belongs to no group is beside the list, not in it (a line of
+            // the panel next to a clue): the group stands, so coming back to the clue does
+            // not name its section over again.
+            if (!group || group == g_group) return {};
+            g_group = group;
+            auto heading = str::CollapseWhitespace(ui::PropertyText(group, L"Title"));
+            while (!heading.empty() && (heading.back() == L':' || heading.back() == L'：'))
+                heading.pop_back();
+            return str::Trim(heading);
         }
 
         std::wstring DescribeFocused(UObject* interactable)
@@ -114,6 +137,7 @@ namespace qa::features
             // Whatever was focused a moment ago belongs to the screen being left and must
             // not be read out as the selection of this one.
             g_focusBeforeArrival = g_focused;
+            g_group = nullptr;
             g_lastPromptText.clear();
             g_promptCandidate.clear();
         }
@@ -148,13 +172,80 @@ namespace qa::features
             }
         }
 
+        // A screen becomes the current one without being read: the reading is arranged by
+        // whoever knew the screen changed.
+        void AdoptScreen(UObject* screen)
+        {
+            g_screen = screen;
+            g_screenGoneAt = -1.0;
+            WatchScreen(screen);
+        }
+
         void BeginArrival(UObject* screen, const wchar_t* source)
         {
-            if (!screen || screen == g_screen) return;
-            g_screen = screen;
-            WatchScreen(screen);
+            if (!screen) return;
+            // The pause menu is one screen built of several widgets: the tab bar, the content
+            // of the selected tab and the character carousel. The focus travels between them
+            // as the player walks the tabs, so they all answer to the content on display, and
+            // a bar or a carousel with none of it drawn is nothing to read.
+            if (ui::IsPauseWidget(screen))
+            {
+                screen = ui::PauseAnchor(screen);
+                if (!screen) return;
+            }
+            if (screen == g_screen) return;
+            AdoptScreen(screen);
             StartArrival();
             log::Verbose(L"menus: screen via {} -> {}", source, obj::ClassName(screen));
+        }
+
+        // A screen no longer on display. The pause menu is made of widgets that come and go in
+        // their own order and are left drawn behind it, so there the menu being up is what
+        // counts, and nothing else is asked of them.
+        bool ScreenGone(UObject* screen)
+        {
+            if (!obj::IsLive(screen)) return true;
+            if (ui::IsPauseWidget(screen))
+            {
+                const auto menu = ui::PauseMenuState();
+                return !menu.up || (obj::IsLive(menu.content) && menu.content != screen);
+            }
+            return !obj::IsWidgetShown(screen);
+        }
+
+        // A screen that is gone stops being the current one, so that what it still holds is
+        // not read out and opening it again is read again. Screens go out of sight for a
+        // moment while they animate, so it takes a moment of absence.
+        void PollScreenImpl()
+        {
+            if (gamethread::FrameCount() % 8 != 0 || !obj::IsLive(g_screen) || g_arrivalPending) return;
+            if (!ScreenGone(g_screen))
+            {
+                g_screenGoneAt = -1.0;
+                return;
+            }
+            const double now = gamethread::NowSeconds();
+            if (g_screenGoneAt < 0.0)
+            {
+                g_screenGoneAt = now;
+                return;
+            }
+            if (now - g_screenGoneAt < 0.25) return;
+            log::Verbose(L"menus: {} closed", obj::ClassName(g_screen));
+            g_screen = nullptr;
+            g_screenGoneAt = -1.0;
+            g_focused = nullptr;
+            g_titleScreen = nullptr;
+            g_lastTitle.clear();
+            g_lastBody.clear();
+            g_lastFocusText.clear();
+            g_lastPromptText.clear();
+            g_promptCandidate.clear();
+            g_group = nullptr;
+            g_pages.clear();
+            for (int id : g_screenTextWatches)
+                watch::UnwatchText(id);
+            g_screenTextWatches.clear();
         }
 
         void OnFocusChanged(UObject* screen, UObject* focused)
@@ -166,10 +257,11 @@ namespace qa::features
             g_focusChangedAt = gamethread::NowSeconds();
             // While a screen is opening the item is spoken by the arrival sequence, in order.
             if (g_arrivalPending) return;
+            const auto heading = GroupHeading(interactable);
             const auto text = DescribeFocused(interactable);
             if (text.empty() || text == g_lastFocusText) return;
             g_lastFocusText = text;
-            speech::Focus(text);
+            speech::Focus(str::JoinSentences({heading, text}));
         }
 
         // The first part answers the player, so it may interrupt; the rest follows in order.
@@ -205,6 +297,7 @@ namespace qa::features
             {
                 // A heading may arrive before the screen it belongs to has been noticed.
                 g_screen = watch::CurrentScreen();
+                if (UObject* pause = ui::PauseAnchor(g_screen)) g_screen = pause;
                 if (!obj::IsLive(g_screen))
                 {
                     if (elapsed < 1.2) return;
@@ -214,11 +307,28 @@ namespace qa::features
                     return;
                 }
             }
+            // The pause menu shows the content of a tab a moment after its bar says which tab
+            // that is, and a tab with nothing to select (the character tab) never moves the
+            // focus into it: the reading follows the menu to whatever it ends up showing,
+            // instead of being held to the tab that was on display when it was asked for.
+            if (UObject* content = ui::PauseAnchor(g_screen); content && content != g_screen) AdoptScreen(content);
+            // A screen closed before its reading was due is not read at all: the player has
+            // already left it.
+            if (ScreenGone(g_screen))
+            {
+                if (elapsed < 1.2) return;
+                g_arrivalPending = false;
+                g_heading.clear();
+                log::Info(L"menus: {} was gone before it could be read", obj::ClassName(g_screen));
+                return;
+            }
+            const bool pause = ui::PauseAnchor(g_screen) == g_screen;
             UObject* interactable = ui::Interactable(watch::CurrentFocused());
             if (interactable == g_focusBeforeArrival) interactable = nullptr;
             const auto focusText = DescribeFocused(interactable);
-            // Give a screen a moment to put focus somewhere; some screens never do.
-            if (focusText.empty() && elapsed < 1.2) return;
+            // Give a screen a moment to put focus somewhere; a screen with nothing to select
+            // (the character tab of the pause menu) never does, and is read at once.
+            if (focusText.empty() && elapsed < 1.2 && ui::HasControls(g_screen)) return;
 
             g_arrivalPending = false;
             g_focusChangedAt = now;
@@ -228,7 +338,9 @@ namespace qa::features
                 g_lastFocusText = focusText;
             }
             std::vector<std::wstring> parts = g_heading;
-            const bool heading = !g_heading.empty();
+            // The pause menu is headed by its tab, whatever made it be read.
+            if (parts.empty() && pause) parts.push_back(ui::PauseTabLine());
+            const bool heading = !parts.empty() && !parts.front().empty();
             g_heading.clear();
             const auto title = ui::ScreenTitle(g_screen);
             const auto body = ui::ScreenBody(g_screen);
@@ -247,7 +359,7 @@ namespace qa::features
             if (!sameBody) parts.push_back(body);
             // A control the screen already names in its text (a selector the tab keys turn)
             // is not named again as the selection.
-            if (body.find(focusText) == std::wstring::npos) parts.push_back(focusText);
+            if (body.find(focusText) == std::wstring::npos) parts.push_back(str::JoinSentences({GroupHeading(interactable), focusText}));
             parts.push_back(prompts);
             SpeakSequence(parts);
         }
@@ -257,7 +369,8 @@ namespace qa::features
         // so they wait until the screen and the selection have stopped moving.
         void PollPromptsImpl()
         {
-            if (g_arrivalPending || !obj::IsLive(g_screen)) return;
+            // A screen on its way out loses its prompts one by one; none of that is news.
+            if (g_arrivalPending || ScreenGone(g_screen)) return;
             if (gamethread::FrameCount() % 8 != 0) return;
             const auto text = CurrentPromptText();
             if (text == g_lastPromptText)
@@ -440,15 +553,21 @@ namespace qa::features
             obj::SafeInvokeLogged(L"menus.PollPagesImpl", [](void*) { PollPagesImpl(); }, nullptr);
         }
 
+        void PollScreen(float)
+        {
+            obj::SafeInvokeLogged(L"menus.PollScreenImpl", [](void*) { PollScreenImpl(); }, nullptr);
+        }
+
         void PollValue(float)
         {
             obj::SafeInvokeLogged(L"menus.PollValueImpl", [](void*) { PollValueImpl(); }, nullptr);
         }
     }
 
-    void ArriveWith(std::vector<std::wstring> heading)
+    void ArriveWith(std::vector<std::wstring> heading, UObject* screen)
     {
         g_heading = std::move(heading);
+        if (obj::IsLive(screen) && screen != g_screen) AdoptScreen(screen);
         StartArrival();
     }
 
@@ -460,6 +579,7 @@ namespace qa::features
     void ResetMenus()
     {
         g_screen = nullptr;
+        g_screenGoneAt = -1.0;
         g_focused = nullptr;
         g_focusBeforeArrival = nullptr;
         g_valueWidget = nullptr;
@@ -477,6 +597,7 @@ namespace qa::features
         g_lastBody.clear();
         g_carousel = nullptr;
         g_carouselItem = nullptr;
+        g_group = nullptr;
         g_tabSelectors.clear();
         g_tabSelectorScreen = nullptr;
         g_tabSelectorCandidate.clear();
@@ -493,6 +614,7 @@ namespace qa::features
         {
             hooks::OnScript(L"NestedContentMenu_C", function, [](UObject*, FFrame&) { ArriveWith({}); });
         }
+        gamethread::AddPoller(L"menus.screen", &PollScreen);
         gamethread::AddPoller(L"menus.arrival", &PollArrival);
         gamethread::AddPoller(L"menus.carousel", &PollCarousel);
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);

@@ -80,6 +80,28 @@ namespace qa::ui
     // Spoken form of a description according to the configured verbosity.
     std::wstring Speak(const Description& description);
 
+    // Whether the pause menu is up, and the widgets it is made of.
+    struct PauseMenu
+    {
+        bool up = false;
+        bool answered = false;      // the game itself said which screen is on display
+        UObject* system = nullptr;  // the tab bar
+        UObject* content = nullptr; // the content of the selected tab
+    };
+    PauseMenu PauseMenuState();
+
+    // True for the widgets the pause menu is built of: its tab bar, the content of a tab and
+    // the character carousel.
+    bool IsPauseWidget(UObject* widget);
+
+    // The one widget the pause menu answers to, for a widget that is part of it: its tab bar.
+    // Null for anything else. The menu is made of several top-level widgets that come and go
+    // in their own order, so they are held to be one screen throughout.
+    UObject* PauseAnchor(UObject* widget);
+
+    // The selected tab as it is spoken, the heading of the pause menu ("Clues, tab, 2 of 6").
+    std::wstring PauseTabLine();
+
     // The widgets that together make up what the player sees as one screen. Usually the
     // screen itself; in the pause menu the tab bar, the content of the selected tab and the
     // character carousel are separate widgets and are read together.
@@ -98,6 +120,9 @@ namespace qa::ui
     // Selectors of the screen that the tab keys turn wherever the focus is: those showing
     // their own tab-key prompts (the mode of the Wolf Pack lobby).
     std::vector<UObject*> TabSelectors(UObject* screen);
+
+    // True when the screen holds anything to select besides the tabs of the pause menu.
+    bool HasControls(UObject* screen);
 
     // True when the screen holds a text field, which the game walks with the tab key.
     bool HasTextField(UObject* screen);

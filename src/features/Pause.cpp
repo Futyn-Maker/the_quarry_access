@@ -17,18 +17,8 @@ namespace qa::features
 
     namespace
     {
-        UObject* g_system = nullptr; // the tab bar of the pause menu
-        UObject* g_tab = nullptr;    // its selected tab, while the menu is up
-        bool g_active = false;
-        unsigned long long g_lastScan = 0;
-
-        std::wstring TabLine(const ui::PauseTabs& tabs)
-        {
-            if (tabs.label.empty()) return {};
-            std::vector<std::wstring> parts{tabs.label, locale::Mod(L"ui.type.tab")};
-            if (tabs.index > 0 && tabs.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(tabs.index), std::to_wstring(tabs.count)));
-            return str::Join(parts, L", ");
-        }
+        UObject* g_tab = nullptr; // the selected tab, while the menu is up
+        bool g_up = false;
 
         std::wstring PausedText()
         {
@@ -37,31 +27,32 @@ namespace qa::features
 
         void PollImpl()
         {
-            const auto frame = gamethread::FrameCount();
-            if (frame % 4 != 0) return;
-            // Looking the bar up means scanning every object, so it is done sparingly.
-            if (!obj::IsLive(g_system) || (!g_active && frame - g_lastScan > 60))
+            if (gamethread::FrameCount() % 4 != 0) return;
+            // The state is read at every poll: reading it only now and then once missed whole
+            // openings, and a menu opened and closed again in between was taken for one.
+            const auto menu = ui::PauseMenuState();
+            const auto tabs = menu.up ? ui::PauseTabsOf(menu.system) : ui::PauseTabs{};
+            if (!menu.up)
             {
-                if (frame - g_lastScan < 60) return;
-                g_lastScan = frame;
-                g_system = ui::PauseTabSystem();
-                if (!g_system) return;
+                if (g_up) log::Info(L"pause: closed");
+                g_up = false;
+                g_tab = nullptr;
+                return;
             }
-            const auto tabs = ui::PauseTabsOf(g_system);
-            const bool active = tabs.system != nullptr;
-            if (active && !g_active)
+            if (!g_up)
             {
-                log::Verbose(L"pause: opened, tab {} ({} of {})", tabs.label, tabs.index, tabs.count);
+                log::Info(L"pause: open on {} (game says {}), tab {} ({} of {})", obj::ClassName(menu.content), menu.answered ? L"yes" : L"nothing", tabs.label,
+                          tabs.index, tabs.count);
                 speech::Focus(PausedText());
-                ArriveWith({TabLine(tabs)});
+                ArriveWith({}, ui::PauseAnchor(menu.content));
             }
-            else if (active && tabs.tab && tabs.tab != g_tab)
+            else if (tabs.tab && tabs.tab != g_tab)
             {
-                log::Verbose(L"pause: tab {} ({} of {})", tabs.label, tabs.index, tabs.count);
-                ArriveWith({TabLine(tabs)});
+                log::Info(L"pause: tab {} ({} of {}) on {}", tabs.label, tabs.index, tabs.count, obj::ClassName(menu.content));
+                ArriveWith({}, ui::PauseAnchor(menu.content));
             }
-            g_active = active;
-            g_tab = active ? tabs.tab : nullptr;
+            g_up = true;
+            g_tab = tabs.tab;
         }
 
         void Poll(float)
@@ -81,7 +72,7 @@ namespace qa::features
         if (!tabs.system) return;
         const auto paused = PausedText();
         if (!paused.empty()) out.push_back(paused);
-        const auto line = TabLine(tabs);
+        const auto line = ui::PauseTabLine();
         if (!line.empty()) out.push_back(line);
     }
 

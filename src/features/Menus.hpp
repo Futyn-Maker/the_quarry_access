@@ -5,6 +5,8 @@
 
 #include "features/Feature.hpp"
 
+#include <Unreal/UObject.hpp>
+
 #include <string>
 #include <vector>
 
@@ -24,8 +26,9 @@ namespace qa::features
 
     // Reads the current screen again as if it had just opened, with these lines spoken
     // first. Used when something other than a screen change reshapes what is shown,
-    // such as switching a pause tab.
-    void ArriveWith(std::vector<std::wstring> heading);
+    // such as switching a pause tab. The screen may be named, which also makes it the
+    // current one, so that noticing it a moment later does not read it twice.
+    void ArriveWith(std::vector<std::wstring> heading, RC::Unreal::UObject* screen = nullptr);
     bool ArrivalPending();
 
     // Forgets every screen and control (after a map change).

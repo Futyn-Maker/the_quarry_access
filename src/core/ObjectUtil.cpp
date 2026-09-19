@@ -960,6 +960,9 @@ namespace qa::obj
         void CollectTexts(UObject* widget, int depth, int maxDepth, std::vector<std::wstring>& out)
         {
             if (!widget || !IsLive(widget) || depth > maxDepth) return;
+            // Opacity is deliberately not a test here: widgets fade in, and a list rebuilt
+            // under the selection would then be read as empty. A widget the game keeps at no
+            // opacity for good is left out where it is read, by what the game says about it.
             if (!IsWidgetVisible(widget)) return;
             if (g_textLeaf)
             {

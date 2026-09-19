@@ -268,6 +268,16 @@ namespace qa::watch
             return result;
         }
 
+        // A line of the panel beside a list of clues is lit as that panel's current line
+        // whenever the list moves, without the player being there: it is the selection only
+        // once they have gone into the panel, which is where the game puts the focus.
+        bool PassiveHighlight(UObject* control)
+        {
+            UObject* line = obj::IsA(control, L"CollectablesInfoButton_C") ? control : obj::FindOuterOfClass(control, L"CollectablesInfoButton_C");
+            if (!line) return false;
+            return !obj::CallForBool(line, L"HasKeyboardFocus") && !obj::CallForBool(line, L"HasFocusedDescendants");
+        }
+
         bool OnCurrentScreen(UObject* widget)
         {
             // With no answer from the game, everything is accepted rather than nothing.
@@ -319,7 +329,7 @@ namespace qa::watch
                 const auto previous = g_controlHighlight.find(control);
                 const bool wasHighlighted = previous != g_controlHighlight.end() && previous->second;
                 g_controlHighlight[control] = highlighted;
-                if (highlighted && !wasHighlighted && !focused) focused = control;
+                if (highlighted && !wasHighlighted && !focused && !PassiveHighlight(control)) focused = control;
             }
 
             // A text field is never highlighted and the screen does not always record it,

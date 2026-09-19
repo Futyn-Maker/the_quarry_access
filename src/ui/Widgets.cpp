@@ -39,6 +39,9 @@ namespace qa::ui
             {L"DnaPrimaryButton_C", Kind::Button},
             {L"DnaSecondaryButton_C", Kind::Button},
             {L"CollectablesButtonBase_C", Kind::Button},
+            // The film strip of a path walks through moments that have already happened: it
+            // is not a setting, so it is not announced as one.
+            {L"PathChosenCarouselBase_C", Kind::Other},
             {L"EditableTextBox", Kind::Edit},
             {L"EditableText", Kind::Edit},
             {L"UIInteractableWidgetSMG026_C", Kind::Other},
@@ -211,6 +214,27 @@ namespace qa::ui
             return index;
         }
 
+        // One line of the panel beside a list of clues. A line the story has not unlocked,
+        // and one the player has not looked at yet, shows its mark ("?", "!") in place of
+        // its words: the game leaves the words there and draws them at no opacity. Opacity
+        // cannot be read for this, since every line fades in when the panel is rebuilt, so
+        // the line's own state decides, exactly as the game decides it.
+        std::wstring CollectableLine(UObject* line)
+        {
+            bool unlocked = true;
+            bool fresh = false;
+            obj::ReadBool(line, L"bIsCollectableUnlocked", unlocked);
+            obj::ReadBool(line, L"bIsCollectableNew", fresh);
+            // A line that shows a picture from the scene hides its words behind it; the game
+            // draws that box only when the line has a picture to put in it.
+            UObject* picture = nullptr;
+            const bool shows = obj::ReadObject(line, L"VideoBox", picture) && obj::IsLive(picture) && obj::IsWidgetVisible(picture);
+            if (unlocked && !fresh && !shows) return str::Join(DisplayTexts(obj::DescendantTexts(line, kLabelDepthDeep)), L", ");
+            UObject* mark = nullptr;
+            if (!obj::ReadObject(line, L"StatusText", mark) || !obj::IsLive(mark) || !obj::IsWidgetVisible(mark)) return {};
+            return str::Join(DisplayTexts(obj::DescendantTexts(mark, kLabelDepthDeep)), L" ");
+        }
+
         int SiblingPosition(UObject* interactable, int& count)
         {
             count = 0;
@@ -300,6 +324,49 @@ namespace qa::ui
         d.widget = interactable;
         if (!interactable) return d;
         d.kind = KindOf(interactable);
+
+        // A line of the panel beside a list is read as the game draws it: its words, or the
+        // mark that stands in for them while the story keeps them back.
+        if (obj::IsA(interactable, L"CollectablesInfoButton_C"))
+        {
+            d.label = str::CollapseWhitespace(str::StripMarkup(CollectableLine(interactable)));
+            d.index = SiblingPosition(interactable, d.count);
+            return d;
+        }
+
+        // The film strip of a path: it keeps the focus on itself while the arrows move its
+        // current moment. The moments are pictures of the scenes they come from and carry no
+        // words; the line about the moment the strip stands on is written above it.
+        if (obj::IsA(interactable, L"PathChosenCarouselBase_C"))
+        {
+            UObject* title = nullptr;
+            if (obj::ReadObject(interactable, L"CarouselTitle", title) && obj::IsLive(title))
+            {
+                d.label = StripTrailingColon(TextProperty(title, L"Title"));
+                std::wstring own;
+                if (str::Trim(d.label).empty() && ReadTextLeaf(title, own)) d.label = StripTrailingColon(own);
+            }
+            UObject* current = nullptr;
+            int64_t index = -1;
+            int64_t count = 0;
+            obj::ReadObject(interactable, L"CurrentButton", current);
+            obj::ReadInt(interactable, L"ButtonCount", count);
+            if (obj::IsLive(current)) obj::ReadInt(current, L"ButtonIndex", index);
+            std::vector<std::wstring> parts{str::CollapseWhitespace(str::StripMarkup(VisibleTextProperty(interactable, L"TitleText")))};
+            if (index >= 0 && count > 0) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(index + 1), std::to_wstring(count)));
+            d.value = str::Join(DisplayTexts(parts), L", ");
+            // A strip of pictures leaves nothing else to check afterwards, so what it gave is
+            // logged as it changes.
+            static UObject* lastCarousel = nullptr;
+            static int64_t lastIndex = -2;
+            if (interactable != lastCarousel || index != lastIndex)
+            {
+                lastCarousel = interactable;
+                lastIndex = index;
+                log::Info(L"paths: {} moment {} of {}: {}", d.label, index + 1, count, d.value);
+            }
+            return d;
+        }
 
         // Label: the text the game actually renders (already localized), split into a
         // title and a value for selectors and sliders. The internal Text field holds a
@@ -395,6 +462,26 @@ namespace qa::ui
         }
 
         d.tip = gametext::ReadLocalized(interactable, L"LocalizedTipText", L"TipText");
+        // A list of clues, places or paths shows the item it is on in a panel beside it, all
+        // at once: where it was found, then its lines. A line the story has not unlocked, or
+        // one not yet looked at, is drawn as its mark alone, and is read so.
+        if (str::Trim(d.tip).empty())
+        {
+            UObject* tab = obj::NearestAncestorOfClass(interactable, L"PauseTabCollectablesBase_C");
+            UObject* current = nullptr;
+            UObject* info = nullptr;
+            if (tab && obj::ReadObject(tab, L"CurrentCollectablesButton", current) && current == interactable && obj::ReadObject(tab, L"InfoContent", info) &&
+                obj::IsLive(info) && obj::IsWidgetShown(info))
+            {
+                std::vector<std::wstring> lines;
+                UObject* title = nullptr;
+                if (obj::ReadObject(tab, L"CollectablesTitle", title) && obj::IsLive(title))
+                    lines.push_back(str::CollapseWhitespace(VisibleTextProperty(title, L"Subtitle")));
+                for (auto* line : obj::PanelChildren(info))
+                    lines.push_back(CollectableLine(line));
+                d.tip = str::JoinSentences(lines);
+            }
+        }
         // A clue, piece of evidence, tarot card or tutorial carries its own description.
         UObject* collectable = nullptr;
         bool unlocked = true;
@@ -443,17 +530,54 @@ namespace qa::ui
 
     namespace
     {
-        // The content the tab bar is showing. Contents of tabs visited earlier stay loaded
-        // and shown for a while after leaving them, so being shown is not enough: the tab
-        // widgets are named after their content ("CluesTab" shows PauseTabClues_C), and
-        // failing that the game is asked which screen is current.
-        UObject* PauseContent(UObject* system)
+        // Whether the game reports a pause tab as the screen on display. This, and not the
+        // bar's own bIsActive, says that the pause menu is up: that flag is the negation of
+        // IsFocusSuspended, so it drops whenever a popup or the film strip of a path takes
+        // the focus, and stays raised long after the menu is gone. The answer may belong to
+        // the tab or to the screen widget that holds it, so the tree above it is asked too.
+        bool AskCurrentScreen(UObject* widget, bool& answered)
+        {
+            UObject* cur = widget;
+            for (int depth = 0; obj::IsLive(cur) && depth < 8; ++depth)
+            {
+                if (obj::FindFunction(cur, L"IsCurrentScreen"))
+                {
+                    answered = true;
+                    if (obj::CallForBool(cur, L"IsCurrentScreen")) return true;
+                }
+                UObject* parent = obj::ParentWidget(cur);
+                cur = parent ? parent : obj::FindOuterUserWidget(cur);
+            }
+            return false;
+        }
+
+        bool PauseTabIsCurrent(const std::vector<UObject*>& shown, bool& answered)
+        {
+            answered = false;
+            for (auto* w : shown)
+            {
+                if (AskCurrentScreen(w, answered)) return true;
+            }
+            return false;
+        }
+
+        std::vector<UObject*> ShownPauseTabs()
         {
             std::vector<UObject*> shown;
             for (auto* w : obj::FindAllLive(L"PauseScreenBaseSMG026"))
             {
                 if (obj::IsWidgetShown(w)) shown.push_back(w);
             }
+            return shown;
+        }
+
+        // The content the tab bar is showing. Contents of tabs visited earlier stay loaded
+        // and shown for a while after leaving them, so being shown is not enough: the tab
+        // widgets are named after their content ("CluesTab" shows PauseTabClues_C), and
+        // failing that the game is asked which screen is current.
+        UObject* PauseContent(UObject* system)
+        {
+            const auto shown = ShownPauseTabs();
             if (shown.empty()) return nullptr;
             if (shown.size() == 1) return shown.front();
             const auto tabs = PauseTabsOf(system);
@@ -477,21 +601,57 @@ namespace qa::ui
         }
     }
 
+    PauseMenu PauseMenuState()
+    {
+        // Every reading of a screen asks for this, and answering means a scan of the object
+        // array, so the answer is kept for the frame it was found in.
+        static PauseMenu cached;
+        static unsigned long long cachedFrame = 0;
+        const auto frame = gamethread::FrameCount();
+        if (frame != 0 && frame == cachedFrame) return cached;
+        cachedFrame = frame;
+        cached = PauseMenu{};
+        const auto shown = ShownPauseTabs();
+        if (shown.empty()) return cached;
+        bool answered = false;
+        const bool current = PauseTabIsCurrent(shown, answered);
+        cached.answered = answered;
+        // Without an answer from the game a drawn tab is taken for the menu being up: the
+        // tabs are top-level widgets of their own and are not drawn outside it.
+        if (answered && !current) return cached;
+        cached.up = true;
+        cached.system = PauseTabSystem();
+        cached.content = PauseContent(cached.system);
+        return cached;
+    }
+
+    bool IsPauseWidget(UObject* widget)
+    {
+        return obj::IsA(widget, L"PauseTabSystemSMG026") || obj::IsA(widget, L"PauseScreenBaseSMG026") || obj::IsA(widget, L"CharacterCarousel_C");
+    }
+
+    UObject* PauseAnchor(UObject* widget)
+    {
+        if (!obj::IsLive(widget) || !IsPauseWidget(widget)) return nullptr;
+        // The tab bar and the character carousel come and go around the content of the tab on
+        // display, and the whole menu is built afresh at every opening, so that content is
+        // what the menu answers to. With none of it drawn there is no screen to speak of.
+        const auto menu = PauseMenuState();
+        return obj::IsLive(menu.content) ? menu.content : nullptr;
+    }
+
     std::vector<UObject*> ScreenRoots(UObject* screen)
     {
         std::vector<UObject*> roots;
-        UObject* system = PauseTabSystem();
-        bool active = false;
-        const bool pauseActive = system && obj::IsWidgetShown(system) && obj::ReadBool(system, L"bIsActive", active) && active;
-        const bool pauseWidget = !obj::IsLive(screen) || obj::IsA(screen, L"PauseTabSystemSMG026") || obj::IsA(screen, L"PauseScreenBaseSMG026") ||
-                                 obj::IsA(screen, L"CharacterCarousel_C");
-        if (!pauseActive || !pauseWidget)
+        const bool pauseWidget = !obj::IsLive(screen) || IsPauseWidget(screen);
+        const auto menu = pauseWidget ? PauseMenuState() : PauseMenu{};
+        if (!menu.up)
         {
             if (obj::IsLive(screen)) roots.push_back(screen);
             return roots;
         }
-        roots.push_back(system);
-        if (UObject* content = PauseContent(system)) roots.push_back(content);
+        if (obj::IsLive(menu.system)) roots.push_back(menu.system);
+        if (obj::IsLive(menu.content)) roots.push_back(menu.content);
         for (auto* carousel : obj::FindAllLive(L"CharacterCarousel_C"))
         {
             if (obj::IsWidgetShown(carousel)) roots.push_back(carousel);
@@ -565,25 +725,8 @@ namespace qa::ui
             const auto text = StripTrailingColon(TextProperty(content, L"PopupTitle"));
             if (!text.empty()) return text;
         }
-        for (auto* title : obj::FindAllLive(L"CollectablesTitle_C"))
-        {
-            if (!OnScreen(title, roots)) continue;
-            std::vector<std::wstring> parts;
-            for (const wchar_t* property : {L"Title", L"Subtitle"})
-            {
-                const auto text = StripTrailingColon(VisibleTextProperty(title, property));
-                if (!text.empty()) parts.push_back(text);
-            }
-            if (!parts.empty()) return str::Join(parts, L", ");
-        }
-        for (auto* title : obj::FindAllLive(L"PathChosenTitle_C"))
-        {
-            if (!OnScreen(title, roots)) continue;
-            std::wstring text;
-            if (!ReadTextLeaf(title, text)) continue;
-            text = StripTrailingColon(text);
-            if (!text.empty()) return text;
-        }
+        // The headline of a list tab (the clue tab, the paths tab) is not a title of the
+        // screen but the name of the item the selection is on, which is read with that item.
         return {};
     }
 
@@ -598,10 +741,10 @@ namespace qa::ui
                 for (const auto& text : obj::DescendantTexts(w, kLabelDepthDeep))
                     texts.push_back(str::CollapseWhitespace(str::StripMarkup(text)));
             };
-            // The controls, the prompt bar, the description line and the pause tabs: each
-            // is read in its own place.
-            for (const wchar_t* className :
-                 {L"UIInteractableWidgetBaseSMG026", L"EditableTextBox", L"MenuPromptWidget_C", L"MenuBarBottom_C", L"PauseTabWidget_C"})
+            // The controls, the prompt bar, the description line, the pause tabs and the
+            // headline naming the item the selection is on: each is read in its own place.
+            for (const wchar_t* className : {L"UIInteractableWidgetBaseSMG026", L"EditableTextBox", L"MenuPromptWidget_C", L"MenuBarBottom_C",
+                                             L"PauseTabWidget_C", L"CollectablesTitle_C", L"PathChosenTitle_C"})
             {
                 // Taken whether or not they are drawn this moment: a bar fading in or out
                 // still holds a placeholder the body must not pick up.
@@ -645,9 +788,16 @@ namespace qa::ui
         const auto title = ScreenTitle(screen);
         const auto elsewhere = SpokenElsewhere(roots);
         std::vector<std::wstring> parts;
+        // The title is spoken before the body, so the block it came from, and each part of a
+        // title made of several, are left out of the screen's own text.
+        const auto inTitle = [&](const std::wstring& text)
+        {
+            const auto part = StripTrailingColon(text);
+            return part == title || title.starts_with(part + L", ") || title.ends_with(L", " + part);
+        };
         auto add = [&](const std::wstring& text)
         {
-            if (text.empty() || StripTrailingColon(text) == title) return;
+            if (text.empty() || inTitle(text)) return;
             if (std::find(elsewhere.begin(), elsewhere.end(), text) != elsewhere.end()) return;
             if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
         };
@@ -722,6 +872,20 @@ namespace qa::ui
             }
         }
         return selectors;
+    }
+
+    bool HasControls(UObject* screen)
+    {
+        if (!screen) return false;
+        const auto roots = ScreenRoots(screen);
+        for (const wchar_t* className : {L"UIInteractableWidgetBaseSMG026", L"EditableTextBox", L"PathChosenCarouselBase_C"})
+        {
+            for (auto* control : obj::FindAllLive(className))
+            {
+                if (IsInteractable(control) && KindOf(control) != Kind::Tab && OnScreen(control, roots)) return true;
+            }
+        }
+        return false;
     }
 
     bool HasTextField(UObject* screen)
@@ -807,17 +971,20 @@ namespace qa::ui
 
     UObject* PauseTabSystem()
     {
-        // The bar lives as long as the level, so once found it is kept; looking for it
-        // means scanning every object, which is not done more than twice a second.
+        // The game builds the pause menu anew at every opening and leaves the widgets of the
+        // last one alive until they are collected, half a minute later. A remembered bar is
+        // therefore kept only while it is the one being drawn; otherwise the menu would be
+        // read from a bar that is no longer on screen, with no tabs to report.
         static UObject* known = nullptr;
-        static unsigned long long lastScan = 0;
-        if (obj::IsLive(known) && obj::IsA(known, L"PauseTabSystemSMG026")) return known;
-        known = nullptr;
+        static unsigned long long scannedFrame = 0;
+        if (obj::IsLive(known) && obj::IsWidgetShown(known)) return known;
         const auto frame = gamethread::FrameCount();
-        if (lastScan != 0 && frame - lastScan < 30) return nullptr;
-        lastScan = frame;
+        if (frame != 0 && frame == scannedFrame) return nullptr;
+        scannedFrame = frame;
+        known = nullptr;
         for (auto* system : obj::FindAllLive(L"PauseTabSystemSMG026"))
         {
+            if (!obj::IsWidgetShown(system)) continue;
             known = system;
             break;
         }
@@ -827,8 +994,9 @@ namespace qa::ui
     PauseTabs PauseTabsOf(UObject* system)
     {
         PauseTabs tabs;
-        bool active = false;
-        if (!obj::IsLive(system) || !obj::IsWidgetVisible(system) || !obj::ReadBool(system, L"bIsActive", active) || !active) return tabs;
+        // Only the drawn bar has tabs to report. Its bIsActive is not asked: it says whether
+        // the bar has the focus this instant, not whether the menu is up.
+        if (!obj::IsLive(system) || !obj::IsWidgetShown(system)) return tabs;
         tabs.system = system;
         int64_t selected = -1;
         obj::ReadInt(tabs.system, L"SelectedTab", selected);
@@ -866,7 +1034,17 @@ namespace qa::ui
 
     PauseTabs ActivePauseTabs()
     {
-        return PauseTabsOf(PauseTabSystem());
+        const auto menu = PauseMenuState();
+        return menu.up ? PauseTabsOf(menu.system) : PauseTabs{};
+    }
+
+    std::wstring PauseTabLine()
+    {
+        const auto tabs = ActivePauseTabs();
+        if (tabs.label.empty()) return {};
+        std::vector<std::wstring> parts{tabs.label, locale::Mod(L"ui.type.tab")};
+        if (tabs.index > 0 && tabs.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(tabs.index), std::to_wstring(tabs.count)));
+        return str::Join(parts, L", ");
     }
 
     std::wstring HudText(UObject* instance)
