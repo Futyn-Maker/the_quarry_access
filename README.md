@@ -124,6 +124,8 @@ Notes and letters are read page by page. Enter or A turns the page, and Backspac
 
 [Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9 while it is shown and attach the file it saves in the `dumps` folder next to the log.
 
+If the game crashed, attach the crash dump as well. When the game closed without a message, the dump is in `%LOCALAPPDATA%\TheQuarry\Saved\Crashes`: attach the newest folder there, zipped. When a "Fatal Error!" window appeared, it names the dump: a `crash_` file in `SMG026\Binaries\Win64\ue4ss` in the game folder.
+
 ## Development
 
 ### Prerequisites
