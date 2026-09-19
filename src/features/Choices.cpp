@@ -702,6 +702,26 @@ namespace qa::features
         }
     }
 
+    bool ChoiceDecided(UObject* widget)
+    {
+        if (!obj::IsLive(widget)) return false;
+        const bool twoWay = obj::IsA(widget, L"GFChoiceContainerWidgetSMG026");
+        if (!twoWay && !obj::IsA(widget, L"MultiChoiceWidgetSMG026")) return false;
+        const auto anyChosen = [&](const auto& table)
+        {
+            for (const auto& option : table)
+            {
+                UObject* optionWidget = nullptr;
+                bool chosen = false;
+                if (obj::ReadObject(widget, option.property, optionWidget) && obj::IsLive(optionWidget) && obj::ReadBool(optionWidget, L"bChosen", chosen) &&
+                    chosen)
+                    return true;
+            }
+            return false;
+        };
+        return twoWay ? anyChosen(kTwoWay) : anyChosen(kMulti);
+    }
+
     void ChoicesFeature::Install()
     {
         watch::AddHudListener(&OnHud);

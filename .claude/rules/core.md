@@ -15,5 +15,6 @@ paths:
 - `SafeInvokeLogged` writes at most one ERROR per 5 seconds. A silently swallowed fault once hid a whole feature: its poller faulted every frame.
 - LoadMap resets the watchers' caches, but it never marks leaving a game: the frontend and all scenes share one persistent map.
 - The focus watcher stores the new state before calling its listeners, so inside a listener `CurrentFocused()` is already the new widget.
+- The focus watcher keeps its last focused control only while `obj::IsWidgetShown`. A closed screen leaves its widgets alive with their flags as they were, and with no screen current `OnCurrentScreen` accepts anything, so a check of the control's own flag kept the clue viewer's card, and the viewer as the current screen, until garbage collection removed it tens of seconds later.
 - Blackboard values: `/Script/SMGGameFlow.Default__GFBlackboardBlueprintLibrary` `GetGlobalBlackboardBool/Flag(WorldContextObject, {Variable})` with the live `GFBlackboardVariableBool/Flag` object (`core/Flow`). The variable objects themselves hold only `InitialValue`.
 - Only the pinned source build of UE4SS with its official The Quarry config (custom `StaticConstructObject` signature, `VTableLayout.ini`, engine version override, UObject array cache off) is known to work with this game. Keep that config as shipped.

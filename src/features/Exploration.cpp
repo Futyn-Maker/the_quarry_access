@@ -1,5 +1,6 @@
 #include "features/Exploration.hpp"
 
+#include "features/Choices.hpp"
 #include "features/Combat.hpp"
 
 #include "core/Config.hpp"
@@ -113,6 +114,7 @@ namespace qa::features
         Vec g_leftAtPosition;
         bool g_exploring = false;
         bool g_inLoco = false;
+        std::wstring g_notInLocoWhy;
         double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
         double g_hintSaidAt = -1000.0; // when they were last said
         bool g_beacon = true;
@@ -1763,22 +1765,41 @@ namespace qa::features
 
         // ---- free roaming ----------------------------------------------------------------
 
-        // The game's own mechanics take the keys back while they are on screen.
-        bool MechanicShown()
+        // The game's own mechanics take the keys back while they are on screen. A choice
+        // already answered does not: the game draws it again for a while when a pause screen
+        // closes, long after it has handed the character back. It stays in the list, since a
+        // new choice set up on the same widget is a mechanic again.
+        UObject* ShownMechanic()
         {
             std::erase_if(g_mechanicWidgets, [](UObject* widget) { return !obj::IsLive(widget) || !obj::IsWidgetShown(widget, true); });
-            return !g_mechanicWidgets.empty();
+            const auto it = std::find_if(g_mechanicWidgets.begin(), g_mechanicWidgets.end(), [](UObject* widget) { return !ChoiceDecided(widget); });
+            return it == g_mechanicWidgets.end() ? nullptr : *it;
+        }
+
+        bool MechanicShown()
+        {
+            return ShownMechanic() != nullptr;
         }
 
         void PollRoaming(double now)
         {
             UObject* pawn = Pawn();
-            const bool exploring = pawn && watch::CurrentScreen() == nullptr && !MechanicShown() && obj::CallForBool(pawn, L"IsInLoco");
-            if (exploring != g_inLoco)
+            UObject* screen = watch::CurrentScreen();
+            UObject* mechanic = ShownMechanic();
+            const bool loco = pawn && obj::CallForBool(pawn, L"IsInLoco");
+            const bool exploring = pawn && !screen && !mechanic && loco;
+            // What keeps the character from the player is logged whenever it changes.
+            const std::wstring why = exploring  ? std::wstring()
+                                     : screen   ? L"a screen is up, " + obj::ClassName(screen)
+                                     : mechanic ? L"a mechanic is shown, " + obj::ClassName(mechanic)
+                                     : pawn     ? std::wstring(L"not walking")
+                                                : std::wstring(L"no character");
+            if (exploring != g_inLoco || why != g_notInLocoWhy)
             {
                 g_inLoco = exploring;
-                log::Info(L"explore: {} {}", pawn ? obj::ObjectName(pawn) : L"<no pawn>",
-                          exploring ? L"under the player's control" : L"not under the player's control");
+                g_notInLocoWhy = why;
+                log::Info(L"explore: {} {}{}", pawn ? obj::ObjectName(pawn) : L"<no pawn>",
+                          exploring ? L"under the player's control" : L"not under the player's control: ", why);
             }
             if (!exploring)
             {

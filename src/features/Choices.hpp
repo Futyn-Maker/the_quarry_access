@@ -6,6 +6,8 @@
 
 #include "features/Feature.hpp"
 
+#include <Unreal/UObject.hpp>
+
 #include <string>
 #include <vector>
 
@@ -22,4 +24,9 @@ namespace qa::features
         void Describe(std::vector<std::wstring>& out) override;
         void Help(std::vector<std::wstring>& out) override;
     };
+
+    // True for a choice widget whose choice has been answered. The game shows such a
+    // widget again when a pause screen closes and keeps it drawn for a while, but it asks
+    // nothing of the player any more.
+    bool ChoiceDecided(RC::Unreal::UObject* widget);
 }

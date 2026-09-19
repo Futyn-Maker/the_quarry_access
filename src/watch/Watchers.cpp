@@ -347,10 +347,11 @@ namespace qa::watch
                 if ((changed || (first && screensAreNew)) && !focused) focused = last;
             }
 
-            // Keep the current selection while it is still highlighted and on screen. A
-            // text field is kept only while it still holds the focus, since leaving one
-            // does not always move the screen's own reference.
-            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetVisible(g_focused) && OnCurrentScreen(g_focused) &&
+            // Keep the current selection while it is still on screen: its own flag is not
+            // enough, since a closed screen leaves its widgets alive with their flags as they
+            // were. A text field is kept only while it still holds the focus, since leaving
+            // one does not always move the screen's own reference.
+            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetShown(g_focused) && OnCurrentScreen(g_focused) &&
                 (!obj::IsA(g_focused, L"EditableTextBox") || obj::CallForBool(g_focused, L"HasKeyboardFocus")))
             {
                 focused = g_focused;
