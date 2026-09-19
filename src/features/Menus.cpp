@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
@@ -116,6 +117,9 @@ namespace qa::features
         std::wstring DescribeFocused(UObject* interactable)
         {
             if (!interactable || IsTab(interactable) || !obj::IsWidgetShown(interactable)) return {};
+            // Nothing of the game being left behind is read, wherever the focus lands while
+            // it is taken apart.
+            if (LeavingTheGame()) return {};
             auto description = ui::Describe(interactable);
             // A text field with no hint of its own is still announced, as a text field.
             if (description.label.empty() && description.kind != ui::Kind::Edit) return {};
@@ -205,6 +209,9 @@ namespace qa::features
         bool ScreenGone(UObject* screen)
         {
             if (!obj::IsLive(screen)) return true;
+            // A player who has answered the pause menu's quit popup is on their way out of the
+            // game: what the game leaves standing behind them is not read.
+            if (LeavingTheGame()) return true;
             if (ui::IsPauseWidget(screen))
             {
                 const auto menu = ui::PauseMenuState();
@@ -319,7 +326,7 @@ namespace qa::features
                 if (elapsed < 1.2) return;
                 g_arrivalPending = false;
                 g_heading.clear();
-                log::Info(L"menus: {} was gone before it could be read", obj::ClassName(g_screen));
+                log::Info(L"menus: {} was {} before it could be read", obj::ClassName(g_screen), LeavingTheGame() ? L"being left behind" : L"gone");
                 return;
             }
             const bool pause = ui::PauseAnchor(g_screen) == g_screen;

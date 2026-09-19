@@ -2,6 +2,7 @@
 
 #include "features/Choices.hpp"
 #include "features/Combat.hpp"
+#include "features/Pause.hpp"
 
 #include "core/Config.hpp"
 #include "core/Flow.hpp"
@@ -1924,7 +1925,9 @@ namespace qa::features
             // to, as Jacob is before Abigail's day begins; a hint about choosing targets
             // there would be about nothing, so it waits for the first target, and is dropped
             // with the walk if none comes.
-            if (g_hintDueAt > 0.0 && now >= g_hintDueAt && !g_targets.empty())
+            // A character handed back for the few seconds it takes the game to leave for the
+            // main menu is not a scene to explore, and is not spoken about.
+            if (g_hintDueAt > 0.0 && now >= g_hintDueAt && !g_targets.empty() && !LeavingTheGame())
             {
                 g_hintDueAt = -1.0;
                 // Once a scene, not after every exchange in the middle of one.

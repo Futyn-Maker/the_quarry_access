@@ -8,6 +8,7 @@
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
 #include "features/Exploration.hpp"
+#include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
@@ -162,7 +163,9 @@ namespace qa::features
                 {
                     slot.announced = true;
                     log::Verbose(L"prompts: {} \"{}\"", slot.property, text);
-                    speech::Announce(text);
+                    // A prompt the game puts back up while it takes the world apart around a
+                    // player who is leaving it is not read to them.
+                    if (!LeavingTheGame()) speech::Announce(text);
                 }
             }
         }
