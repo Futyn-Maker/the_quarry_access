@@ -77,6 +77,10 @@ namespace qa::features
         UObject* g_carouselItem = nullptr;
         unsigned long long g_lastCarouselScan = 0;
 
+        // Who the character on the carousel belongs to, to tell when they change hands.
+        UObject* g_assignedCharacter = nullptr;
+        std::wstring g_assignedPlayer;
+
         // The selectors of the screen that the tab keys turn wherever the focus is (the
         // mode of the Wolf Pack lobby), with what each said at the last poll: turning one
         // does not move the focus either.
@@ -286,6 +290,14 @@ namespace qa::features
             }
         }
 
+        // A mode whose rule its own screen never spells out is introduced by it, once, when
+        // the player arrives: couch co-op starts only once every character has a player, and
+        // says so only by leaving its start button out of reach.
+        std::wstring ScreenHint(UObject* screen)
+        {
+            return obj::IsA(screen, L"CouchCo-opMenuWidget_C") ? locale::Mod(L"couch.hint") : std::wstring();
+        }
+
         // A screen title that only repeats the name of the pause tab is left out.
         bool RepeatsTab(const std::wstring& title)
         {
@@ -363,6 +375,7 @@ namespace qa::features
             // A screen read again with nothing new on it (a page turned and back) says nothing.
             if (sameBody && focusText.empty() && !heading) return;
             if (!title.empty() && !sameTitle && !RepeatsTab(title)) parts.push_back(title);
+            if (!sameScreen) parts.push_back(ScreenHint(g_screen));
             if (!sameBody) parts.push_back(body);
             // A control the screen already names in its text (a selector the tab keys turn)
             // is not named again as the selection.
@@ -496,6 +509,35 @@ namespace qa::features
             if (!text.empty()) speech::Focus(text);
         }
 
+        // Giving a character to a player, and taking them back, change nothing the player can
+        // hear: the card stays as it was and the focus does not move. The character the
+        // carousel is showing is watched instead, and a change of hands is said as briefly as
+        // it happened, without the lines about the character again.
+        void PollAssignmentImpl()
+        {
+            if (gamethread::FrameCount() % 8 != 0) return;
+            if (!obj::IsLive(g_carousel) || !obj::IsWidgetShown(g_carousel))
+            {
+                g_assignedCharacter = nullptr;
+                g_assignedPlayer.clear();
+                return;
+            }
+            UObject* character = ui::CarouselCharacter(g_carousel);
+            bool couchCoop = false;
+            const auto player = ui::PlayerOfCharacter(character, couchCoop);
+            if (!couchCoop || !character) return;
+            if (character != g_assignedCharacter)
+            {
+                g_assignedCharacter = character;
+                g_assignedPlayer = player;
+                return;
+            }
+            if (player == g_assignedPlayer) return;
+            g_assignedPlayer = player;
+            g_focusChangedAt = gamethread::NowSeconds();
+            speech::Focus(ui::CharacterName(character) + L": " + (player.empty() ? locale::Mod(L"couch.free") : player));
+        }
+
         void PollTabSelectorsImpl()
         {
             const auto frame = gamethread::FrameCount();
@@ -548,6 +590,11 @@ namespace qa::features
         void PollCarousel(float)
         {
             obj::SafeInvokeLogged(L"menus.PollCarouselImpl", [](void*) { PollCarouselImpl(); }, nullptr);
+        }
+
+        void PollAssignment(float)
+        {
+            obj::SafeInvokeLogged(L"menus.PollAssignmentImpl", [](void*) { PollAssignmentImpl(); }, nullptr);
         }
 
         void PollPrompts(float)
@@ -604,6 +651,8 @@ namespace qa::features
         g_lastBody.clear();
         g_carousel = nullptr;
         g_carouselItem = nullptr;
+        g_assignedCharacter = nullptr;
+        g_assignedPlayer.clear();
         g_group = nullptr;
         g_tabSelectors.clear();
         g_tabSelectorScreen = nullptr;
@@ -624,6 +673,7 @@ namespace qa::features
         gamethread::AddPoller(L"menus.screen", &PollScreen);
         gamethread::AddPoller(L"menus.arrival", &PollArrival);
         gamethread::AddPoller(L"menus.carousel", &PollCarousel);
+        gamethread::AddPoller(L"menus.assignment", &PollAssignment);
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);
         gamethread::AddPoller(L"menus.value", &PollValue);
         gamethread::AddPoller(L"menus.pages", &PollPages);

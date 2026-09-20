@@ -45,27 +45,27 @@ The game's Accessibility settings make many mechanics easier. Choice Timer, QTE 
 
 ### Mod Keys
 
-| Keyboard | Gamepad | Action |
-| --- | --- | --- |
-| F5 | Back + A | Repeat the last message |
-| F6 | Back + X | Read the current screen |
-| F7 | Back + B | Stop speech |
-| F8 | Back + Y | Help for the current situation |
-| F9 | Back + RT | Turn subtitle reading on or off |
-| F4 | Back + RB | Repeat the last subtitle |
-| F3 | Back + right stick click | Switch speech between the screen reader and SAPI |
+| Keyboard | Gamepad                  | Action                                           |
+| -------- | ------------------------ | ------------------------------------------------ |
+| F5       | Back + A                 | Repeat the last message                          |
+| F6       | Back + X                 | Read the current screen                          |
+| F7       | Back + B                 | Stop speech                                      |
+| F8       | Back + Y                 | Help for the current situation                   |
+| F9       | Back + RT                | Turn subtitle reading on or off                  |
+| F4       | Back + RB                | Repeat the last subtitle                         |
+| F3       | Back + right stick click | Switch speech between the screen reader and SAPI |
 
 On the gamepad, hold Back (View) and press the second button. The game does not see buttons pressed while Back is held.
 
 These keys work while you walk and during fights:
 
-| Keyboard | Gamepad | Action |
-| --- | --- | --- |
-| N | D-pad right | Next target |
-| P | D-pad left | Previous target |
-| H | D-pad up | Where the target is |
-| G | X | Walk to the target, press again to stop |
-| T | D-pad down | Beacon or aim sound on or off |
+| Keyboard | Gamepad     | Action                                  |
+| -------- | ----------- | --------------------------------------- |
+| N        | D-pad right | Next target                             |
+| P        | D-pad left  | Previous target                         |
+| H        | D-pad up    | Where the target is                     |
+| G        | X           | Walk to the target, press again to stop |
+| T        | D-pad down  | Beacon or aim sound on or off           |
 
 All keys can be changed in `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.ini` in the game folder. The same file has the volume of the mod's sounds and other options, each described there.
 
@@ -120,6 +120,16 @@ Some scenes ask you to look around or to take a photo. The aim sound from the fi
 
 Notes and letters are read page by page. Enter or A turns the page, and Backspace or B closes the note.
 
+### Couch Co-op
+
+Couch Co-op shares the playable characters between people at one console. Add a player for each of you, then give every character to somebody: the game starts only when no character is left over.
+
+Move to a player in the list with the arrow keys, and step through the characters with the square bracket keys or the shoulder buttons. Enter or A gives the character you are on to that player, and pressing it again takes the character back. The mod says the new owner after each press, and names the owner with the character as you step through them. Quick Start shares them all out at random.
+
+A player may be left with no characters. The game asks whether you meant it and names them, and it starts if you say yes.
+
+During the game, whenever the next scene belongs to somebody else, the game stops and says whose turn it is. Hand over the controller or the keyboard and confirm. Everything else plays as it does alone.
+
 ## Reporting Problems
 
 [Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9 while it is shown and attach the file it saves in the `dumps` folder next to the log.
@@ -139,17 +149,17 @@ If the crash window says "Retry was NOT sucessful", part of the game's data on t
 
 1. Visual Studio 2022 Build Tools with the C++ workload, which includes CMake and Ninja:
 
-   ```
-   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended"
-   ```
+    ```
+    winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended"
+    ```
 
-   Visual Studio 2022 version 17.13 or newer with "Desktop development with C++" works too.
+    Visual Studio 2022 version 17.13 or newer with "Desktop development with C++" works too.
 
 2. Rust:
 
-   ```
-   winget install --id Rustlang.Rustup
-   ```
+    ```
+    winget install --id Rustlang.Rustup
+    ```
 
 3. A GitHub account linked to an Epic Games account. UE4SS uses a private repository of Epic Games. Link the accounts on the [Connections page](https://www.epicgames.com/account/connections) of your Epic Games account, then accept the invitation to the EpicGames organization that GitHub sends by email. Git asks you to sign in to GitHub the first time it downloads that repository.
 

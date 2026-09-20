@@ -187,8 +187,10 @@ namespace qa::diag
             obj::ReadObject(widget, L"LastFocusedWidget", focused);
             lines.push_back(std::format(L"[widget] {} {} focused={} {}{}", obj::ClassName(widget), obj::ObjectName(widget), obj::ClassName(focused),
                                         obj::ObjectName(focused), Attachment(widget)));
+            // Deep enough to reach what the mod itself reads: a dump that stops short shows
+            // no text where there is text, and a screen then looks as though it had none.
             obj::WalkWidgetTree(
-                widget, 14,
+                widget, 24,
                 [&](UObject* w, int depth)
                 {
                     if (!obj::IsWidgetVisible(w)) return true;

@@ -159,6 +159,16 @@ namespace qa::ui
             return {};
         }
 
+        // Everything a named block shows, read the way the walks read it, so a block that
+        // keeps only a locale key or a bound getter gives its words like any other. Opacity
+        // is not asked: a block is read as a screen opens, while it is still fading in.
+        std::wstring BlockText(UObject* owner, const wchar_t* property)
+        {
+            UObject* block = nullptr;
+            if (!obj::ReadObject(owner, property, block) || !obj::IsLive(block) || !obj::IsWidgetVisible(block)) return {};
+            return str::CollapseWhitespace(str::Join(DisplayTexts(obj::DescendantTexts(block, kLabelDepthDeep)), L" "));
+        }
+
         // Text of a named text block, but only when that block is actually shown. Prompt
         // widgets keep a hidden placeholder block on the unused side, which must not be read.
         std::wstring VisibleTextProperty(UObject* widget, const wchar_t* property)
@@ -817,6 +827,19 @@ namespace qa::ui
             if (std::find(elsewhere.begin(), elsewhere.end(), text) != elsewhere.end()) return;
             if (std::find(parts.begin(), parts.end(), text) == parts.end()) parts.push_back(text);
         };
+        // Couch co-op warns that players were left without a character and names them between
+        // the two halves of its message, one row apiece. A row is a widget of its own, too
+        // deep under the popup for the walk over the popup's own text to reach, so the first
+        // half and the names are taken in order here and the rest follows below.
+        for (auto* root : roots)
+        {
+            if (!obj::IsA(root, L"CouchCo-opNoCharactersAssigned_C")) continue;
+            add(BlockText(root, L"BodyText_pt1"));
+            for (auto* row : obj::FindAllLive(L"CouchCo-opQuickStartPlayer_C"))
+            {
+                if (OnScreen(row, roots)) add(BlockText(row, L"PlayerName"));
+            }
+        }
         for (auto* container : obj::FindAllLive(L"PopupContent_C"))
         {
             if (!OnScreen(container, roots)) continue;
@@ -962,6 +985,49 @@ namespace qa::ui
         return JoinLines(parts);
     }
 
+    UObject* CarouselCharacter(UObject* carousel)
+    {
+        UObject* item = nullptr;
+        UObject* info = nullptr;
+        if (!obj::ReadObject(carousel, L"CurrentCarouselItem", item) || !obj::IsLive(item)) return nullptr;
+        if (!obj::ReadObject(item, L"CharacterInfo", info) || !obj::IsLive(info)) return nullptr;
+        return info;
+    }
+
+    std::wstring CharacterName(UObject* characterInfo)
+    {
+        return obj::IsLive(characterInfo) ? str::CollapseWhitespace(gametext::ReadLocalized(characterInfo, L"CharacterName")) : std::wstring();
+    }
+
+    std::wstring PlayerOfCharacter(UObject* characterInfo, bool& onCouchScreen)
+    {
+        onCouchScreen = false;
+        std::wstring player;
+        // Each player of couch co-op keeps the characters given to them as name chips, and a
+        // chip holds the character it names, so the owner is told by which chip is the same
+        // character and never by comparing the names on screen.
+        for (auto* button : obj::FindAllLive(L"CouchCo-opPlayerButton_C"))
+        {
+            if (!obj::IsWidgetShown(button)) continue;
+            onCouchScreen = true;
+            if (!obj::IsLive(characterInfo) || !player.empty()) continue;
+            bool holds = false;
+            obj::WalkWidgetTree(button, 10,
+                                [&](UObject* widget, int)
+                                {
+                                    UObject* info = nullptr;
+                                    if (obj::IsA(widget, L"CouchCo-opCharacterName_C") && obj::ReadObject(widget, L"CharacterInfo", info) &&
+                                        info == characterInfo)
+                                        holds = true;
+                                    return !holds;
+                                });
+            if (!holds) continue;
+            player = str::CollapseWhitespace(str::StripMarkup(TextProperty(button, L"ItemScanlineText")));
+            if (player.empty()) obj::ReadString(button, L"Text", player);
+        }
+        return player;
+    }
+
     std::wstring CarouselText(UObject* carousel)
     {
         if (!obj::IsLive(carousel)) return {};
@@ -981,6 +1047,20 @@ namespace qa::ui
         {
             for (const auto& text : DisplayTexts(obj::DescendantTexts(item, 16)))
                 add(text);
+        }
+        // Where characters are shared out between players, who has this one belongs with the
+        // name and before the lines about what they are like. The name comes from the title
+        // beside the carousel on one screen and from the card itself on another, so it goes
+        // after whatever came first rather than at a place in either of them.
+        bool couchCoop = false;
+        const auto player = PlayerOfCharacter(CarouselCharacter(carousel), couchCoop);
+        if (couchCoop)
+        {
+            const auto line = player.empty() ? locale::Mod(L"couch.free") : player;
+            if (parts.empty())
+                parts.push_back(line);
+            else if (parts.front().find(line) == std::wstring::npos)
+                parts.front() += L": " + line;
         }
         return JoinLines(parts);
     }

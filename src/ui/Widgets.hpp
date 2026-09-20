@@ -169,4 +169,13 @@ namespace qa::ui
 
     // The character shown by a character carousel: name, then what its card says.
     std::wstring CarouselText(UObject* carousel);
+
+    // The character data a carousel is showing, and the game's name for it.
+    UObject* CarouselCharacter(UObject* carousel);
+    std::wstring CharacterName(UObject* characterInfo);
+
+    // The couch co-op player this character has been given to, empty when none has. Also says
+    // whether the couch co-op players are on display at all, since only there is a character
+    // owned by anyone.
+    std::wstring PlayerOfCharacter(UObject* characterInfo, bool& onCouchScreen);
 }
