@@ -12,6 +12,7 @@
 #include <Unreal/FString.hpp>
 
 #include <algorithm>
+#include <cwctype>
 
 namespace qa::ui
 {
@@ -435,10 +436,25 @@ namespace qa::ui
         }
         d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
 
+        // There is no state the whole game shares for a control that cannot be used: each
+        // family of controls keeps its own flag, and every one of them is asked.
         bool disabled = false;
-        if ((obj::ReadBool(interactable, L"bIsDisabled", disabled) && disabled) || (obj::ReadBool(interactable, L"bIsGreyed", disabled) && disabled))
+        if ((obj::ReadBool(interactable, L"bIsDisabled", disabled) && disabled) || (obj::ReadBool(interactable, L"bIsGreyed", disabled) && disabled) ||
+            (obj::ReadBool(interactable, L"IsDisabled", disabled) && disabled))
         {
             d.state = locale::Mod(L"ui.state.disabled");
+        }
+        // A collectable the story has not reached cannot be opened, and the game draws that
+        // in one of two ways: it dims the row, keeping its name (the tutorial videos), or it
+        // puts the placeholder in place of the name (the lists of clues, evidence and tarot
+        // cards). Where the name already stands for it, it is not said twice.
+        bool unlockedItem = true;
+        if (obj::ReadBool(interactable, L"bIsCollectableUnlocked", unlockedItem) && !unlockedItem)
+        {
+            const auto placeholder = str::CollapseWhitespace(str::StripMarkup(gametext::ReadLocalized(interactable, L"HiddenNameString")));
+            const bool nameSaysIt = str::EqualsNoCase(placeholder, d.label) ||
+                                    std::none_of(d.label.begin(), d.label.end(), [](wchar_t c) { return std::iswalnum(static_cast<wint_t>(c)) != 0; });
+            if (!nameSaysIt) d.state = locale::Mod(L"ui.state.disabled");
         }
         bool locked = false;
         if (obj::ReadBool(interactable, L"bIsUnlocked", locked) && !locked && obj::FindProperty(interactable, L"bIsUnlocked"))
