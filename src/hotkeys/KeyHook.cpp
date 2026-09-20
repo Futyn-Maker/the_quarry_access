@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <mutex>
@@ -15,9 +16,12 @@ namespace qa::keyhook
     namespace
     {
         std::vector<Binding> g_bindings; // set before the hook thread starts, then read only
+        std::vector<int> g_watched;      // likewise
+        Watcher g_watcher = nullptr;
         std::mutex g_mutex;
         std::vector<int> g_presses;
-        std::array<bool, 256> g_down{}; // the hook thread's own
+        std::array<bool, 256> g_down{};        // the hook thread's own
+        std::array<bool, 256> g_watchedDown{}; // likewise, for the keys that are only watched
         std::atomic<bool> g_active{false};
         std::atomic<bool> g_context{false};
         std::atomic<DWORD> g_threadId{0};
@@ -51,6 +55,23 @@ namespace qa::keyhook
                 // are not the mod's to take.
                 if ((down || up) && vk > 0 && vk < 256 && (key->flags & LLKHF_INJECTED) == 0 && GameInForeground())
                 {
+                    // A watched key is answered and then left alone: the mod acts on it before
+                    // the game is given it, and the game still gets it.
+                    if (g_watcher && std::find(g_watched.begin(), g_watched.end(), vk) != g_watched.end())
+                    {
+                        if (down)
+                        {
+                            // The key repeats while held; only the press counts.
+                            if (!g_watchedDown[static_cast<size_t>(vk)]) g_watcher();
+                            g_watchedDown[static_cast<size_t>(vk)] = true;
+                        }
+                        else
+                        {
+                            g_watchedDown[static_cast<size_t>(vk)] = false;
+                        }
+                        input::NoteKeyboardActivity();
+                    }
+
                     const bool ctrl = ModifierDown(VK_CONTROL);
                     const bool alt = ModifierDown(VK_MENU);
                     const bool shift = ModifierDown(VK_SHIFT);
@@ -104,6 +125,12 @@ namespace qa::keyhook
             g_hook = nullptr;
             g_active.store(false);
         }
+    }
+
+    void Watch(std::vector<int> vks, Watcher handler)
+    {
+        g_watched = std::move(vks);
+        g_watcher = handler;
     }
 
     bool Install(std::vector<Binding> bindings)

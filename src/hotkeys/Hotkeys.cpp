@@ -259,6 +259,13 @@ namespace qa::hotkeys
                 c == Command::NextTarget || c == Command::PreviousTarget || c == Command::Where || c == Command::Walk || c == Command::Beacon;
             bindings.push_back(keyhook::Binding{g_keys[i].vk, g_keys[i].ctrl, g_keys[i].alt, g_keys[i].shift, static_cast<int>(i), contextual});
         }
+        // Escape stays the game's key, for the pause menu and for backing out of a screen; the
+        // mod only answers it, by stopping what is being said, so that a screen the player is
+        // leaving is not still being read over the one they arrive at. Only the hook can do
+        // this: it runs before the game is given the key, so the stop always lands before
+        // whatever the new screen says, while a polled key could arrive after the new screen
+        // had been announced and silence that instead.
+        keyhook::Watch({VK_ESCAPE}, []() { speech::Stop(); });
         if (keyhook::Install(bindings))
             log::Info(L"keyboard hook installed: the mod's keys are taken ahead of the screen reader and the game");
         else
