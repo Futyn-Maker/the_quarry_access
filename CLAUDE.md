@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-The Quarry Access (`QuarryAccess`) is a UE4SS C++ mod that makes The Quarry (Supermassive Games, a UE 4.26 fork, project `SMG026`, Steam app 1577120) playable without sight. It speaks menus, HUD, subtitles and mechanics through Tolk (screen readers) or its own SAPI voice, and plays sounds where the game relies on the picture: quick-time event directions, the aim, the exploration beacon. Windows only, C++23, MSVC. `README.md` is the only user documentation (players: features, install, controls; developers: build, translation), written in simple, dry sentences.
+The Quarry Access (`QuarryAccess`) is a UE4SS C++ mod that makes The Quarry (Supermassive Games, a UE 4.26 fork, project `SMG026`, Steam app 1577120) playable without sight. It speaks menus, HUD, subtitles and mechanics through the player's screen reader or through SAPI, both reached with Prism, and plays sounds where the game relies on the picture: quick-time event directions, the aim, the exploration beacon. Windows only, C++23, MSVC. `README.md` is the only user documentation (players: features, install, controls; developers: build, translation), written in simple, dry sentences.
 
 The maintainer tests every change in the game with NVDA and the Russian interface. Evidence comes from his logs and dumps, not from the screen. Lessons for each area of the code load from `.claude/rules/` when you open its files.
 
@@ -28,11 +28,12 @@ The maintainer tests every change in the game with NVDA and the Russian interfac
 
 Run from the repository root, in cmd or PowerShell. The repository path must be at most 78 characters.
 
-- `scripts\build.cmd [configure]`: builds `main.dll`, `UE4SS.dll` and `dwmapi.dll` with the CMake preset `shipping` (Ninja, `Game__Shipping__Win64`), fetching the submodules first when they are missing. A clean build takes about 10 minutes, a no-op 3 seconds. Redirect its output to a file: piping it into `Select-Object -First` cuts the build short.
+- `scripts\build.cmd [configure]`: builds `main.dll`, `UE4SS.dll` and `dwmapi.dll` with the CMake preset `shipping` (Ninja, `Game__Shipping__Win64`), fetching the submodules first when they are missing and the Prism release the repository pins when `third_party\prism` does not hold it. A clean build takes about 10 minutes, a no-op 3 seconds. Redirect its output to a file: piping it into `Select-Object -First` cuts the build short.
 - `scripts\package.cmd`: builds, then lays out `dist\TheQuarryAccess-<VERSION>\` (its contents go into the game folder) and `dist\TheQuarryAccess-<VERSION>-symbols\` (PDBs and `main.map` of that build, for crash dumps).
 - `scripts\deploy.ps1 [-GameDir <dir>] [-ResetConfig]`: installs the last build into the game, replacing program files and keeping settings files.
 - `scripts\run-game.ps1 -AutoDismissCrash`: launches, waits for `[QuarryAccess] ready`, reports crashes. `scripts\stop-game.ps1` closes the game.
 - `scripts\tail-log.ps1 [-All] [-Last N]`: the SAY lines and errors of the mod log.
+- `scripts\fetch-prism.ps1 [-Version <tag>] [-Force]`: downloads the Prism release that `third_party\prism.version` pins into `third_party\prism`, which is git-ignored. `build.cmd` runs it by itself; a run that finds the wanted release already there does nothing.
 - `scripts\check-lang.ps1`: every language table has exactly the keys of the English one.
 - `scripts\format.cmd [check]`: clang-format over `src\`.
 - `scripts\sendkeys.ps1`, `scripts\screenshot.ps1`: only when explicitly asked.
@@ -49,13 +50,13 @@ The game folder comes from `-GameDir`, then `QA_GAME_DIR`, then Steam's library 
 
 ## Architecture
 
-- `src/dllmain.cpp`: the `CppUserModBase`. `on_unreal_init` reads `QuarryAccess.ini`, opens the log, loads Tolk, SAPI and the language tables, installs the pump, hooks, watchers, hotkeys and the command file, then registers the features; a poller then waits for the game's settled language, greets, and follows the language for the session. The mod folder is the parent of `dlls\`.
+- `src/dllmain.cpp`: the `CppUserModBase`. `on_unreal_init` reads `QuarryAccess.ini`, opens the log, starts the speech thread (`prism.dll` beside `main.dll`) and the language tables, installs the pump, hooks, watchers, hotkeys and the command file, then registers the features; a poller then waits for the game's settled language, greets, and follows the language for the session. The mod folder is the parent of `dlls\`.
 - Threads: UE4SS calls `on_update` and its key events on its own thread. UObjects are touched on the game thread only: in the engine-tick pump (`core/GameThread`: `Post`, `AddPoller`) or in hook callbacks. Object-construction callbacks may come from loading threads and only record.
 - Detection is hooks plus polling, and polling is the authority. HUD elements (`UActionHUD*`) and GameFlow actions have no UFunctions, so their appearance and progress are native and invisible to hooks. `hooks/HookDispatcher` routes Blueprint function executions by declaring class and name (`OnScript`) and hooks natives by full name (`OnNative`, which fires only when the game calls through the UFunction). `watch/Watchers` polls the `*WidgetInstance` pointers of the player controller's HUD components, registered texts, the current screen and its focus.
 - `core/ObjectUtil` is name-based reflection over UE4SS: properties, struct members, arrays, `ProcessEvent` calls, widget trees, visibility, liveness, SEH guards. There are no hard-coded offsets.
 - `ui/Widgets` says what a menu control is (kind, label, value, position, description), what a screen's title, body and prompts are, and what the pause menu is at this moment: whether it is up, which widgets it is made of, and the one of them the whole menu answers to. `features/*` hold one area each (Menus, Pause, Hud, Subtitles, Prompts, Choices, Qte, ButtonMash, DontBreathe, Exploration, Combat, Credits, Tarot, Screens): `Install()` sets hooks and pollers, `Describe()` feeds F6, `Help()` feeds F8, and `[Features]` in the ini can switch each off.
-- `speech/`: the policies (`Speech`), Tolk (`TolkBridge`), the mod's own SAPI thread (`Sapi`), tones through the sound card (`Sounds`). `locale/`: mod strings (`locale::Mod(key, args)` with English fallback) and the game's own strings and language (`GameText`, through `UIStaticsQuarry::FormatLocaleString`). `input/`: key names, input activity, the XInput detour. `hotkeys/`: the mod's keys. `core/Flow`: GameFlow blackboard values.
-- `mod/` ships beside `main.dll`: the `QuarryAccess.ini` defaults with their comments, `lang/`, `screens.ini`. UE4SS comes from the pinned submodule `third_party/RE-UE4SS` with its official The Quarry config; Tolk's binaries and licenses are in `third_party/tolk`.
+- `speech/`: the policies (`Speech`), the speech thread that owns the two voices (`Outputs`), the binding to `prism.dll` (`PrismBridge`), the languages of the installed SAPI voices (`SapiVoices`), tones through the sound card (`Sounds`). `locale/`: mod strings (`locale::Mod(key, args)` with English fallback) and the game's own strings and language (`GameText`, through `UIStaticsQuarry::FormatLocaleString`). `input/`: key names, input activity, the XInput detour. `hotkeys/`: the mod's keys. `core/Flow`: GameFlow blackboard values.
+- `mod/` ships beside `main.dll`: the `QuarryAccess.ini` defaults with their comments, `lang/`, `screens.ini`. UE4SS comes from the pinned submodule `third_party/RE-UE4SS` with its official The Quarry config. Prism is not in the repository: `scripts\fetch-prism.ps1` downloads the release that `third_party/prism.version` pins into `third_party/prism` (header, `prism.dll`, licenses), and `prism.dll` ships in the mod's `dlls\` folder beside `main.dll`.
 
 ## Game Facts That Shape Everything
 

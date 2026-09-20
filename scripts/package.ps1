@@ -6,9 +6,8 @@
   (the one with TheQuarry.exe): copying its contents there installs the mod, and zipping them
   makes the release archive.
     SMG026\Binaries\Win64\dwmapi.dll                the loader that starts UE4SS with the game
-    SMG026\Binaries\Win64\Tolk.dll ...              Tolk and the screen reader libraries it uses
     SMG026\Binaries\Win64\ue4ss\                    UE4SS with its configuration for The Quarry
-    SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\  the mod, its settings, language tables and licenses
+    SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\  the mod with the Prism speech library, its settings, language tables and licenses
   dist\TheQuarryAccess-<version>-symbols gets the symbol files and the linker map of the same
   build, which crash dumps from players of this version are read with; they are not for players.
   The version is the first line of the VERSION file.

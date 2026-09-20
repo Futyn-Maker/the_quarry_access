@@ -25,7 +25,7 @@ The Quarry Access is a mod that makes [The Quarry](https://store.steampowered.co
 - Credits
 - Couch co-op, Movie Mode and Wolf Pack screens
 - Keyboard and gamepad keys for all mod functions
-- NVDA, JAWS and other screen readers, SAPI and braille
+- NVDA, JAWS, Narrator and other screen readers, SAPI and braille
 
 The mod works with all languages of the game and speaks in the language the game uses.
 
@@ -201,4 +201,4 @@ powershell -ExecutionPolicy Bypass -File scripts\check-lang.ps1
 
 ## License
 
-MIT. The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT) and uses [Tolk](https://github.com/dkager/tolk) (LGPL-3.0) for speech. Their licenses are included in the release.
+MIT. The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT) and uses [Prism](https://github.com/ethindp/prism) (MPL-2.0) for speech. Their licenses are included in the release.

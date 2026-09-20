@@ -1,7 +1,7 @@
 @echo off
 rem Makes a clone ready to build: checks the build tools, then fetches the RE-UE4SS submodule
-rem together with the submodules it has of its own. scripts\build.cmd runs it by itself when
-rem the submodules are missing.
+rem together with the submodules it has of its own, and the Prism speech library into
+rem third_party\prism. scripts\build.cmd runs it by itself when the submodules are missing.
 rem Usage: scripts\setup.cmd
 rem RE-UE4SS names its own submodules by SSH address; they are fetched over HTTPS here, so no SSH
 rem key is needed. One of them, UEPseudo, is visible only to a GitHub account linked to an Epic
@@ -12,6 +12,7 @@ where git >nul 2>nul || goto :no_git
 
 git -C "%~dp0.." -c "url.https://github.com/.insteadOf=git@github.com:" submodule update --init --recursive
 if errorlevel 1 goto :fetch_failed
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0fetch-prism.ps1" || exit /b 1
 echo SETUP_OK
 exit /b 0
 

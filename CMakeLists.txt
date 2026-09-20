@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # The Quarry Access (QuarryAccess) — a UE4SS C++ mod that voices
-# The Quarry's UI and gameplay prompts through Tolk (NVDA / JAWS / SAPI).
+# The Quarry's UI and gameplay prompts through Prism (NVDA / JAWS / Narrator / SAPI).
 project(QuarryAccessMod LANGUAGES C CXX)
 
 # The mod's version is the first line of the VERSION file and is written nowhere else: the

@@ -14,6 +14,15 @@ function Get-QaVersion {
     return $version
 }
 
+# The Prism release the mod is built and shipped with: the first line of
+# third_party\prism.version. scripts\fetch-prism.ps1 puts that release into third_party\prism,
+# which is not part of the repository.
+function Get-QaPrismVersion {
+    $version = (Get-Content (Join-Path $QaRoot "third_party\prism.version") -TotalCount 1).Trim()
+    if (-not $version) { throw "The third_party\prism.version file is empty." }
+    return $version
+}
+
 # The RE-UE4SS tree the last build used (scripts\build.cmd notes it), else the one it would use.
 function Get-QaUE4SSSourceDir {
     $note = Join-Path $QaRoot "build\ue4ss-source.txt"
@@ -85,8 +94,8 @@ function Get-QuarryUE4SSDir([string]$Win64) {
 
 # Every file of an installed copy of the mod: its source, its place under the game's
 # Binaries\Win64 folder, UE4SS's files under "ue4ss\", and its kind. Program files are replaced by
-# a newer build; Settings files are the player's once installed. Tolk sits next to the game's
-# exe, where the mod loads it from.
+# a newer build; Settings files are the player's once installed. prism.dll sits beside the mod's
+# main.dll, where the mod loads it from by its full path, so that the library is the mod's own.
 function Get-QaInstallFiles {
     $bin = Join-Path $QaRoot "build\Game__Shipping__Win64\bin"
     $ue4ss = Get-QaUE4SSSourceDir
@@ -98,9 +107,6 @@ function Get-QaInstallFiles {
     }
 
     & $add (Join-Path $bin "dwmapi.dll") "dwmapi.dll" Program
-    foreach ($name in 'Tolk.dll', 'nvdaControllerClient64.dll', 'SAAPI64.dll') {
-        & $add (Join-Path $QaRoot "third_party\tolk\$name") $name Program
-    }
     & $add (Join-Path $bin "UE4SS.dll") "ue4ss\UE4SS.dll" Program
     # UE4SS's configuration for this game: its settings, the vtable layout and the signature
     # of StaticConstructObject.
@@ -112,6 +118,7 @@ function Get-QaInstallFiles {
     }
 
     & $add (Join-Path $QaRoot "build\src\main.dll") "$modDest\dlls\main.dll" Program
+    & $add (Join-Path $QaRoot "third_party\prism\bin\prism.dll") "$modDest\dlls\prism.dll" Program
     $mod = (Resolve-Path (Join-Path $QaRoot "mod")).Path
     foreach ($file in Get-ChildItem $mod -Recurse -File) {
         $relative = $file.FullName.Substring($mod.Length + 1)
@@ -122,8 +129,13 @@ function Get-QaInstallFiles {
 
     & $add (Join-Path $QaRoot "LICENSE") "$modDest\licenses\QuarryAccess.txt" Program
     & $add (Join-Path $ue4ss "LICENSE") "$modDest\licenses\UE4SS.txt" Program
-    & $add (Join-Path $QaRoot "third_party\tolk\LICENSE.txt") "$modDest\licenses\Tolk.txt" Program
-    & $add (Join-Path $QaRoot "third_party\tolk\LICENSE-NVDA.txt") "$modDest\licenses\NVDAControllerClient.txt" Program
+    # Prism's licence and those of the libraries it carries, laid out as its own release has them.
+    $prism = Join-Path $QaRoot "third_party\prism\licenses"
+    if (-not (Test-Path $prism)) { throw "The Prism library is missing: run scripts\fetch-prism.ps1." }
+    $prism = (Resolve-Path $prism).Path
+    foreach ($file in Get-ChildItem $prism -Recurse -File) {
+        & $add $file.FullName ("$modDest\licenses\prism\" + $file.FullName.Substring($prism.Length + 1)) Program
+    }
 
     $missing = @($files | Where-Object { -not (Test-Path $_.Source) } | ForEach-Object { $_.Source })
     if ($missing.Count -gt 0) {

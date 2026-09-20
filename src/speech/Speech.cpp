@@ -4,8 +4,7 @@
 #include "core/Log.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
-#include "speech/Sapi.hpp"
-#include "speech/TolkBridge.hpp"
+#include "speech/Outputs.hpp"
 
 #include <chrono>
 #include <deque>
@@ -32,21 +31,15 @@ namespace qa::speech
         // SAPI speaks when no screen reader runs, and when the player prefers it to theirs.
         bool SapiSpeaks()
         {
-            if (!sapi::IsAvailable()) return false;
-            return g_preferSapi || tolk::DetectScreenReader().empty();
+            if (!outputs::SapiAvailable()) return false;
+            return g_preferSapi || outputs::ReaderName().empty();
         }
 
-        // One line to whichever speaks; a screen reader with a display keeps getting the
-        // braille while SAPI does the speaking.
-        bool Emit(const std::wstring& text, bool interrupt)
+        // One line to whichever speaks. A screen reader with a display keeps getting the
+        // braille while SAPI does the speaking, which the outputs see to.
+        void Emit(const std::wstring& text, bool interrupt)
         {
-            if (SapiSpeaks())
-            {
-                const bool spoken = sapi::Speak(text, interrupt);
-                if (tolk::HasBraille()) tolk::Braille(text.c_str());
-                return spoken;
-            }
-            return tolk::Output(text.c_str(), interrupt);
+            outputs::Say(text, interrupt, SapiSpeaks());
         }
 
         long long MsSince(Clock::time_point t)
@@ -92,7 +85,7 @@ namespace qa::speech
 
     void Focus(std::wstring_view text)
     {
-        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
+        if (text.empty() || !outputs::CanSpeak()) return;
         std::lock_guard lock(g_mutex);
         if (text == g_lastSpoken && MsSince(g_lastSpokenAt) < cfg::Get().focusDedupeMs)
         {
@@ -109,14 +102,14 @@ namespace qa::speech
 
     void Announce(std::wstring_view text)
     {
-        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
+        if (text.empty() || !outputs::CanSpeak()) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, false, L"announce");
     }
 
     void Now(std::wstring_view text)
     {
-        if (text.empty() || !(tolk::IsLoaded() || sapi::IsAvailable())) return;
+        if (text.empty() || !outputs::CanSpeak()) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, true, L"now");
     }
@@ -124,8 +117,7 @@ namespace qa::speech
     void Stop()
     {
         std::lock_guard lock(g_mutex);
-        tolk::Silence();
-        sapi::Silence();
+        outputs::Silence();
         log::Info(L"speech: stopped");
     }
 
@@ -148,17 +140,16 @@ namespace qa::speech
     void ToggleOutput()
     {
         std::lock_guard lock(g_mutex);
-        const std::wstring reader = tolk::DetectScreenReader();
+        const std::wstring reader = outputs::ReaderName();
         // Without a screen reader the choice makes no difference: SAPI speaks either way.
-        if (reader.empty() || !sapi::IsAvailable())
+        if (reader.empty() || !outputs::SapiAvailable())
         {
             OutputNow(locale::Mod(L"speech.noreader"), true, L"now");
             return;
         }
         g_preferSapi = !g_preferSapi;
-        tolk::Silence();
-        sapi::Silence();
-        log::Info(L"speech: output {} (SAPI preferred: {}; SAPI voice {})", g_preferSapi ? L"SAPI" : reader, g_preferSapi, sapi::VoiceName());
+        outputs::Silence();
+        log::Info(L"speech: output {} (SAPI preferred: {}; SAPI voice {})", g_preferSapi ? L"SAPI" : reader, g_preferSapi, outputs::SapiVoiceName());
         if (!cfg::Persist(L"Speech", L"PreferSapi", g_preferSapi ? L"1" : L"0"))
             log::Error(L"speech: the output setting could not be saved to QuarryAccess.ini");
         OutputNow(locale::Mod(L"speech.output", g_preferSapi ? L"SAPI" : reader), true, L"now");
@@ -174,6 +165,6 @@ namespace qa::speech
     {
         std::lock_guard lock(g_mutex);
         if (SapiSpeaks()) return L"SAPI";
-        return tolk::DetectScreenReader();
+        return outputs::ReaderName();
     }
 }

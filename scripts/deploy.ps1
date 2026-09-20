@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Installs the last build into the game: the loader, UE4SS, the mod and Tolk.
+  Installs the last build into the game: the loader, UE4SS and the mod with its speech library.
 .DESCRIPTION
   Copies the files of the release (scripts\package.ps1), taken from the last build
   (scripts\build.cmd), into the game. UE4SS's files go where the game already has UE4SS

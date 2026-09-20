@@ -27,10 +27,9 @@
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
-#include "speech/Sapi.hpp"
+#include "speech/Outputs.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
-#include "speech/TolkBridge.hpp"
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
 
@@ -66,7 +65,7 @@ public:
     {
         ModName = STR("QuarryAccess");
         ModVersion = qa::str::Utf8ToWide(QA_VERSION_STRING);
-        ModDescription = STR("Screen-reader accessibility for The Quarry (NVDA, JAWS, SAPI via Tolk).");
+        ModDescription = STR("Screen-reader accessibility for The Quarry (NVDA, JAWS, Narrator, SAPI).");
         ModAuthors = STR("Futyn-Maker");
         ModIntendedSDKVersion = STR("3.0.1");
     }
@@ -75,8 +74,7 @@ public:
     {
         qa::hotkeys::Uninstall();
         qa::input::ForgetWalkKeys();
-        qa::sapi::Stop();
-        qa::tolk::Unload();
+        qa::outputs::Stop();
         qa::log::Shutdown();
     }
 
@@ -98,19 +96,14 @@ public:
         if (!configError.empty()) qa::log::Error(L"config: {} (defaults in use)", configError);
 
         qa::speech::SetPreferSapi(settings.preferSapi);
-        if (!qa::tolk::Load())
+        // The speech library sits beside main.dll and is loaded from there, so that the mod's
+        // copy of it is the mod's own. It finds the screen reader and creates the SAPI voice,
+        // and says in the log which of them answered.
+        if (!qa::outputs::Start(dllDir + L"\\prism.dll"))
         {
-            qa::log::Error(L"Tolk.dll could not be loaded. Put Tolk.dll, nvdaControllerClient64.dll and SAAPI64.dll next to TheQuarry-Win64-Shipping.exe.");
+            qa::log::Error(L"Nothing can be spoken: neither a screen reader nor SAPI answered. prism.dll belongs beside main.dll in Mods\\QuarryAccess\\dlls.");
             MessageBeep(MB_ICONERROR);
         }
-        else
-        {
-            m_reader = qa::tolk::DetectScreenReader();
-            qa::log::Info(L"Tolk loaded; screen reader: {}; speech={} braille={}", m_reader.empty() ? L"<none>" : m_reader, qa::tolk::HasSpeech(),
-                          qa::tolk::HasBraille());
-        }
-        // SAPI on its own thread, for a player without a screen reader or one who prefers it.
-        if (!qa::sapi::Start()) qa::log::Error(L"SAPI is not available; without a screen reader nothing will be spoken");
         qa::speech::Init();
         qa::sounds::Init(settings.soundVolume);
 
@@ -199,7 +192,7 @@ private:
         qa::locale::LoadTables(m_modDir + L"\\lang", language);
         qa::log::Info(L"game locale: {}; mod language: {}", gameLocale.empty() ? L"<unknown>" : gameLocale, qa::locale::CurrentCode());
         // The SAPI voice follows the language of what is said.
-        qa::sapi::SelectVoiceFor(qa::locale::CurrentCode());
+        qa::outputs::SelectVoiceFor(qa::locale::CurrentCode());
 
         // Self-check: game string resolution, control scheme, key naming.
         const auto sample = qa::gametext::Resolve(L"SMG_HUD_MENU_BUTTON_NEWGAME_000001");
@@ -232,12 +225,11 @@ private:
         qa::input::InvalidateCache();
         if (!forcedLanguage.empty()) return;
         qa::locale::LoadTables(m_modDir + L"\\lang", gameLocale);
-        qa::sapi::SelectVoiceFor(qa::locale::CurrentCode());
+        qa::outputs::SelectVoiceFor(qa::locale::CurrentCode());
         qa::log::Info(L"mod language: {}", qa::locale::CurrentCode());
     }
 
     std::wstring m_modDir;
-    std::wstring m_reader;
     std::wstring m_gameLocale;
     std::wstring m_candidateLocale;
     double m_candidateSince = 0.0;

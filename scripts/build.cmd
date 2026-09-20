@@ -1,7 +1,9 @@
 @echo off
 rem Builds the mod (main.dll) together with UE4SS (UE4SS.dll) and the loader that starts UE4SS
 rem with the game (dwmapi.dll), in the CMake preset "shipping" (Game__Shipping__Win64, Ninja).
-rem Fetches the submodules first when they are missing (scripts\setup.cmd).
+rem Fetches the submodules first when they are missing (scripts\setup.cmd), and the Prism speech
+rem library when third_party\prism holds another release than the repository pins
+rem (scripts\fetch-prism.ps1).
 rem Usage: scripts\build.cmd [configure]
 rem   configure  runs the CMake configure step even when the build directory is set up
 rem Environment: QA_UE4SS_SOURCE_DIR  another RE-UE4SS checkout of the pinned commit to build
@@ -25,6 +27,16 @@ set "QA_UE4SS_SOURCE_DIR=%ROOT%\third_party\RE-UE4SS"
 :have_source
 for %%i in ("%QA_UE4SS_SOURCE_DIR%") do set "QA_UE4SS_SOURCE_DIR=%%~fi"
 set "QA_UE4SS_SOURCE_DIR=%QA_UE4SS_SOURCE_DIR:\=/%"
+
+rem The Prism speech library is not in the repository: it is fetched into third_party\prism
+rem whenever what is there is not the release third_party\prism.version pins.
+set "PRISM_WANT="
+set "PRISM_HAVE="
+for /f "usebackq delims=" %%v in ("%ROOT%\third_party\prism.version") do if not defined PRISM_WANT set "PRISM_WANT=%%v"
+if exist "%ROOT%\third_party\prism\VERSION" for /f "usebackq delims=" %%v in ("%ROOT%\third_party\prism\VERSION") do if not defined PRISM_HAVE set "PRISM_HAVE=%%v"
+if not exist "%ROOT%\third_party\prism\include\prism.h" set "PRISM_HAVE="
+if not exist "%ROOT%\third_party\prism\bin\prism.dll" set "PRISM_HAVE="
+if /i not "%PRISM_WANT%"=="%PRISM_HAVE%" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0fetch-prism.ps1" || goto :fail
 
 pushd "%ROOT%"
 rem The build directory is configured when it is new or when asked, and again when UE4SS is to

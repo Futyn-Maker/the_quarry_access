@@ -1,6 +1,7 @@
 #pragma once
 // Small string helpers shared by every module. Wide strings (UTF-16) are the
-// working representation because both UE4SS and Tolk use wchar_t.
+// working representation because that is what UE4SS and the game use; the speech
+// library takes UTF-8, and speech/Outputs converts at that boundary.
 
 #include <string>
 #include <string_view>

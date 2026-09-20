@@ -1,5 +1,6 @@
 #pragma once
-// Speech policies on top of the screen reader (through Tolk) or SAPI (the mod's own):
+// Speech policies on top of the two voices the mod has (speech/Outputs): the player's screen
+// reader, or SAPI.
 //
 //   Focus(text)    - for focus and navigation. Interrupts what is being said only when
 //                    the player has pressed something since it started, so their own

@@ -2,6 +2,9 @@
 /build/
 /dist/
 /out/
+# The Prism speech library, fetched by scripts\fetch-prism.ps1 at the version
+# third_party\prism.version pins
+/third_party/prism/
 *.pdb
 *.ilk
 *.obj
