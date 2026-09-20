@@ -21,6 +21,7 @@ namespace qa::hotkeys
         Subtitles,
         LastSubtitle,
         Speech,
+        Verbosity,
         NextTarget,
         PreviousTarget,
         Where,

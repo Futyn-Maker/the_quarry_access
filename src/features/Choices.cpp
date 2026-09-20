@@ -1,5 +1,6 @@
 #include "features/Choices.hpp"
 
+#include "core/Config.hpp"
 #include "core/Flow.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -678,7 +679,9 @@ namespace qa::features
             // was chosen is said once the key is released.
             if (!g_pendingChosen.empty() && !input::InputHeld())
             {
-                speech::Announce(g_pendingChosen);
+                // Which option was taken is the mod's own word for what the tone already
+                // said, so briefly it is left to the tone.
+                if (cfg::Detailed()) speech::Announce(g_pendingChosen);
                 g_pendingChosen.clear();
             }
             for (auto it = g_choices.begin(); it != g_choices.end();)

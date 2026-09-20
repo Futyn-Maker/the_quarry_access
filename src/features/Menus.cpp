@@ -127,13 +127,12 @@ namespace qa::features
             auto description = ui::Describe(interactable);
             // A text field with no hint of its own is still announced, as a text field.
             if (description.label.empty() && description.kind != ui::Kind::Edit) return {};
-            if (description.tip.empty() && cfg::Get().verbosity == cfg::Verbosity::Full) description.tip = ui::ContextLine(g_screen);
+            if (description.tip.empty()) description.tip = ui::ContextLine(g_screen);
             return ui::Speak(description);
         }
 
         std::wstring CurrentPromptText()
         {
-            if (cfg::Get().verbosity == cfg::Verbosity::Minimal) return {};
             return ui::SpeakPrompts(ui::Prompts(g_screen));
         }
 

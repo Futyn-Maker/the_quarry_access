@@ -529,28 +529,23 @@ namespace qa::ui
 
     std::wstring Speak(const Description& d)
     {
-        const auto verbosity = cfg::Get().verbosity;
         std::vector<std::wstring> parts;
         parts.push_back(d.label);
-        if (verbosity != cfg::Verbosity::Minimal)
+        switch (d.kind)
         {
-            switch (d.kind)
-            {
-            case Kind::Selector: parts.push_back(locale::Mod(L"ui.type.selector")); break;
-            case Kind::Slider: parts.push_back(locale::Mod(L"ui.type.slider")); break;
-            case Kind::Checkbox: parts.push_back(locale::Mod(L"ui.type.checkbox")); break;
-            case Kind::Tab: parts.push_back(locale::Mod(L"ui.type.tab")); break;
-            case Kind::Edit: parts.push_back(locale::Mod(L"ui.type.edit")); break;
-            default: break;
-            }
-            if (!d.value.empty()) parts.push_back(d.value);
-            if (!d.state.empty()) parts.push_back(d.state);
+        case Kind::Selector: parts.push_back(locale::Mod(L"ui.type.selector")); break;
+        case Kind::Slider: parts.push_back(locale::Mod(L"ui.type.slider")); break;
+        case Kind::Checkbox: parts.push_back(locale::Mod(L"ui.type.checkbox")); break;
+        case Kind::Tab: parts.push_back(locale::Mod(L"ui.type.tab")); break;
+        case Kind::Edit: parts.push_back(locale::Mod(L"ui.type.edit")); break;
+        default: break;
         }
-        if (verbosity == cfg::Verbosity::Full)
-        {
-            if (d.index > 0 && d.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(d.index), std::to_wstring(d.count)));
-            if (!d.tip.empty() && d.tip != d.label) parts.push_back(d.tip);
-        }
+        if (!d.value.empty()) parts.push_back(d.value);
+        if (!d.state.empty()) parts.push_back(d.state);
+        // Where the selection stands in a list is counted by the mod, not shown by the game,
+        // and it is the longest part of every row.
+        if (cfg::Detailed() && d.index > 0 && d.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(d.index), std::to_wstring(d.count)));
+        if (!d.tip.empty() && d.tip != d.label) parts.push_back(d.tip);
         return str::Join(parts, L", ");
     }
 

@@ -972,7 +972,7 @@ namespace qa::features
             log::Info(L"combat: hit ({}) on shot {}", how, c.shots);
             sounds::Play(sounds::Cue::Confirm);
             Quiet(c, 0.35);
-            speech::Announce(locale::Mod(L"combat.hit"));
+            if (cfg::Detailed()) speech::Announce(locale::Mod(L"combat.hit"));
         }
 
         void Miss(Combat& c)
@@ -981,7 +981,7 @@ namespace qa::features
             log::Info(L"combat: miss on shot {}", c.shots);
             sounds::Play(sounds::Cue::Fail);
             Quiet(c, 0.35);
-            speech::Announce(locale::Mod(L"combat.miss"));
+            if (cfg::Detailed()) speech::Announce(locale::Mod(L"combat.miss"));
         }
 
         // Where the beam points against every target, and where the game's own aim point lies
@@ -1150,7 +1150,12 @@ namespace qa::features
                 c.spread, c.muzzleSocket, c.range / 100.0, channel, c.magnetism);
             // Only the word for aiming: a fight leaves seconds, and they belong to the game's
             // own prompt and the aim sound. What there is to shoot at is a key away (H, F6).
-            speech::Announce(locale::Mod(c.automatic ? L"combat.auto" : L"combat.aim"));
+            // The aim sound says as much as the word does, so briefly only the fight the game
+            // aims by itself is worth a word.
+            if (c.automatic)
+                speech::Announce(locale::Mod(L"combat.auto"));
+            else if (cfg::Detailed())
+                speech::Announce(locale::Mod(L"combat.aim"));
         }
 
         // The aim sound: a blip in the ear on the side of the target, higher when it is above
@@ -1238,7 +1243,7 @@ namespace qa::features
                 {
                     c.fireCalled = true;
                     log::Info(L"combat: a shot has been sure of target {} for a fifth of a second, the word to fire", led->index);
-                    speech::Announce(locale::Mod(L"combat.fire"));
+                    if (cfg::Detailed()) speech::Announce(locale::Mod(L"combat.fire"));
                 }
             }
             else

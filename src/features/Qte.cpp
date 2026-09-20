@@ -1,5 +1,6 @@
 #include "features/Qte.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -221,6 +222,7 @@ namespace qa::features
             if (identity == g_lastResult.identity && now - g_lastResult.at < 3.0) return;
             g_lastResult = Event{identity, now};
             sounds::Play(success ? sounds::Cue::Confirm : sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(success ? L"result.success" : L"result.failure"));
         }
 
         void Add(UObject* widget)

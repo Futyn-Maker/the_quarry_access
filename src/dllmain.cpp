@@ -213,7 +213,10 @@ private:
         {
             const std::wstring output = qa::speech::OutputName();
             const std::wstring reader = output.empty() ? qa::locale::Mod(L"greeting.noreader") : output;
-            qa::speech::Announce(qa::locale::Mod(L"greeting", std::vector<std::wstring>{ModVersion, reader, qa::locale::CurrentCode()}));
+            // What the mod runs with belongs in the log either way; briefly the player is
+            // told only that it is there.
+            qa::speech::Announce(qa::cfg::Detailed() ? qa::locale::Mod(L"greeting", std::vector<std::wstring>{ModVersion, reader, qa::locale::CurrentCode()})
+                                                     : qa::locale::Mod(L"greeting.brief"));
         }
         qa::log::Info(L"ready");
     }

@@ -217,6 +217,7 @@ namespace qa::hotkeys
         case Command::Subtitles: return L"Subtitles";
         case Command::LastSubtitle: return L"LastSubtitle";
         case Command::Speech: return L"Speech";
+        case Command::Verbosity: return L"Verbosity";
         case Command::NextTarget: return L"NextTarget";
         case Command::PreviousTarget: return L"PreviousTarget";
         case Command::Where: return L"Where";
@@ -240,6 +241,7 @@ namespace qa::hotkeys
         Bind(s.keySubtitles, Command::Subtitles);
         Bind(s.keyLastSubtitle, Command::LastSubtitle);
         Bind(s.keySpeech, Command::Speech);
+        Bind(s.keyVerbosity, Command::Verbosity);
         Bind(s.keyNextTarget, Command::NextTarget);
         Bind(s.keyPreviousTarget, Command::PreviousTarget);
         Bind(s.keyWhere, Command::Where);
@@ -270,7 +272,7 @@ namespace qa::hotkeys
             for (const auto& [key, command] :
                  {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen}, std::pair{s.chordStop, Command::Stop},
                   std::pair{s.chordHelp, Command::Help}, std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle},
-                  std::pair{s.chordSpeech, Command::Speech}})
+                  std::pair{s.chordSpeech, Command::Speech}, std::pair{s.chordVerbosity, Command::Verbosity}})
             {
                 if (str::Trim(key).empty()) continue;
                 g_padBindings.push_back({str::Trim(key), command});
@@ -279,7 +281,7 @@ namespace qa::hotkeys
         }
         for (const auto& key : s.obsoleteKeys)
             log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
-                      L"ChordSubtitles, ChordLastSubtitle and ChordSpeech",
+                      L"ChordSubtitles, ChordLastSubtitle, ChordSpeech and ChordVerbosity",
                       key);
         g_exploreBindings.clear();
         for (const auto& [key, command] :
@@ -331,6 +333,7 @@ namespace qa::hotkeys
             case Command::Subtitles: features::ToggleSubtitles(); break;
             case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
             case Command::Speech: speech::ToggleOutput(); break;
+            case Command::Verbosity: speech::Now(locale::Mod(cfg::ToggleVerbosity() ? L"verbosity.full" : L"verbosity.brief")); break;
             // The target keys serve the fight while one is on, exploration while the player
             // walks the character, and nothing anywhere else.
             case Command::NextTarget:

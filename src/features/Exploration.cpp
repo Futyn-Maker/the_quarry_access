@@ -2133,7 +2133,7 @@ namespace qa::features
             {
                 const bool hit = std::any_of(g_look.points.begin(), g_look.points.end(), [](const Point& p) { return p.inFrame; });
                 log::Info(L"explore: the picture {} its point", hit ? L"has" : L"missed");
-                speech::Announce(locale::Mod(hit ? L"explore.photo.hit" : L"explore.photo.miss"));
+                if (cfg::Detailed()) speech::Announce(locale::Mod(hit ? L"explore.photo.hit" : L"explore.photo.miss"));
             }
             log::Info(L"explore: looking around ends");
             g_look = LookAround{};
@@ -2209,7 +2209,9 @@ namespace qa::features
                 {
                     p.called = true;
                     log::Info(L"explore: \"{}\" is in frame, {:.0f} deg across and {:.0f} up, {:.0f} off the view", p.name, across, up, apart);
-                    speech::Announce(locale::Mod(look.photo && !p.completesOnFind ? L"explore.frame.shoot" : L"explore.frame"));
+                    // The double ping says the point is in frame, and the game's own prompt
+                    // asks for the shutter, so briefly neither is put into words.
+                    if (cfg::Detailed()) speech::Announce(locale::Mod(look.photo && !p.completesOnFind ? L"explore.frame.shoot" : L"explore.frame"));
                 }
                 if (!inFrame)
                 {

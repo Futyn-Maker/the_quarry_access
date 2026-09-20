@@ -8,10 +8,10 @@
 
 namespace qa::cfg
 {
+    // How much the mod says of its own. What the game itself shows is read either way.
     enum class Verbosity
     {
-        Minimal,
-        Normal,
+        Brief,
         Full,
     };
 
@@ -32,12 +32,12 @@ namespace qa::cfg
         std::wstring keySubtitles = L"F9";
         std::wstring keyLastSubtitle = L"F4";
         std::wstring keySpeech = L"F3";
+        std::wstring keyVerbosity = L"F2";
         std::wstring keyDevDumpTree = L"Ctrl+F9";
         std::wstring keyDevTrace = L"Ctrl+F10";
         std::wstring keyDevLogLevel = L"Ctrl+F11";
-        // Gamepad chords: the hold button and the button pressed under it. The buttons
-        // under it all sit under the right thumb, so a chord is held with one hand on each
-        // side of the pad.
+        // Gamepad chords: the hold button and the button pressed under it. The hold is
+        // taken with one thumb and the second button with the other.
         std::wstring chordHold = L"Gamepad_Special_Left";
         std::wstring chordRepeat = L"Gamepad_FaceButton_Bottom";
         std::wstring chordReadScreen = L"Gamepad_FaceButton_Left";
@@ -46,6 +46,7 @@ namespace qa::cfg
         std::wstring chordSubtitles = L"Gamepad_RightTrigger";
         std::wstring chordLastSubtitle = L"Gamepad_RightShoulder";
         std::wstring chordSpeech = L"Gamepad_RightThumbstick";
+        std::wstring chordVerbosity = L"Gamepad_LeftThumbstick";
         std::wstring keyNextTarget = L"N";
         std::wstring keyPreviousTarget = L"P";
         std::wstring keyBeacon = L"T";
@@ -119,4 +120,12 @@ namespace qa::cfg
 
     const Settings& Get();
     void Set(Settings settings);
+
+    // True while the mod says everything it has to say. The game's own words are read
+    // whatever this answers.
+    bool Detailed();
+
+    // Turns the mod's own messages between brief and detailed, keeping the choice for the
+    // next session. Returns true when it is detailed from now on.
+    bool ToggleVerbosity();
 }

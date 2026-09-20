@@ -291,9 +291,15 @@ namespace qa::diag
         else
             parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{s.keyRepeat, s.keyReadScreen, s.keyStop, s.keyHelp}));
         if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
+        {
             parts.push_back(locale::Mod(L"help.speech.pad", input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordSpeech)));
+            parts.push_back(locale::Mod(L"help.verbosity.pad", input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordVerbosity)));
+        }
         else
+        {
             parts.push_back(locale::Mod(L"help.speech", s.keySpeech));
+            parts.push_back(locale::Mod(L"help.verbosity", s.keyVerbosity));
+        }
         features::HelpAll(parts);
         return str::JoinSentences(parts);
     }

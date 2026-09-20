@@ -1,5 +1,6 @@
 #include "features/ButtonMash.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -149,7 +150,7 @@ namespace qa::features
                         const bool success = state == 1;
                         log::Info(L"mash: {} {} at {:.2f}", obj::ObjectName(mash.widget), success ? L"succeeded" : L"failed", fraction);
                         sounds::Play(success ? sounds::Cue::Confirm : sounds::Cue::Fail);
-                        speech::Announce(locale::Mod(success ? L"result.success" : L"result.failure"));
+                        if (cfg::Detailed()) speech::Announce(locale::Mod(success ? L"result.success" : L"result.failure"));
                     }
                 }
                 ++it;

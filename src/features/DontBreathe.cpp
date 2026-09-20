@@ -1,5 +1,6 @@
 #include "features/DontBreathe.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -240,7 +241,7 @@ namespace qa::features
                         const bool success = state == 2;
                         log::Info(L"breathe: {} {}", obj::ObjectName(breath.widget), success ? L"succeeded" : L"failed");
                         sounds::Play(success ? sounds::Cue::Confirm : sounds::Cue::Fail);
-                        speech::Announce(locale::Mod(success ? L"result.success" : L"result.failure"));
+                        if (cfg::Detailed()) speech::Announce(locale::Mod(success ? L"result.success" : L"result.failure"));
                     }
                 }
                 ++it;

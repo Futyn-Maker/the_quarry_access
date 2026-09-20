@@ -153,13 +153,9 @@ namespace qa::cfg
         Ini ini;
         if (!ini.Load(path, error)) return s;
 
+        // The two names of earlier versions stand for the shorter of the two settings.
         const auto verbosity = str::ToLower(ini.Get(L"General", L"Verbosity", L"Full"));
-        if (verbosity == L"minimal")
-            s.verbosity = Verbosity::Minimal;
-        else if (verbosity == L"normal")
-            s.verbosity = Verbosity::Normal;
-        else
-            s.verbosity = Verbosity::Full;
+        s.verbosity = (verbosity == L"brief" || verbosity == L"minimal" || verbosity == L"normal") ? Verbosity::Brief : Verbosity::Full;
         s.language = ini.Get(L"General", L"Language", L"auto");
         s.speakOnLoad = ini.GetBool(L"General", L"SpeakOnLoad", true);
         s.logLevel = ini.Get(L"General", L"LogLevel", L"Info");
@@ -172,6 +168,7 @@ namespace qa::cfg
         s.keySubtitles = ini.Get(L"Hotkeys", L"Subtitles", s.keySubtitles);
         s.keyLastSubtitle = ini.Get(L"Hotkeys", L"LastSubtitle", s.keyLastSubtitle);
         s.keySpeech = ini.Get(L"Hotkeys", L"Speech", s.keySpeech);
+        s.keyVerbosity = ini.Get(L"Hotkeys", L"Verbosity", s.keyVerbosity);
         s.keyDevDumpTree = ini.Get(L"Hotkeys", L"DevDumpTree", s.keyDevDumpTree);
         s.keyDevTrace = ini.Get(L"Hotkeys", L"DevTrace", s.keyDevTrace);
         s.keyDevLogLevel = ini.Get(L"Hotkeys", L"DevLogLevel", s.keyDevLogLevel);
@@ -183,6 +180,7 @@ namespace qa::cfg
         s.chordSubtitles = ini.Get(L"Hotkeys", L"ChordSubtitles", s.chordSubtitles);
         s.chordLastSubtitle = ini.Get(L"Hotkeys", L"ChordLastSubtitle", s.chordLastSubtitle);
         s.chordSpeech = ini.Get(L"Hotkeys", L"ChordSpeech", s.chordSpeech);
+        s.chordVerbosity = ini.Get(L"Hotkeys", L"ChordVerbosity", s.chordVerbosity);
         for (const wchar_t* old : {L"PadChordHold", L"PadRepeat", L"PadReadScreen", L"PadStop", L"PadHelp", L"PadSubtitles", L"PadLastSubtitle",
                                    L"PadNextTarget", L"PadPreviousTarget", L"PadWhere", L"PadBeacon"})
         {
@@ -301,5 +299,21 @@ namespace qa::cfg
     {
         std::lock_guard lock(g_mutex);
         g_settings = std::move(settings);
+    }
+
+    bool Detailed()
+    {
+        return Get().verbosity == Verbosity::Full;
+    }
+
+    bool ToggleVerbosity()
+    {
+        Settings settings = Get();
+        settings.verbosity = settings.verbosity == Verbosity::Full ? Verbosity::Brief : Verbosity::Full;
+        const bool detailed = settings.verbosity == Verbosity::Full;
+        Set(std::move(settings));
+        // Kept in the ini, so that the next start begins the way this one ended.
+        Persist(L"General", L"Verbosity", detailed ? L"Full" : L"Brief");
+        return detailed;
     }
 }
