@@ -2773,7 +2773,10 @@ namespace qa::features
                     if (t.actor == g_selected && g_exploring)
                     {
                         log::Info(L"explore: reached \"{}\"", t.label);
-                        speech::Announce(locale::Mod(L"explore.reached", t.label));
+                        // The tone says the walk is over; the word for it is the mod's own,
+                        // and briefly the tone stands alone. Asking where the target is, or
+                        // choosing it again, still says it is reached.
+                        if (cfg::Detailed()) speech::Announce(locale::Mod(L"explore.reached", t.label));
                         sounds::Play(sounds::Cue::Confirm);
                     }
                 }

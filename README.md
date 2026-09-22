@@ -77,7 +77,7 @@ All keys can be changed in `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\Quarry
 
 The mod has two verbosity levels, detailed and brief. F2, or Back and the left stick click, switches between them and says which one is now on. The level is kept for the next session.
 
-Everything the game itself shows is read at either level: menus, prompts, subtitles, notifications. Brief leaves out only what the mod adds of its own — the place of an item in a list, which option a choice was settled on, whether a quick-time event or another mechanic was passed, and the words that go with a sound you already hear, such as "Fire!" and "In frame". The sounds stay.
+Everything the game itself shows is read at either level: menus, prompts, subtitles, notifications. Brief leaves out only what the mod adds of its own — the place of an item in a list, which option a choice was settled on, whether a quick-time event or another mechanic was passed, and the words that go with a sound you already hear, such as "Fire!", "In frame", the name of the place you have just reached and "Time's up". The sounds stay.
 
 ### Two-Option Choices
 

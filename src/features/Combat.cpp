@@ -1050,8 +1050,9 @@ namespace qa::features
             if (!c.anyHit && c.hasTimeLimit && !afterShot && elapsed >= c.timeLimit - 0.5)
             {
                 log::Info(L"combat: the time ran out");
+                // The tone of a loss, and briefly nothing more, as with a missed shot.
                 sounds::Play(sounds::Cue::Fail);
-                speech::Announce(locale::Mod(L"combat.timeout"));
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"combat.timeout"));
             }
             log::Info(L"combat: over ({}) after {:.2f} s, {} shot(s), {}", why, elapsed, c.shots, c.anyHit ? L"a hit" : L"no hit");
             g_combat = Combat{};
