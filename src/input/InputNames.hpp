@@ -81,9 +81,10 @@ namespace qa::input
     // for: for a moment after the press the scheme reads as that device.
     void NoteHotkeyDevice(Scheme scheme);
 
-    // Points the game's own reading of the gamepad through the mod, so that a walk can push
-    // the stick the game already reads instead of pressing keys, which would make the game
-    // treat the keyboard as the device in hand and redraw every prompt for it.
+    // Points the game's own readings of the gamepad through the mod, XInput's and Sony's pad
+    // library's, so that a walk can push the stick the game already reads instead of
+    // pressing keys, which would make the game treat the keyboard as the device in hand and
+    // redraw every prompt for it.
     void ShareGamepadReading();
 
     // Holds down the game's own movement keys for a heading given in the camera's frame,

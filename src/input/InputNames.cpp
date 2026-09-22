@@ -455,6 +455,117 @@ namespace qa::input
         constexpr int16_t kStickDeadZone = 12000;
         constexpr uint8_t kTriggerThreshold = 30;
 
+        // ---- Sony's pad library ------------------------------------------------------------
+        //
+        // A DualSense or a DualShock 4 is read by the game's WinDualShock plugin through Sony's
+        // libScePad.dll (scePadReadState), which the executable delay-imports; the XInput import
+        // never sees them, and the library answers over USB only. The plugin's own reader,
+        // disassembled on 2026-09-22, takes the buttons from the first word of the data, the
+        // sticks from bytes 4 to 7 with y counted down from the top, the triggers from bytes 8
+        // and 9 and the connection from byte 76, and names each button after the position of
+        // its bit, with a plain bit test: from bit 1, L3, R3, Options, up, right, down, left,
+        // L2, R2, L1, R1, triangle, circle, cross and square, and at bit 20 the click of the
+        // touchpad, which it calls Gamepad_Special_Left, the Back button of an Xbox pad. The
+        // library's own parser also keeps the Create button (Share on a DualShock 4) at bit 0
+        // and the PS button at bit 16, but scePadReadState masks both out of what it hands
+        // over unless the library's particular mode is on (scePadSetParticularMode), which the
+        // game never turns on. The mod turns it on once the game's reads succeed, takes Create
+        // as Back too, as Steam Input's own layout has it, and strips the two bits from the
+        // game's data itself, so the game is shown exactly what it always was. Such a pad is
+        // laid over XInput's layout here, so that everything above reads one pad, and a
+        // button is only ever taken away from the game's data, never added.
+        struct ScePadHead
+        {
+            uint32_t buttons;
+            uint8_t leftX;
+            uint8_t leftY;
+            uint8_t rightX;
+            uint8_t rightY;
+            uint8_t l2;
+            uint8_t r2;
+        };
+        constexpr size_t kScePadConnectedOffset = 76;
+        struct SceButton
+        {
+            uint32_t sce;
+            uint16_t xinput;
+        };
+        constexpr SceButton kSceButtons[] = {
+            {0x00000002, 0x0040}, // L3, the left stick's click
+            {0x00000004, 0x0080}, // R3
+            {0x00000008, 0x0010}, // Options, the Start button
+            {0x00000010, 0x0001}, // up
+            {0x00000020, 0x0008}, // right
+            {0x00000040, 0x0002}, // down
+            {0x00000080, 0x0004}, // left
+            {0x00000400, 0x0100}, // L1, the left bumper
+            {0x00000800, 0x0200}, // R1
+            {0x00001000, 0x8000}, // triangle, the Y button
+            {0x00002000, 0x2000}, // circle, the B button
+            {0x00004000, 0x1000}, // cross, the A button
+            {0x00008000, 0x4000}, // square, the X button
+            {0x00100000, 0x0020}, // the touchpad's click, the Back button
+            {0x00000001, 0x0020}, // Create or Share, Back as well for the mod
+        };
+        constexpr uint32_t kSceLeftTriggerBit = 0x00000100;  // L2 past its threshold, beside its analog byte
+        constexpr uint32_t kSceRightTriggerBit = 0x00000200; // R2 likewise
+        constexpr uint32_t kSceCreateBit = 0x00000001;       // Create, seen in particular mode only
+        constexpr uint32_t kScePsBit = 0x00010000;           // the PS button, likewise; never the game's
+
+        // ScePad's sticks run 0 to 255 about 128, y downward; XInput's -32768 to 32767, y upward.
+        int16_t SceToThumb(uint8_t value, bool invert)
+        {
+            int centred = static_cast<int>(value) - 128;
+            if (invert) centred = -centred;
+            return static_cast<int16_t>(std::clamp(centred * 256, -32768, 32767));
+        }
+
+        uint8_t ThumbToSce(int16_t thumb, bool invert)
+        {
+            int centred = thumb / 256;
+            if (invert) centred = -centred;
+            return static_cast<uint8_t>(std::clamp(128 + centred, 0, 255));
+        }
+
+        XInputGamepad SceToXInput(const ScePadHead& head)
+        {
+            XInputGamepad g{};
+            for (const auto& button : kSceButtons)
+            {
+                if (head.buttons & button.sce) g.buttons |= button.xinput;
+            }
+            g.leftTrigger = head.l2;
+            g.rightTrigger = head.r2;
+            g.thumbLX = SceToThumb(head.leftX, false);
+            g.thumbLY = SceToThumb(head.leftY, true);
+            g.thumbRX = SceToThumb(head.rightX, false);
+            g.thumbRY = SceToThumb(head.rightY, true);
+            return g;
+        }
+
+        // The Sony pad the game last read, as the player holds it, and when.
+        std::mutex g_sceMutex;
+        XInputGamepad g_sceLast{};
+        long long g_sceReadAt = 0;
+        bool g_sceConnected = false;
+
+        // The Sony pad the game read within the last half second, in XInput's layout.
+        bool SonyPad(XInputGamepad& out)
+        {
+            std::lock_guard lock(g_sceMutex);
+            if (!g_sceConnected || NowMs() - g_sceReadAt > 500) return false;
+            out = g_sceLast;
+            return true;
+        }
+
+        // Nothing pressed, pulled or pushed past the dead zones.
+        bool Idle(const XInputGamepad& g)
+        {
+            if (g.buttons != 0 || g.leftTrigger > 40 || g.rightTrigger > 40) return false;
+            if (g.thumbLX > kStickDeadZone || g.thumbLX < -kStickDeadZone || g.thumbLY > kStickDeadZone || g.thumbLY < -kStickDeadZone) return false;
+            return !(g.thumbRX > kStickDeadZone || g.thumbRX < -kStickDeadZone || g.thumbRY > kStickDeadZone || g.thumbRY < -kStickDeadZone);
+        }
+
         // The first connected pad, read through the real function so that what the mod
         // reads is what the player holds, chord and all.
         bool FirstPad(XInputState& out)
@@ -498,6 +609,8 @@ namespace qa::input
                 if (g.thumbLX > kDeadZone || g.thumbLX < -kDeadZone || g.thumbLY > kDeadZone || g.thumbLY < -kDeadZone) active = true;
                 if (g.thumbRX > kDeadZone || g.thumbRX < -kDeadZone || g.thumbRY > kDeadZone || g.thumbRY < -kDeadZone) active = true;
             }
+            XInputGamepad sony{};
+            if (SonyPad(sony) && !Idle(sony)) active = true;
             return active;
         }
 
@@ -610,6 +723,170 @@ namespace qa::input
             return result;
         }
 
+        // ---- the Sony pad, in the same reading ---------------------------------------------
+        using ScePadReadStateFn = int32_t(__cdecl*)(int32_t handle, void* data);
+        using ScePadSetParticularModeFn = int32_t(__cdecl*)(bool enable);
+        ScePadReadStateFn g_realScePadReadState = nullptr;
+        ScePadSetParticularModeFn g_scePadSetParticularMode = nullptr;
+        bool g_sceParticularAsked = false; // the library's particular mode has been asked for
+        void** g_scePadSlot = nullptr;
+        int32_t g_sceHandles[4] = {-1, -1, -1, -1}; // the handles the game reads, one watch slot each
+        bool g_sceHandleConnected[4] = {false, false, false, false};
+
+        int SceSlot(int32_t handle)
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                if (g_sceHandles[i] == handle) return i;
+            }
+            for (int i = 0; i < 4; ++i)
+            {
+                if (g_sceHandles[i] == -1)
+                {
+                    g_sceHandles[i] = handle;
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        int32_t __cdecl ScePadReadStateDetour(int32_t handle, void* data)
+        {
+            const int32_t result = g_realScePadReadState ? g_realScePadReadState(handle, data) : -1;
+            if (result != 0 || !data) return result;
+            // A read that succeeded means the game has initialised the library, which is what
+            // its particular mode needs; from the next read on, Create and the PS button are in
+            // the data, for the mod alone.
+            if (!g_sceParticularAsked)
+            {
+                g_sceParticularAsked = true;
+                const int32_t asked = g_scePadSetParticularMode ? g_scePadSetParticularMode(true) : -1;
+                if (asked == 0)
+                    log::Info(L"input: the PlayStation pad's Create button is reported to the mod");
+                else
+                    log::Info(L"input: the PlayStation pad's Create button is not reported (particular mode refused: {:#x})", static_cast<uint32_t>(asked));
+            }
+            const int slot = SceSlot(handle);
+            const bool connected = static_cast<const uint8_t*>(data)[kScePadConnectedOffset] != 0;
+            if (connected != g_sceHandleConnected[slot])
+            {
+                g_sceHandleConnected[slot] = connected;
+                log::Info(L"input: the PlayStation pad the game reads as {} is {}", handle, connected ? L"connected" : L"gone");
+            }
+            auto* head = static_cast<ScePadHead*>(data);
+            const XInputGamepad real = SceToXInput(*head);
+            // What the library kept from the game before is kept from it still.
+            head->buttons &= ~(kSceCreateBit | kScePsBit);
+            if (!connected)
+            {
+                bool any = false;
+                for (const bool c : g_sceHandleConnected)
+                    any = any || c;
+                std::lock_guard lock(g_sceMutex);
+                g_sceConnected = any;
+                return result;
+            }
+            {
+                std::lock_guard lock(g_sceMutex);
+                g_sceLast = real;
+                g_sceReadAt = NowMs();
+                g_sceConnected = true;
+            }
+            // What the game is shown: the stick pushed for a walk and the chord hidden; then
+            // only what changed goes back into its data.
+            XInputGamepad shown = real;
+            if (g_injecting.load(std::memory_order_relaxed))
+            {
+                shown.thumbLX = static_cast<int16_t>(g_injectX.load(std::memory_order_relaxed));
+                shown.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
+            }
+            HideChord(shown);
+            if (shown.buttons != real.buttons)
+            {
+                uint32_t buttons = head->buttons;
+                for (const auto& button : kSceButtons)
+                {
+                    if (!(shown.buttons & button.xinput)) buttons &= ~button.sce;
+                }
+                head->buttons = buttons;
+            }
+            if (shown.leftTrigger != real.leftTrigger)
+            {
+                head->l2 = shown.leftTrigger;
+                if (shown.leftTrigger == 0) head->buttons &= ~kSceLeftTriggerBit;
+            }
+            if (shown.rightTrigger != real.rightTrigger)
+            {
+                head->r2 = shown.rightTrigger;
+                if (shown.rightTrigger == 0) head->buttons &= ~kSceRightTriggerBit;
+            }
+            if (shown.thumbLX != real.thumbLX || shown.thumbLY != real.thumbLY)
+            {
+                head->leftX = ThumbToSce(shown.thumbLX, false);
+                head->leftY = ThumbToSce(shown.thumbLY, true);
+            }
+            if (shown.thumbRX != real.thumbRX || shown.thumbRY != real.thumbRY)
+            {
+                head->rightX = ThumbToSce(shown.thumbRX, false);
+                head->rightY = ThumbToSce(shown.thumbRY, true);
+            }
+            return result;
+        }
+
+        // Finds the executable's delay-loaded import of scePadReadState and points it here.
+        // The slot holds the loader's stub until the game first calls through it and the
+        // library's function afterwards; either way the mod calls the library itself.
+        bool InstallScePadShare()
+        {
+            static bool tried = false;
+            if (tried) return g_scePadSlot != nullptr;
+            tried = true;
+            auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+            if (!base) return false;
+            auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+            auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+            const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT];
+            if (directory.VirtualAddress == 0)
+            {
+                log::Info(L"input: the game delay-loads no library, so it reads no PlayStation pad");
+                return false;
+            }
+            auto* descriptor = reinterpret_cast<IMAGE_DELAYLOAD_DESCRIPTOR*>(base + directory.VirtualAddress);
+            for (; descriptor->DllNameRVA != 0; ++descriptor)
+            {
+                const char* name = reinterpret_cast<const char*>(base + descriptor->DllNameRVA);
+                if (_stricmp(name, "libScePad.dll") != 0) continue;
+                // The game's own copy, beside its executable, where the loader looks first.
+                HMODULE module = GetModuleHandleA(name);
+                if (!module) module = LoadLibraryA(name);
+                auto* real = module ? reinterpret_cast<ScePadReadStateFn>(GetProcAddress(module, "scePadReadState")) : nullptr;
+                if (!real)
+                {
+                    log::Info(L"input: {} could not be loaded, so no PlayStation pad is shared", str::Utf8ToWide(name));
+                    return false;
+                }
+                g_scePadSetParticularMode = reinterpret_cast<ScePadSetParticularModeFn>(GetProcAddress(module, "scePadSetParticularMode"));
+                auto* names = reinterpret_cast<IMAGE_THUNK_DATA64*>(base + descriptor->ImportNameTableRVA);
+                auto* slots = reinterpret_cast<void**>(base + descriptor->ImportAddressTableRVA);
+                for (size_t i = 0; names[i].u1.AddressOfData != 0; ++i)
+                {
+                    if (names[i].u1.Ordinal & IMAGE_ORDINAL_FLAG64) continue;
+                    auto* import = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + names[i].u1.AddressOfData);
+                    if (strcmp(import->Name, "scePadReadState") != 0) continue;
+                    DWORD old = 0;
+                    if (!VirtualProtect(&slots[i], sizeof(void*), PAGE_READWRITE, &old)) return false;
+                    g_realScePadReadState = real;
+                    slots[i] = reinterpret_cast<void*>(&ScePadReadStateDetour);
+                    VirtualProtect(&slots[i], sizeof(void*), old, &old);
+                    g_scePadSlot = &slots[i];
+                    log::Info(L"input: the PlayStation pad the game reads through {} is shared with the mod", str::Utf8ToWide(name));
+                    return true;
+                }
+            }
+            log::Info(L"input: the game reads no PlayStation pad through libScePad.dll");
+            return false;
+        }
+
         // Finds the game's own import of XInputGetState and points it here.
         bool InstallPadInjection()
         {
@@ -656,6 +933,8 @@ namespace qa::input
         // stick cannot be pushed on, and the walk falls back to the movement keys.
         bool PadLeadsTheWalk()
         {
+            XInputGamepad sony{};
+            if (InstallScePadShare() && SonyPad(sony)) return true;
             if (!InstallPadInjection()) return false;
             return g_padAnswered.load(std::memory_order_relaxed) && NowMs() - g_askedAt.load(std::memory_order_relaxed) < 500;
         }
@@ -663,6 +942,8 @@ namespace qa::input
         // How the walk stands with the gamepad, for the log.
         std::wstring WalkDevice()
         {
+            XInputGamepad sony{};
+            if (InstallScePadShare() && SonyPad(sony)) return L"the game reads a PlayStation pad through libScePad.dll, so a walk pushes its stick instead";
             if (!InstallPadInjection()) return L"the game's gamepad reading is not shared, so a walk uses those keys";
             const long long at = g_askedAt.load(std::memory_order_relaxed);
             if (at == 0) return L"the game never asks about a gamepad, so a walk uses those keys";
@@ -686,7 +967,9 @@ namespace qa::input
                 const auto& g = state.gamepad;
                 if (g.thumbLX > kStickDeadZone || g.thumbLX < -kStickDeadZone || g.thumbLY > kStickDeadZone || g.thumbLY < -kStickDeadZone) return true;
             }
-            return false;
+            XInputGamepad sony{};
+            return SonyPad(sony) &&
+                   (sony.thumbLX > kStickDeadZone || sony.thumbLX < -kStickDeadZone || sony.thumbLY > kStickDeadZone || sony.thumbLY < -kStickDeadZone);
         }
 
         // The Windows key code of an engine key name, for the few names a character walks with.
@@ -791,16 +1074,22 @@ namespace qa::input
     PadReading ReadPad()
     {
         PadReading reading;
+        // The XInput pad, or the PlayStation pad the game reads: whichever is not idle, the
+        // XInput one when both are.
         XInputState state{};
-        if (!FirstPad(state)) return reading;
+        const bool xinput = FirstPad(state);
+        XInputGamepad sony{};
+        const bool sce = SonyPad(sony);
+        if (!xinput && !sce) return reading;
+        const XInputGamepad& g = xinput && (!sce || !Idle(state.gamepad) || Idle(sony)) ? state.gamepad : sony;
         reading.valid = true;
-        reading.buttons = state.gamepad.buttons;
-        reading.leftTrigger = state.gamepad.leftTrigger;
-        reading.rightTrigger = state.gamepad.rightTrigger;
-        reading.leftX = state.gamepad.thumbLX;
-        reading.leftY = state.gamepad.thumbLY;
-        reading.rightX = state.gamepad.thumbRX;
-        reading.rightY = state.gamepad.thumbRY;
+        reading.buttons = g.buttons;
+        reading.leftTrigger = g.leftTrigger;
+        reading.rightTrigger = g.rightTrigger;
+        reading.leftX = g.thumbLX;
+        reading.leftY = g.thumbLY;
+        reading.rightX = g.thumbRX;
+        reading.rightY = g.thumbRY;
         return reading;
     }
 
@@ -938,6 +1227,7 @@ namespace qa::input
     void ShareGamepadReading()
     {
         InstallPadInjection();
+        InstallScePadShare();
     }
 
     std::wstring DescribeWalkKeys()
@@ -969,6 +1259,16 @@ namespace qa::input
     {
         ReleaseWalkKeys();
         // The game must not be left calling into a module that is going away.
+        if (g_scePadSlot && g_realScePadReadState)
+        {
+            DWORD old = 0;
+            if (VirtualProtect(g_scePadSlot, sizeof(void*), PAGE_READWRITE, &old))
+            {
+                *g_scePadSlot = reinterpret_cast<void*>(g_realScePadReadState);
+                VirtualProtect(g_scePadSlot, sizeof(void*), old, &old);
+            }
+            g_scePadSlot = nullptr;
+        }
         if (!g_importSlot || !g_realGetState) return;
         DWORD old = 0;
         if (VirtualProtect(g_importSlot, sizeof(void*), PAGE_READWRITE, &old))
