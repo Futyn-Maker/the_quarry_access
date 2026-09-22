@@ -39,8 +39,8 @@ namespace qa::features
             // stretches and breathing in the gaps between them.
             std::vector<std::pair<double, double>> zones;
             bool zonesRead = false;
+            bool zoneKnown = false; // the first reading of the stretches only sets inZone
             bool inZone = false;
-            bool warned = false;    // the coming danger has been called
             bool lowCalled = false; // the breath running out has been called
             bool demo = false;      // a tutorial playing itself out
         };
@@ -183,36 +183,32 @@ namespace qa::features
                         breath.state = state;
                     }
                     ReadZones(breath);
-                    // Where the danger stands in relation to the moment. The game shows this
-                    // in the picture and the sound it plays as the creature draws near.
+                    // Where the danger stands at this moment: within one of its stretches, or
+                    // between them. The game shows it in the picture and in the sound it plays
+                    // as the creature draws near, and never ahead of time: a warning given
+                    // before a later stretch came while the player was rightly letting go in
+                    // the gap, and called danger where there was none.
                     if (state < 2 && !breath.zones.empty())
                     {
                         bool here = false;
-                        bool coming = false;
                         for (const auto& [start, end] : breath.zones)
                         {
-                            if (elapsed >= start && elapsed <= end)
-                                here = true;
-                            else if (elapsed < start && start - elapsed <= 1.5)
-                                coming = true;
+                            if (elapsed >= start && elapsed <= end) here = true;
                         }
-                        if (here != breath.inZone)
+                        if (!breath.zoneKnown)
+                        {
+                            // The opening state is marked by the tone at the widget's
+                            // appearance and said by the game's own prompt.
+                            breath.zoneKnown = true;
+                            breath.inZone = here;
+                            log::Info(L"breathe: the danger is {} at {:.1f} s", here ? L"here" : L"not here yet", elapsed);
+                        }
+                        else if (here != breath.inZone)
                         {
                             breath.inZone = here;
-                            breath.warned = false;
                             log::Info(L"breathe: the danger {} at {:.1f} s", here ? L"is here" : L"has passed", elapsed);
-                            if (!here)
-                            {
-                                sounds::Play(sounds::Cue::Up);
-                                speech::Announce(locale::Mod(L"breathe.safe"));
-                            }
-                        }
-                        else if (coming && !here && !breath.warned)
-                        {
-                            breath.warned = true;
-                            log::Info(L"breathe: the danger is coming at {:.1f} s", elapsed);
-                            sounds::Play(sounds::Cue::Down);
-                            speech::Announce(locale::Mod(L"breathe.danger"));
+                            sounds::Play(here ? sounds::Cue::Down : sounds::Cue::Up);
+                            speech::Announce(locale::Mod(here ? L"breathe.danger" : L"breathe.safe"));
                         }
                     }
                     if (state == 1)

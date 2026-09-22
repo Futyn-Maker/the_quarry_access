@@ -101,7 +101,7 @@ Press the key the mod names, usually the left mouse button or A, the way the gam
 
 ### Don't Breathe
 
-Hold the left mouse button or A to hold your breath, and keep holding while there is danger. A falling tone marks the moment to start. Blips follow your breath and fall as it runs out. A rising tone with "The danger has passed" means you can release. A falling tone with "Danger" means the danger is coming back.
+Hold the left mouse button or A to hold your breath, and keep holding while there is danger. A falling tone marks the danger. Blips follow your breath and fall as it runs out, and the mod says when it is nearly out. A rising tone with "The danger has passed" means you can release.
 
 ### Aiming
 
