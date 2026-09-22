@@ -118,7 +118,7 @@ When you get control of the character, the mod names the nearest place to go. N 
 - Press G or X on the gamepad to walk there automatically. Press G or X again or move to stop.
 - Follow the beacon. It sounds on the side of the next turn, rises as you get closer and drops an octave when the place is behind you. H or D-pad up says the distance and direction, and T or D-pad down turns the beacon off and on.
 
-K or RB turns on hints for the tarot cards: the spots of the cards you would not pass on the way to any listed place then appear in the list as plain "Way on" places, and the choice is kept for the next start.
+K or RB turns on hints for the tarot cards: their places appear in the list as "Way on", and the choice is kept for the next start.
 
 Many objects have no name in the game, so the mod reads their internal names, which are in English. In most cases they still make clear what the object is.
 
