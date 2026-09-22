@@ -52,6 +52,7 @@ namespace qa::cfg
         std::wstring keyBeacon = L"T";
         std::wstring keyWhere = L"H";
         std::wstring keyWalk = L"G";
+        std::wstring keyTarotCards = L"K";
         // Keys of earlier versions found in the file, for a line in the log.
         std::vector<std::wstring> obsoleteKeys;
         // Buttons the game leaves unused while the player walks the character freely, so
@@ -61,6 +62,7 @@ namespace qa::cfg
         std::wstring padExploreWhere = L"Gamepad_DPad_Up";
         std::wstring padExploreBeacon = L"Gamepad_DPad_Down";
         std::wstring padExploreWalk = L"Gamepad_FaceButton_Left";
+        std::wstring padExploreTarotCards = L"Gamepad_RightShoulder";
 
         // [Speech]
         int focusDedupeMs = 150;
@@ -77,7 +79,8 @@ namespace qa::cfg
         int beaconIntervalMs = 500;
         int exploreRange = 100; // metres
         bool autoTarget = true;
-        int walkDelayMs = 500; // between the word and the first step
+        int walkDelayMs = 500;   // between the word and the first step
+        bool tarotCards = false; // the places of the tarot cards listed as ways on
 
         // [Combat]
         bool aimSound = true;

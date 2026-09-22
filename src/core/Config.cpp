@@ -191,11 +191,13 @@ namespace qa::cfg
         s.keyBeacon = ini.Get(L"Hotkeys", L"Beacon", s.keyBeacon);
         s.keyWhere = ini.Get(L"Hotkeys", L"Where", s.keyWhere);
         s.keyWalk = ini.Get(L"Hotkeys", L"Walk", s.keyWalk);
+        s.keyTarotCards = ini.Get(L"Hotkeys", L"TarotCards", s.keyTarotCards);
         s.padExploreNext = ini.Get(L"Hotkeys", L"ExploreNext", s.padExploreNext);
         s.padExplorePrevious = ini.Get(L"Hotkeys", L"ExplorePrevious", s.padExplorePrevious);
         s.padExploreWhere = ini.Get(L"Hotkeys", L"ExploreWhere", s.padExploreWhere);
         s.padExploreBeacon = ini.Get(L"Hotkeys", L"ExploreBeacon", s.padExploreBeacon);
         s.padExploreWalk = ini.Get(L"Hotkeys", L"ExploreWalk", s.padExploreWalk);
+        s.padExploreTarotCards = ini.Get(L"Hotkeys", L"ExploreTarotCards", s.padExploreTarotCards);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
         s.preferSapi = ini.GetBool(L"Speech", L"PreferSapi", s.preferSapi);
@@ -206,6 +208,7 @@ namespace qa::cfg
         s.exploreRange = ini.GetInt(L"Exploration", L"Range", s.exploreRange);
         s.autoTarget = ini.GetBool(L"Exploration", L"AutoTarget", s.autoTarget);
         s.walkDelayMs = ini.GetInt(L"Exploration", L"WalkDelayMs", s.walkDelayMs);
+        s.tarotCards = ini.GetBool(L"Exploration", L"TarotCards", s.tarotCards);
         s.aimSound = ini.GetBool(L"Combat", L"AimSound", s.aimSound);
 
         if (const auto* features = ini.Section(L"Features"))

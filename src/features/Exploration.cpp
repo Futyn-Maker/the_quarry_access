@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstring>
 #include <cwctype>
+#include <functional>
 #include <map>
 #include <numbers>
 #include <string>
@@ -52,6 +53,13 @@ namespace qa::features
             UObject* place = nullptr; // the place merged into a use location, if any
             bool destination = false; // true when the target is a place alone
             bool way = false;         // true when it is a way on that the scene is watching for
+            bool tarot = false;       // true when the way is where a tarot card is revealed
+            // A card's branch can ask for the character elsewhere first (the World's wants
+            // Laura in a wider volume, then out of it, then in the card's own): while it
+            // does, the road leads to that ask, and the card is not reached.
+            bool armed = true;
+            bool hasLeg = false;
+            Vec leg;
             std::wstring label;
             Vec position;
             double distance = 0.0;  // straight line from the character, centimetres
@@ -75,6 +83,7 @@ namespace qa::features
             double routeLength = 0.0; // centimetres along the way
             Vec routeNext;            // the corner to walk to now
             Vec routeFrom;            // where the character was when it was asked
+            Vec routeGoal;            // what the road was aimed at
             // Where a use location is reached: the middle of the box the game offers it in,
             // or another spot of that box when the road to the middle is no road.
             bool hasApproach = false;
@@ -136,7 +145,43 @@ namespace qa::features
         double g_waysFilteredAt = -10.0;
         std::vector<std::wstring> g_waysSpent; // volumes the scene has moved past, as last logged
         std::vector<UObject*> g_waysAnnounced; // ways already said while the scene keeps watching them
-        double g_stepHeight = -1.0;            // the step the navigation mesh lets a character climb
+        // The places of the scene's tarot cards, offered as ways on while the player asks for
+        // them: the volume that reveals each card the scene is still watching for.
+        bool g_tarot = false;
+        // One ask of a card's branch about the character's whereabouts, in the branch's
+        // own order: inside a volume, or out of it.
+        struct TarotStep
+        {
+            UObject* volume = nullptr;
+            std::wstring name;
+            bool inside = true;
+        };
+        struct TarotWay
+        {
+            UObject* volume = nullptr;
+            std::wstring card;
+            std::vector<TarotStep> steps; // the last is the card's own volume
+            size_t step = 0;              // the first ask not yet met, as far as the mod has seen
+        };
+        std::vector<TarotWay> g_tarotWays;
+        std::map<UObject*, size_t> g_tarotSteps; // where each card's branch stood when it was last seen
+        std::vector<std::wstring> g_tarotLogged; // the cards as last logged, watched or spent
+        // Targets the scene took out of the list a moment ago, and whether the player had
+        // chosen one. A card's camera turns the scene's use locations off from its prompt
+        // until the character has walked away from a missed card, and they come back as
+        // they were: not news, and the chosen one chosen again.
+        struct Gone
+        {
+            double at = 0.0;
+            bool selected = false;
+        };
+        std::map<UObject*, Gone> g_gone;
+        // A card found on the way to something, by the thing it lies on the way to: it stays
+        // off the list while that thing is still there to walk to, whichever way the
+        // character has wandered since. The verdict on each card is logged when it changes.
+        std::map<UObject*, UObject*> g_cardHiddenBy;
+        std::map<UObject*, std::wstring> g_cardVerdict;
+        double g_stepHeight = -1.0; // the step the navigation mesh lets a character climb
         double g_stepHeightAt = -10.0;
         std::vector<UObject*> g_glints;
         double g_glintsScannedAt = -10.0;
@@ -215,6 +260,7 @@ namespace qa::features
         double g_walkLeanedAt = 0.0;
         double g_walkLoggedAt = 0.0;
         Vec g_walkLastPosition;
+        Vec g_walkAim;                   // the spot the walk was last aimed at
         double g_cameraYaw = 0.0;        // to notice the game cutting to another camera
         UObject* g_currentUse = nullptr; // the use location the game is offering right now
 
@@ -563,11 +609,12 @@ namespace qa::features
         // which volumes it is waiting on. A transition also carries the scene's own memory of
         // what has already happened: one whose flag says its moment has passed can no longer
         // fire, so walking into its volume sets nothing off and the volume is left out.
-        std::vector<UObject*> WayVolumes(UObject* pawn, const std::vector<UObject*>& availableUses)
+        // The states of the scene's flow that turned on a use location the character can
+        // see: the action that turned it on belongs to a schema, and the schema to its state.
+        // They are where the scene stands right now, as far as the mod can tell.
+        std::vector<UObject*> ActiveUseStates(const std::vector<UObject*>& availableUses)
         {
-            std::vector<std::wstring> wanted;
-            std::vector<std::wstring> spent;
-            std::vector<UObject*> statesSeen;
+            std::vector<UObject*> states;
             for (auto* action : obj::FindAllLive(L"GFActionMakeUseLocationAvailable"))
             {
                 std::wstring named;
@@ -576,8 +623,17 @@ namespace qa::features
                 UObject* schema = obj::Outer(action);
                 UObject* state = schema ? obj::Outer(schema) : nullptr;
                 if (!obj::IsLive(state)) continue;
-                if (std::find(statesSeen.begin(), statesSeen.end(), state) != statesSeen.end()) continue;
-                statesSeen.push_back(state);
+                if (std::find(states.begin(), states.end(), state) == states.end()) states.push_back(state);
+            }
+            return states;
+        }
+
+        std::vector<UObject*> WayVolumes(UObject* pawn, const std::vector<UObject*>& activeStates)
+        {
+            std::vector<std::wstring> wanted;
+            std::vector<std::wstring> spent;
+            for (auto* state : activeStates)
+            {
                 std::vector<UObject*> transitions;
                 obj::ReadObjectArray(state, L"Transitions", transitions);
                 for (auto* transition : transitions)
@@ -635,6 +691,262 @@ namespace qa::features
             return out;
         }
 
+        // Whether the game records a collectable as found, by its own record: in this
+        // playthrough, or in any. A card found in an earlier playthrough lies in the world
+        // again and is revealed again, so only this playthrough's record says it is gone.
+        bool CollectableUnlocked(UObject* pawn, UObject* collectable, bool thisPlaythrough, bool& out)
+        {
+            auto* fn = obj::IsLive(collectable) ? obj::FindFunction(collectable, L"IsUnlocked") : nullptr;
+            if (!fn) return false;
+            bool answered = false;
+            obj::Call(
+                collectable, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"InWorldContextObject")
+                            *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = pawn;
+                        else if (name == L"InSaveType") // ECollectableSaveType: Persistent 0, Runthrough 1
+                            *static_cast<uint8_t*>(obj::ValuePtrAt(params, prop)) = thisPlaythrough ? 1 : 0;
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") answered = obj::ReadBoolAt(params, prop, out);
+                    }
+                });
+            return answered;
+        }
+
+        // The tarot cards the scene is watching for right now, each as the volume that
+        // reveals it. A card is a branch of the scene's flow forked beside the exploration:
+        // it waits in a pass-through state for the character to enter a trigger volume, cuts
+        // to the card's own camera with a timed prompt, and collects the card on the press.
+        // The branch is found from the exploration it runs beside: the machine that holds a
+        // state whose use locations are on also holds, as a nested machine, the one with the
+        // collecting action, and the transitions of that machine into the states before the
+        // collecting one carry the volume. A card the game records as found in this
+        // playthrough, one whose paper the collecting state has hidden, or a transition the
+        // scene's own flags have closed (the card in the lodge is offered once, on the way
+        // in), is no longer watched for.
+        std::vector<TarotWay> TarotVolumes(UObject* pawn, const std::vector<UObject*>& activeStates)
+        {
+            std::vector<UObject*> branches; // the machines forked beside the exploration's states
+            for (auto* state : activeStates)
+            {
+                UObject* machine = obj::Outer(state);
+                if (!obj::IsLive(machine) || !obj::IsA(machine, L"GFStateMachine")) continue;
+                std::vector<UObject*> states;
+                obj::ReadObjectArray(machine, L"States", states);
+                for (auto* sibling : states)
+                {
+                    if (!obj::IsLive(sibling) || !obj::IsA(sibling, L"GFStateNestedStateMachine")) continue;
+                    UObject* inner = nullptr;
+                    if (!obj::ReadObject(sibling, L"NestedStateMachine", inner) || !obj::IsLive(inner))
+                        obj::ReadObject(sibling, L"NestedStateMachineExternal", inner);
+                    if (obj::IsLive(inner) && std::find(branches.begin(), branches.end(), inner) == branches.end()) branches.push_back(inner);
+                }
+            }
+            struct Wanted
+            {
+                std::wstring volume;
+                std::wstring card;
+                std::vector<std::pair<std::wstring, bool>> chain; // the branch's asks by volume name, inside or out
+            };
+            std::vector<Wanted> wanted;
+            std::vector<std::wstring> logged;
+            if (!branches.empty())
+            {
+                for (auto* collect : obj::FindAllLive(L"GFActionCollectTarotCardSMG026"))
+                {
+                    UObject* schema = obj::Outer(collect);
+                    UObject* unlock = schema ? obj::Outer(schema) : nullptr;
+                    UObject* branch = unlock ? obj::Outer(unlock) : nullptr;
+                    if (!obj::IsLive(unlock) || std::find(branches.begin(), branches.end(), branch) == branches.end()) continue;
+                    UObject* card = nullptr;
+                    obj::ReadObject(collect, L"TarotCard", card);
+                    const std::wstring name = obj::IsLive(card) ? obj::ObjectName(card) : obj::ObjectName(unlock);
+                    std::vector<UObject*> transitions;
+                    obj::ReadObjectArray(branch, L"Transitions", transitions);
+                    // The states the collecting one follows: the card's camera and prompt.
+                    std::vector<UObject*> reveals;
+                    for (auto* transition : transitions)
+                    {
+                        UObject* target = nullptr;
+                        UObject* source = nullptr;
+                        if (!obj::IsLive(transition) || !obj::ReadObject(transition, L"TargetState", target) || target != unlock) continue;
+                        if (obj::ReadObject(transition, L"SourceState", source) && obj::IsLive(source)) reveals.push_back(source);
+                    }
+                    // The branch's way to the reveal: from its first state, the first
+                    // transition of each state in turn, and what each asks of the
+                    // character's whereabouts. Nearly every branch asks one thing, the
+                    // card's own volume; the World's asks Laura into a wider volume, out of
+                    // it, and only then into the card's.
+                    std::vector<std::pair<std::wstring, bool>> chain;
+                    UObject* at = nullptr;
+                    obj::ReadObject(branch, L"StartState", at);
+                    for (int hop = 0; hop < 8 && obj::IsLive(at) && std::find(reveals.begin(), reveals.end(), at) == reveals.end(); ++hop)
+                    {
+                        std::vector<UObject*> own;
+                        obj::ReadObjectArray(at, L"Transitions", own);
+                        UObject* next = nullptr;
+                        for (auto* transition : own)
+                        {
+                            if (!obj::IsLive(transition)) continue;
+                            std::vector<UObject*> conditions;
+                            obj::ReadObjectArray(transition, L"Conditions", conditions);
+                            for (auto* condition : conditions)
+                            {
+                                std::wstring volume;
+                                if (!obj::IsLive(condition) || !obj::IsA(condition, L"GFConditionInVolume") ||
+                                    !ReadActorReference(condition, L"TriggerVolumeName", volume))
+                                    continue;
+                                bool inverted = false;
+                                obj::ReadBool(condition, L"bNot", inverted);
+                                chain.push_back({volume, !inverted});
+                            }
+                            obj::ReadObject(transition, L"TargetState", next);
+                            break; // the first transition leads on; the others lead back
+                        }
+                        at = next;
+                    }
+                    bool recorded = false;
+                    bool ever = false;
+                    CollectableUnlocked(pawn, card, true, recorded);
+                    CollectableUnlocked(pawn, card, false, ever);
+                    // The collecting state also hides the paper card that lay in the world,
+                    // so the card being gone from the scene is the second word on it: the
+                    // one a sighted player has.
+                    bool gone = false;
+                    std::wstring paper;
+                    for (auto* hide : obj::FindAllLive(L"GFActionHideActor"))
+                    {
+                        UObject* hideSchema = obj::Outer(hide);
+                        if (!hideSchema || obj::Outer(hideSchema) != unlock || !ReadActorReference(hide, L"ActorName", paper)) continue;
+                        for (auto* actor : obj::FindAllLive(L"PaperTarot_Parent_C"))
+                        {
+                            bool hidden = false;
+                            if (IsNamed(actor, paper) && obj::ReadBool(actor, L"bHidden", hidden) && hidden) gone = true;
+                        }
+                        break;
+                    }
+                    const bool collected = recorded || gone;
+                    for (auto* transition : transitions)
+                    {
+                        UObject* target = nullptr;
+                        if (!obj::IsLive(transition) || !obj::ReadObject(transition, L"TargetState", target)) continue;
+                        if (std::find(reveals.begin(), reveals.end(), target) == reveals.end()) continue;
+                        std::vector<UObject*> conditions;
+                        obj::ReadObjectArray(transition, L"Conditions", conditions);
+                        std::vector<std::wstring> volumes;
+                        std::wstring closedBy;
+                        std::wstring other; // the character the ask names, when it is another than the player's
+                        for (auto* condition : conditions)
+                        {
+                            if (!obj::IsLive(condition)) continue;
+                            std::wstring volume;
+                            if (obj::IsA(condition, L"GFConditionInVolume"))
+                            {
+                                if (ReadActorReference(condition, L"TriggerVolumeName", volume)) volumes.push_back(volume);
+                                // The ask names the character it waits for, and only that one's
+                                // walking can meet it. The lodge of chapter 4 keeps an exploration
+                                // its flow never enters, whose Strength branch waits for Dylan;
+                                // its state names a use location the lodge of chapter 10 turns
+                                // on, so the branch turns up under Kaitlyn.
+                                std::wstring who;
+                                if (other.empty() && ReadActorReference(condition, L"CharacterName", who) && !IsNamed(pawn, who))
+                                {
+                                    for (auto* character : obj::FindAllLive(L"CharacterBaseSMG"))
+                                    {
+                                        if (character != pawn && IsNamed(character, who)) other = who;
+                                    }
+                                }
+                                continue;
+                            }
+                            std::wstring said;
+                            if (closedBy.empty() && BlackboardCondition(pawn, condition, said) == Verdict::Fails) closedBy = said;
+                        }
+                        for (const auto& volume : volumes)
+                        {
+                            if (collected)
+                            {
+                                logged.push_back(name + L" is collected (" + volume + (recorded ? L", by this playthrough's record" : L"") +
+                                                 (gone ? L", the card " + paper + L" is hidden" : L"") + L")");
+                            }
+                            else if (!closedBy.empty())
+                            {
+                                logged.push_back(name + L" is closed by " + closedBy + L" (" + volume + L")");
+                            }
+                            else if (!other.empty())
+                            {
+                                logged.push_back(name + L" is asked of " + other + L", not of the player's character (" + volume + L")");
+                            }
+                            else
+                            {
+                                logged.push_back(name + L" is watched for at " + volume + (ever ? L", found in an earlier playthrough" : L""));
+                                if (std::none_of(wanted.begin(), wanted.end(), [&](const Wanted& w) { return w.volume == volume; }))
+                                    wanted.push_back({volume, name, chain});
+                            }
+                        }
+                    }
+                }
+            }
+            std::sort(logged.begin(), logged.end());
+            logged.erase(std::unique(logged.begin(), logged.end()), logged.end());
+            if (logged != g_tarotLogged)
+            {
+                g_tarotLogged = logged;
+                log::Info(L"explore: tarot cards: {}", logged.empty() ? L"none beside this exploration" : str::Join(logged, L"; "));
+            }
+            std::vector<TarotWay> out;
+            if (wanted.empty()) return out;
+            const auto volumes = obj::FindAllLive(L"TriggerVolumeSMG");
+            const auto named = [&](const std::wstring& name) -> UObject*
+            {
+                for (auto* volume : volumes)
+                {
+                    if (IsNamed(volume, name)) return volume;
+                }
+                return nullptr;
+            };
+            for (const auto& w : wanted)
+            {
+                UObject* volume = named(w.volume);
+                if (!volume || std::any_of(out.begin(), out.end(), [&](const TarotWay& t) { return t.volume == volume; })) continue;
+                TarotWay way;
+                way.volume = volume;
+                way.card = w.card;
+                for (const auto& [name, inside] : w.chain)
+                {
+                    if (UObject* asked = named(name)) way.steps.push_back({asked, name, inside});
+                }
+                // The card's own volume closes the asks, whatever the walk of the branch found.
+                if (way.steps.empty() || way.steps.back().volume != volume || !way.steps.back().inside) way.steps.push_back({volume, w.volume, true});
+                // Where the branch stood the last time the mod saw it.
+                if (const auto known = g_tarotSteps.find(volume); known != g_tarotSteps.end()) way.step = std::min(known->second, way.steps.size());
+                out.push_back(std::move(way));
+            }
+            if (out.size() != g_tarotWays.size())
+            {
+                std::vector<std::wstring> names;
+                for (const auto& t : out)
+                {
+                    std::vector<std::wstring> asks;
+                    for (const auto& s : t.steps)
+                        asks.push_back((s.inside ? L"in " : L"out of ") + s.name);
+                    names.push_back(obj::ObjectName(t.volume) + L" (" + t.card +
+                                    (t.steps.size() > 1 ? L"; asks " + str::Join(asks, L", then ") : std::wstring()) + L")");
+                }
+                log::Info(L"explore: tarot cards: {} of {} named volumes are in the level: {}", out.size(), wanted.size(), str::Join(names, L", "));
+            }
+            return out;
+        }
+
         std::wstring DestinationLabel(UObject* actor)
         {
             const auto label = str::CollapseWhitespace(str::StripMarkup(gametext::ReadLocalized(actor, L"PromptLabel")));
@@ -660,9 +972,227 @@ namespace qa::features
         double DistanceToBox(const std::vector<Vec>& road, const Vec& low, const Vec& high);
         double WalkingRadius(UObject* pawn);
         bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight);
+        double VolumeDistance(UObject* volume, const Vec& point);
         bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high);
         bool InsideVolume(UObject* pawn, UObject* volume, const Vec& low, const Vec& high, int& storey);
         bool UseBox(UObject* actor, Vec& centre, Vec& extent, double& yaw);
+        bool ProjectToMesh(UObject* pawn, const Vec& point, Vec& out, const Vec& extent);
+
+        // Keeps up with each card's branch as the character moves. The branch takes its asks
+        // in order, one at most per frame, and so does the mod at every round of the
+        // roaming, from the first ask on. Once every ask is met the branch has cut to the
+        // card; after a missed prompt it starts over from the first ask when the character
+        // has left the card's volume, and so does the mod.
+        void FollowTarotSteps(UObject* pawn)
+        {
+            for (auto& card : g_tarotWays)
+            {
+                if (card.steps.empty()) continue;
+                const auto inside = [&](const TarotStep& ask)
+                {
+                    Vec low, high;
+                    int storey = 0;
+                    return obj::IsLive(ask.volume) && TriggerBox(ask.volume, low, high) && InsideVolume(pawn, ask.volume, low, high, storey);
+                };
+                const size_t before = card.step;
+                if (card.step >= card.steps.size() && !inside(card.steps.back())) card.step = 0;
+                for (int hop = 0; card.step < card.steps.size() && hop < 8; ++hop)
+                {
+                    if (inside(card.steps[card.step]) != card.steps[card.step].inside) break;
+                    ++card.step;
+                }
+                g_tarotSteps[card.volume] = card.step;
+                if (card.step == before) continue;
+                if (card.step >= card.steps.size())
+                    log::Info(L"explore: the {} card's branch has every ask met and cuts to the card", card.card);
+                else
+                    log::Info(L"explore: the {} card's branch now asks for the character {} {}", card.card, card.steps[card.step].inside ? L"in" : L"out of",
+                              card.steps[card.step].name);
+            }
+        }
+
+        // A spot on the ground just outside a volume, the nearest across from the character:
+        // where a branch that asks for the character out of the volume is answered.
+        bool ExitPoint(UObject* pawn, const Vec& here, const Vec& low, const Vec& high, Vec& out)
+        {
+            const double margin = WalkingRadius(pawn) + 40.0;
+            struct Candidate
+            {
+                Vec point;
+                double away;
+            };
+            std::vector<Candidate> candidates{{Vec{high.x + margin, here.y, here.z}, high.x + margin - here.x},
+                                              {Vec{low.x - margin, here.y, here.z}, here.x - (low.x - margin)},
+                                              {Vec{here.x, high.y + margin, here.z}, high.y + margin - here.y},
+                                              {Vec{here.x, low.y - margin, here.z}, here.y - (low.y - margin)}};
+            std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.away < b.away; });
+            for (const auto& c : candidates)
+            {
+                Vec ground;
+                if (!ProjectToMesh(pawn, c.point, ground, Vec{60.0, 60.0, 120.0})) continue;
+                const double clear = margin / 2.0;
+                if (ground.x > low.x - clear && ground.x < high.x + clear && ground.y > low.y - clear && ground.y < high.y + clear) continue;
+                out = ground;
+                return true;
+            }
+            return false;
+        }
+
+        // The part of a road that is walked: a use location is reached where the game offers
+        // it, at the edge of its box; a way at the edge of its volume; a place within reach
+        // of it. The road beyond that point leads nowhere the character goes.
+        std::vector<Vec> WalkedRoad(UObject* pawn, const Target& t, const std::vector<Vec>& road)
+        {
+            std::vector<Vec> out;
+            if (road.size() < 2) return out;
+            const double radius = WalkingRadius(pawn);
+            std::function<bool(const Vec&)> arrived;
+            Vec centre, extent;
+            double yaw = 0.0;
+            if (!t.destination && UseBox(t.actor, centre, extent, yaw))
+            {
+                const double c = std::cos(-yaw * std::numbers::pi / 180.0);
+                const double s = std::sin(-yaw * std::numbers::pi / 180.0);
+                arrived = [=](const Vec& p)
+                {
+                    const double dx = p.x - centre.x, dy = p.y - centre.y;
+                    return std::fabs(dx * c - dy * s) <= extent.x + radius && std::fabs(dx * s + dy * c) <= extent.y + radius;
+                };
+            }
+            else if (t.way && t.hasBox)
+            {
+                arrived = [=, low = t.boxLow, high = t.boxHigh](const Vec& p)
+                { return p.x >= low.x - radius && p.x <= high.x + radius && p.y >= low.y - radius && p.y <= high.y + radius; };
+            }
+            else
+            {
+                arrived = [at = t.position](const Vec& p) { return FlatDistance(p, at) < 150.0; };
+            }
+            out.push_back(road.front());
+            for (size_t i = 1; i < road.size(); ++i)
+            {
+                const Vec& a = road[i - 1];
+                const Vec& b = road[i];
+                const int steps = std::max(1, static_cast<int>(FlatDistance(a, b) / 25.0));
+                for (int k = 1; k <= steps; ++k)
+                {
+                    const double f = static_cast<double>(k) / steps;
+                    const Vec p{a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f};
+                    if (arrived(p))
+                    {
+                        out.push_back(p);
+                        return out;
+                    }
+                }
+                out.push_back(b);
+            }
+            return out;
+        }
+
+        // The stretches of a road that run at the height of a box: a point of the road is on
+        // the floor, and the character standing on it reaches up its own height. A road on
+        // the floor below or above a volume never enters it, however squarely it passes
+        // beneath: the lodge's High Priestess, at attic height over the spot of the dog tags,
+        // was hidden by the road to them two floors down.
+        std::vector<std::vector<Vec>> AtHeight(const std::vector<Vec>& road, const Vec& low, const Vec& high, double capsuleHeight)
+        {
+            std::vector<std::vector<Vec>> runs;
+            std::vector<Vec> run;
+            for (const Vec& p : road)
+            {
+                if (p.z <= high.z && p.z + capsuleHeight >= low.z)
+                {
+                    run.push_back(p);
+                }
+                else if (!run.empty())
+                {
+                    runs.push_back(std::move(run));
+                    run.clear();
+                }
+            }
+            if (!run.empty()) runs.push_back(std::move(run));
+            return runs;
+        }
+
+        // Whether a road, walked at the character's height, comes well inside a card's
+        // volume: a point of it stands inside with the whole capsule, the four points a
+        // radius away included, counted from the first point outside the volume, since
+        // walking out of a volume the character stands in reveals nothing. The volume's own
+        // collision is asked, never its axis-aligned bounds: eleven of the card volumes are
+        // turned, and the bounds of a turned box reach where the box does not (Justice, 348
+        // cm off the road to the woods' exit, was hidden by them).
+        // `closest`, when asked for, tells how near the road came to the collision by the
+        // engine's own measure, for a log that can be set against the geometry offline.
+        bool RoadRevealsCard(UObject* volume, const Vec& low, const Vec& high, const std::vector<Vec>& road, double radius, double halfHeight,
+                             std::wstring* closest = nullptr)
+        {
+            bool started = false;
+            int sampled = 0;
+            bool unmeasured = false;
+            double best = 1e9;
+            Vec bestAt;
+            for (size_t i = 1; i < road.size(); ++i)
+            {
+                const Vec& a = road[i - 1];
+                const Vec& b = road[i];
+                const int steps = std::max(1, static_cast<int>(FlatDistance(a, b) / 25.0));
+                for (int step = (i == 1 ? 0 : 1); step <= steps; ++step)
+                {
+                    const double f = static_cast<double>(step) / steps;
+                    Vec p{a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f};
+                    // Beyond the bounds, or at another height, the collision cannot be
+                    // entered, and asking would cost a call.
+                    if (p.x < low.x - radius || p.x > high.x + radius || p.y < low.y - radius || p.y > high.y + radius)
+                    {
+                        started = true;
+                        continue;
+                    }
+                    p.z = std::clamp((low.z + high.z) / 2.0, p.z, p.z + 2.0 * halfHeight);
+                    if (p.z < low.z || p.z > high.z)
+                    {
+                        started = true;
+                        continue;
+                    }
+                    const double distance = VolumeDistance(volume, p);
+                    const bool inside = distance >= 0.0 ? distance == 0.0 : PointInVolume(volume, p, low, high);
+                    ++sampled;
+                    if (distance < 0.0)
+                        unmeasured = true;
+                    else if (distance < best)
+                    {
+                        best = distance;
+                        bestAt = p;
+                    }
+                    if (!started)
+                    {
+                        if (inside) continue;
+                        started = true;
+                    }
+                    if (!inside) continue;
+                    bool whole = true;
+                    for (const auto& [dx, dy] : {std::pair{radius, 0.0}, std::pair{-radius, 0.0}, std::pair{0.0, radius}, std::pair{0.0, -radius}})
+                    {
+                        if (!PointInVolume(volume, Vec{p.x + dx, p.y + dy, p.z}, low, high))
+                        {
+                            whole = false;
+                            break;
+                        }
+                    }
+                    if (whole) return true;
+                }
+            }
+            if (closest)
+            {
+                if (sampled == 0)
+                    *closest = L"no sample within its bounds";
+                else if (best >= 1e9)
+                    *closest = std::format(L"{} samples within its bounds, none with a measured distance", sampled);
+                else
+                    *closest = std::format(L"the nearest of {} samples within its bounds {:.0f} cm from its collision at ({:.0f}, {:.0f}, {:.0f}){}", sampled,
+                                           best, bestAt.x, bestAt.y, bestAt.z, unmeasured ? L", some unmeasured" : L"");
+            }
+            return false;
+        }
 
         std::vector<Target> Gather(UObject* pawn, const Vec& here, double yaw, double now)
         {
@@ -738,18 +1268,31 @@ namespace qa::features
             // when there is nothing left to use.
             if (now - g_waysScannedAt > 3.0)
             {
-                g_ways = WayVolumes(pawn, available);
+                const auto activeStates = ActiveUseStates(available);
+                g_ways = WayVolumes(pawn, activeStates);
+                // The places of the tarot cards join the ways while the player asks for them.
+                if (g_tarot)
+                    g_tarotWays = TarotVolumes(pawn, activeStates);
+                else
+                    g_tarotWays.clear();
                 g_waysScannedAt = now;
-                std::erase_if(g_waysAnnounced, [](UObject* way) { return std::find(g_ways.begin(), g_ways.end(), way) == g_ways.end(); });
+                std::erase_if(g_waysAnnounced,
+                              [](UObject* way)
+                              {
+                                  return std::find(g_ways.begin(), g_ways.end(), way) == g_ways.end() &&
+                                         std::none_of(g_tarotWays.begin(), g_tarotWays.end(), [&](const TarotWay& t) { return t.volume == way; });
+                              });
             }
             std::vector<Target> ways;
-            for (auto* volume : g_ways)
+            FollowTarotSteps(pawn);
+            const auto addWay = [&](UObject* volume, const TarotWay* card)
             {
-                if (!obj::IsLive(volume)) continue;
+                if (!obj::IsLive(volume)) return;
                 Target t;
                 t.actor = volume;
                 t.destination = true;
                 t.way = true;
+                t.tarot = card != nullptr;
                 // A volume's pivot can stand metres away from the space it fills, so a way is
                 // where its collision is: the middle of that box.
                 if (TriggerBox(volume, t.boxLow, t.boxHigh))
@@ -759,12 +1302,41 @@ namespace qa::features
                 }
                 else if (!ActorLocation(volume, t.position))
                 {
-                    continue;
+                    return;
                 }
-                if (Distance(here, t.position) > range) continue;
+                if (Distance(here, t.position) > range) return;
                 t.label = locale::Mod(L"explore.wayon");
                 if (t.hasBox) t.inside = InsideVolume(pawn, volume, t.boxLow, t.boxHigh, t.storey);
+                // A card is reached only once its branch has nothing left to ask but the
+                // card's own volume. Until then the road leads to the ask at hand: into a
+                // volume, or out of the one the character stands in.
+                if (card && card->step + 1 < card->steps.size())
+                {
+                    t.armed = false;
+                    const TarotStep& ask = card->steps[card->step];
+                    Vec low, high;
+                    if (obj::IsLive(ask.volume) && TriggerBox(ask.volume, low, high))
+                    {
+                        if (ask.inside)
+                        {
+                            t.leg = Vec{(low.x + high.x) / 2.0, (low.y + high.y) / 2.0, (low.z + high.z) / 2.0};
+                            t.hasLeg = true;
+                        }
+                        else
+                        {
+                            t.hasLeg = ExitPoint(pawn, here, low, high, t.leg);
+                        }
+                    }
+                }
                 ways.push_back(std::move(t));
+            };
+            for (auto* volume : g_ways)
+                addWay(volume, nullptr);
+            // A card's place goes by the same words as any way on: it is one more place
+            // worth walking to, and the screen names neither.
+            for (const auto& tarot : g_tarotWays)
+            {
+                if (std::find(g_ways.begin(), g_ways.end(), tarot.volume) == g_ways.end()) addWay(tarot.volume, &tarot);
             }
 
             // A use location takes the place standing next to it as its name, and twins of
@@ -846,18 +1418,37 @@ namespace qa::features
             {
                 g_waysFilteredAt = now;
                 g_waysHidden.clear();
-                std::vector<std::vector<Vec>> roads;
+                const bool cards = std::any_of(ways.begin(), ways.end(), [](const Target& w) { return w.tarot; });
+                std::vector<std::vector<Vec>> roads; // whole, for the ways
+                struct Walked                        // a road cut where its target is reached, for the cards
+                {
+                    UObject* target = nullptr;
+                    std::wstring label;
+                    std::vector<Vec> road;
+                };
+                std::vector<Walked> walked;
                 size_t asked = 0;
                 for (const auto& t : out)
                 {
                     if (++asked > 10) break;
                     std::vector<Vec> road;
                     FindRoute(pawn, here, t, &road);
-                    if (road.size() >= 2) roads.push_back(std::move(road));
+                    if (road.size() < 2) continue;
+                    if (cards)
+                    {
+                        auto part = WalkedRoad(pawn, t, road);
+                        if (part.size() >= 2) walked.push_back({t.actor, t.label, std::move(part)});
+                    }
+                    roads.push_back(std::move(road));
                 }
                 const double radius = WalkingRadius(pawn);
+                Vec capsuleMiddle;
+                double capsuleHalf = 90.0;
+                CapsuleSpan(pawn, capsuleMiddle, capsuleHalf);
+                const double capsuleHeight = 2.0 * capsuleHalf;
                 for (const auto& way : ways)
                 {
+                    if (way.tarot) continue;
                     Vec low, high;
                     if (!TriggerBox(way.actor, low, high))
                     {
@@ -870,7 +1461,12 @@ namespace qa::features
                     high = Vec{high.x + radius, high.y + radius, high.z};
                     double nearest = 1e9;
                     for (const auto& road : roads)
-                        nearest = std::min(nearest, DistanceToBox(road, low, high));
+                    {
+                        for (const auto& run : AtHeight(road, low, high, capsuleHeight))
+                        {
+                            if (run.size() >= 2) nearest = std::min(nearest, DistanceToBox(run, low, high));
+                        }
+                    }
                     // The way the player has chosen stays in the list: taking it out as the
                     // character moves would end the walk to it halfway.
                     const bool chosen = way.actor == g_selected;
@@ -879,6 +1475,105 @@ namespace qa::features
                     log::Info(L"explore: a way {:.0f} cm off, {:.0f} by {:.0f} cm across, is missed by the nearest road by {:.0f} cm and is {}",
                               Distance(here, way.position), high.x - low.x, high.y - low.y, nearest,
                               onRoad ? L"not offered" : (nearest <= 0.0 ? L"kept as the chosen target" : L"offered"));
+                }
+                // A card's place is judged by the walked part of each road, since only that
+                // can reveal it: the roads to the ways still on offer join in (that walk
+                // reveals the card as well), the part of a road that starts inside the card's
+                // own volume is left out, and a road counts only where it comes well inside
+                // the volume, by the character's own width, so that a corner clipped by the
+                // road to something else does not hide a card the walk would never reveal.
+                if (cards)
+                {
+                    for (const auto& way : ways)
+                    {
+                        if (way.tarot || std::find(g_waysHidden.begin(), g_waysHidden.end(), way.actor) != g_waysHidden.end()) continue;
+                        std::vector<Vec> road;
+                        FindRoute(pawn, here, way, &road);
+                        auto part = WalkedRoad(pawn, way, road);
+                        if (part.size() >= 2) walked.push_back({way.actor, way.label, std::move(part)});
+                    }
+                    // The roads themselves, for setting the judgement against the geometry offline.
+                    for (const auto& w : walked)
+                    {
+                        std::wstring points;
+                        for (const Vec& p : w.road)
+                            points += std::format(L" ({:.0f}, {:.0f}, {:.0f})", p.x, p.y, p.z);
+                        log::Verbose(L"explore: the road walked to \"{}\" for the cards:{}", w.label, points);
+                    }
+                    // What is there to walk to, by actor: the use locations and places, and
+                    // the ways still on offer.
+                    const auto listed = [&](UObject* actor) -> const Target*
+                    {
+                        for (const auto& t : out)
+                        {
+                            if (t.actor == actor) return &t;
+                        }
+                        for (const auto& w : ways)
+                        {
+                            if (w.actor == actor && !w.tarot && std::find(g_waysHidden.begin(), g_waysHidden.end(), actor) == g_waysHidden.end()) return &w;
+                        }
+                        return nullptr;
+                    };
+                    for (const auto& way : ways)
+                    {
+                        if (!way.tarot) continue;
+                        const bool chosen = way.actor == g_selected;
+                        std::wstring verdict;
+                        std::wstring measure;
+                        // A card once found on the way to something stays off the list while
+                        // that something is still there to walk to: the walk there reveals
+                        // it, whichever way the character has wandered since. The Hierophant
+                        // lies across the corridor to the attack marks and was offered as
+                        // new the moment the character had crossed it and stood beyond.
+                        if (const auto held = g_cardHiddenBy.find(way.actor); held != g_cardHiddenBy.end())
+                        {
+                            const Target* still = listed(held->second);
+                            if (still && !chosen)
+                            {
+                                g_waysHidden.push_back(way.actor);
+                                verdict = L"not offered, on the way to \"" + still->label + L"\"";
+                            }
+                            else
+                            {
+                                g_cardHiddenBy.erase(held);
+                            }
+                        }
+                        Vec low, high;
+                        if (verdict.empty() && !TriggerBox(way.actor, low, high)) verdict = L"offered, with no box of its own";
+                        if (verdict.empty())
+                        {
+                            const Walked* crossing = nullptr;
+                            std::vector<std::wstring> closest;
+                            for (const auto& w : walked)
+                            {
+                                std::wstring near;
+                                if (RoadRevealsCard(way.actor, low, high, w.road, radius, capsuleHalf, &near))
+                                {
+                                    crossing = &w;
+                                    break;
+                                }
+                                closest.push_back(L"on the road to \"" + w.label + L"\" " + near);
+                            }
+                            const bool onRoad = crossing && !chosen;
+                            if (onRoad)
+                            {
+                                g_waysHidden.push_back(way.actor);
+                                g_cardHiddenBy[way.actor] = crossing->target;
+                                verdict = L"not offered, on the way to \"" + crossing->label + L"\"";
+                            }
+                            else
+                            {
+                                verdict = crossing ? L"kept as the chosen target" : L"offered, no walked road comes inside its volume";
+                            }
+                            measure = std::format(L"; its bounds {:.0f} by {:.0f} cm across", high.x - low.x, high.y - low.y);
+                            if (!crossing && !closest.empty()) measure += L"; " + str::Join(closest, L"; ");
+                        }
+                        if (g_cardVerdict[way.actor] != verdict)
+                        {
+                            g_cardVerdict[way.actor] = verdict;
+                            log::Info(L"explore: a card's place {:.0f} cm off is {}{}", Distance(here, way.position), verdict, measure);
+                        }
+                    }
                 }
             }
             for (auto& way : ways)
@@ -909,6 +1604,7 @@ namespace qa::features
                 it->routeLength = old.routeLength;
                 it->routeNext = old.routeNext;
                 it->routeFrom = old.routeFrom;
+                it->routeGoal = old.routeGoal;
                 it->hasApproach = old.hasApproach;
                 it->approach = old.approach;
                 it->approachAt = old.approachAt;
@@ -940,7 +1636,7 @@ namespace qa::features
         // arriving.
         bool AtTarget(const Target& t, UObject* offered)
         {
-            if (t.way && t.hasBox) return t.inside;
+            if (t.way && t.hasBox) return t.inside && t.armed;
             if (t.destination) return t.distance < 150.0;
             if (t.actor == offered) return true;
             return t.inRange && offered == nullptr;
@@ -1021,10 +1717,11 @@ namespace qa::features
             return ok;
         }
 
-        // Where a road to a target is aimed: a use location at the spot of its box, anything
-        // else where it stands.
+        // Where a road to a target is aimed: a card at the ask its branch makes first, a use
+        // location at the spot of its box, anything else where it stands.
         const Vec& Aim(const Target& t)
         {
+            if (t.hasLeg) return t.leg;
             return t.hasApproach ? t.approach : t.position;
         }
 
@@ -1211,10 +1908,9 @@ namespace qa::features
             return placed && sized;
         }
 
-        // Whether a point lies inside a volume, by the engine's measure of the distance from a
-        // point to the volume's collision, which is zero inside. Where the engine cannot measure
-        // it, the collision's box stands in.
-        bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high)
+        // The engine's measure of the distance from a point to a volume's collision, which is
+        // zero inside, or -1 where the engine cannot measure it.
+        double VolumeDistance(UObject* volume, const Vec& point)
         {
             UObject* body = nullptr;
             obj::ReadObject(volume, L"BrushComponent", body);
@@ -1239,6 +1935,15 @@ namespace qa::features
                         }
                     });
             }
+            return distance;
+        }
+
+        // Whether a point lies inside a volume, by the engine's measure of the distance from a
+        // point to the volume's collision, which is zero inside. Where the engine cannot measure
+        // it, the collision's box stands in.
+        bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high)
+        {
+            const double distance = VolumeDistance(volume, point);
             if (distance >= 0.0) return distance == 0.0;
             return point.x >= low.x && point.x <= high.x && point.y >= low.y && point.y <= high.y && point.z >= low.z && point.z <= high.z;
         }
@@ -1376,7 +2081,7 @@ namespace qa::features
         // the flyer stands on.
         void EnsureRoute(UObject* pawn, const Vec& here, Target& t, double now, double maxAge)
         {
-            if (now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0) return;
+            if (now - t.routeAt < maxAge && FlatDistance(here, t.routeFrom) < 200.0 && FlatDistance(Aim(t), t.routeGoal) < 50.0) return;
             std::vector<Vec> road;
             Route route = FindRoute(pawn, here, t, &road);
             UObject* through = route.valid ? WayCrossed(pawn, road, t) : nullptr;
@@ -1416,6 +2121,7 @@ namespace qa::features
             }
             t.routeAt = now;
             t.routeFrom = here;
+            t.routeGoal = Aim(t);
             t.hasRoute = route.valid;
             t.routeLength = route.length;
             t.routeNext = route.next;
@@ -1651,6 +2357,15 @@ namespace qa::features
             // a corner, so the walk turns with it instead of heading straight for the target.
             EnsureRoute(pawn, here, *target, now, 0.5);
             if (target->hasRoute && FlatDistance(here, target->routeNext) < 80.0) EnsureRoute(pawn, here, *target, now, 0.0);
+            // A card's branch with one ask answered turns the road to the next: the walk is
+            // new from here, and the way there may well grow longer first.
+            if (FlatDistance(Aim(*target), g_walkAim) > 50.0)
+            {
+                g_walkAim = Aim(*target);
+                g_walkBestWay = 1e9;
+                g_walkBestWayAt = now;
+                log::Info(L"explore: the walk to \"{}\" turns to another spot, {:.0f} cm away", target->label, FlatDistance(here, g_walkAim));
+            }
             // The way there should keep growing shorter. When it stops, the character has come
             // as near as the ground allows and is only circling the spot.
             const double way = target->hasRoute ? target->routeLength : target->distance;
@@ -1750,6 +2465,7 @@ namespace qa::features
             g_walkBestWayAt = g_walkStartedAt;
             g_walkLoggedAt = g_walkStartedAt;
             g_walkLastPosition = here;
+            g_walkAim = Aim(*target);
             log::Info(L"explore: walking to \"{}\"", target->label);
             const Route route = FindRoute(pawn, here, *target, nullptr);
             if (route.valid)
@@ -1784,6 +2500,29 @@ namespace qa::features
             if (obj::CallForBool(pawn, L"IsInCinematicToLoco")) return L"CinematicToLoco";
             if (obj::CallForBool(pawn, L"IsBound")) return L"Mount";
             return L"Unmount, LocoToCinematic or CinematicToCinematic";
+        }
+
+        // Which navigation data answers the mod's questions about roads, and how the game builds
+        // it at runtime. A scene's cooked tiles are checked offline, and any difference between
+        // them and the mesh the game walks on starts here.
+        void LogNavigationData()
+        {
+            for (auto* system : obj::FindAllLive(L"NavigationSystemV1"))
+            {
+                UObject* main = nullptr;
+                obj::ReadObject(system, L"MainNavData", main);
+                std::vector<UObject*> set;
+                obj::ReadObjectArray(system, L"NavDataSet", set);
+                std::vector<std::wstring> names;
+                for (auto* data : set)
+                {
+                    if (!obj::IsLive(data)) continue;
+                    int64_t generation = -1;
+                    obj::ReadInt(data, L"RuntimeGeneration", generation);
+                    names.push_back(std::format(L"{}{} (runtime generation {})", obj::ObjectName(data), data == main ? L", the main one" : L"", generation));
+                }
+                log::Info(L"explore: navigation by {}: {}", obj::ObjectName(system), names.empty() ? L"no navigation data" : str::Join(names, L"; "));
+            }
         }
 
         // Whether the game hands the player the character, read at every frame. The scene's
@@ -1829,6 +2568,7 @@ namespace qa::features
             {
                 g_controlHeard = control;
                 log::Info(L"explore: the game {} the character", control ? L"hands the player" : L"takes back");
+                if (control) LogNavigationData();
                 sounds::Play(control ? sounds::Cue::ControlGained : sounds::Cue::ControlLost);
             }
             return changed;
@@ -1903,6 +2643,10 @@ namespace qa::features
                 g_targets.clear();
                 g_selected = nullptr;
                 g_waysAnnounced.clear();
+                g_gone.clear();
+                g_tarotSteps.clear();
+                g_cardHiddenBy.clear();
+                g_cardVerdict.clear();
                 std::erase_if(g_useLocationState, [](const auto& item) { return !obj::IsLive(item.first); });
             }
             // A short exchange in the middle of a scene leaves everything where it was, so
@@ -1915,8 +2659,19 @@ namespace qa::features
             // and the player changes it by standing somewhere else, so every change is a line.
             UObject* offered = nullptr;
             obj::ReadObject(pawn, L"CurrentUseLocation", offered);
+            std::vector<UObject*> before;
+            for (const auto& t : g_targets)
+                before.push_back(t.actor);
             auto fresh = Gather(pawn, here, yaw, now);
             const auto added = Reconcile(fresh);
+            // What the scene took out of the list just now is remembered for half a minute,
+            // so that its return is no news.
+            for (auto* actor : before)
+            {
+                if (std::none_of(g_targets.begin(), g_targets.end(), [&](const Target& t) { return t.actor == actor; }))
+                    g_gone[actor] = Gone{now, actor == g_selected};
+            }
+            std::erase_if(g_gone, [&](const auto& item) { return now - item.second.at > 30.0; });
             if (offered != g_currentUse)
             {
                 g_currentUse = offered;
@@ -1979,6 +2734,14 @@ namespace qa::features
                 {
                     if (std::none_of(added.begin(), added.end(), [&](const Target& a) { return a.actor == t.actor; })) continue;
                     if (std::find(silent.begin(), silent.end(), t.actor) != silent.end()) continue;
+                    // Back after a moment away, as after a card's camera: not news, and the
+                    // one the player had chosen is chosen again.
+                    if (const auto back = g_gone.find(t.actor); back != g_gone.end())
+                    {
+                        if (back->second.selected && g_selected == nullptr) Select(&t, pawn, here, yaw, false);
+                        g_gone.erase(back);
+                        continue;
+                    }
                     EnsureRoute(pawn, here, t, now, 3.0);
                     speech::Announce(locale::Mod(L"explore.new", {t.label, Metres(SpokenDistance(t)), locale::Mod(SectorKey(SpokenBearing(t, here, yaw)))}));
                 }
@@ -2466,7 +3229,14 @@ namespace qa::features
         // The next or the previous target in the list's stable order.
         void Step(int direction)
         {
-            if (!g_exploring || g_targets.empty()) return;
+            if (!g_exploring) return;
+            // An empty list is an answer too: a card's camera takes the scene's use
+            // locations away until the character has walked off a missed card.
+            if (g_targets.empty())
+            {
+                speech::Now(locale::Mod(L"explore.none"));
+                return;
+            }
             size_t index = 0;
             bool found = false;
             for (size_t i = 0; i < g_targets.size(); ++i)
@@ -2613,6 +3383,7 @@ namespace qa::features
     void ExplorationFeature::Install()
     {
         g_beacon = cfg::Get().beacon;
+        g_tarot = cfg::Get().tarotCards;
         watch::AddHudListener(&OnHud);
         hooks::OnScript(L"ReadingPaneWidget_C", L"AddLines", &OnPageChanged);
         if (!hooks::OnNative(L"/Script/SMG026Runtime.StaticExplorationSMG026_Replicator:MulticastPOIFound", nullptr, &OnPoiFound))
@@ -2663,6 +3434,8 @@ namespace qa::features
             out.push_back(locale::Mod(L"help.where", s.keyWhere));
             out.push_back(locale::Mod(L"help.walk", s.keyWalk));
         }
+        out.push_back(
+            locale::Mod(L"help.tarot", input::CurrentScheme() == input::Scheme::Gamepad ? input::KeyDisplayName(s.padExploreTarotCards) : s.keyTarotCards));
         if (!g_destinationPrompt) return;
         std::vector<std::wstring> keys;
         for (const wchar_t* action :
@@ -2726,6 +3499,21 @@ namespace qa::features
         speech::Now(locale::Mod(g_beacon ? L"explore.beacon.on" : L"explore.beacon.off"));
         // Kept in the ini, so that the next start begins the way this one ended.
         if (!cfg::Persist(L"Exploration", L"Beacon", g_beacon ? L"1" : L"0")) log::Error(L"explore: the beacon setting could not be saved to QuarryAccess.ini");
+    }
+
+    void ToggleTarotCards()
+    {
+        g_tarot = !g_tarot;
+        log::Info(L"explore: the places of the tarot cards are {}", g_tarot ? L"offered" : L"not offered");
+        speech::Now(locale::Mod(g_tarot ? L"explore.tarot.on" : L"explore.tarot.off"));
+        // The list follows at once rather than at the next scan, and the cards are judged
+        // afresh from where the character stands.
+        g_waysScannedAt = -10.0;
+        g_waysFilteredAt = -10.0;
+        g_cardHiddenBy.clear();
+        g_cardVerdict.clear();
+        if (!cfg::Persist(L"Exploration", L"TarotCards", g_tarot ? L"1" : L"0"))
+            log::Error(L"explore: the tarot cards setting could not be saved to QuarryAccess.ini");
     }
 
     void NoteDestinationPrompt()

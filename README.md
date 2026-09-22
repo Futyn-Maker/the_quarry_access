@@ -69,6 +69,7 @@ These keys work while you walk and during fights:
 | H        | D-pad up    | Where the target is                     |
 | G        | X           | Walk to the target, press again to stop |
 | T        | D-pad down  | Beacon or aim sound on or off           |
+| K        | RB          | Tarot card places in the list on or off |
 
 All keys can be changed in `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.ini` in the game folder. The same file has the volume of the mod's sounds and other options, each described there.
 
@@ -117,7 +118,7 @@ When you get control of the character, the mod names the nearest place to go. N 
 - Press G or X on the gamepad to walk there automatically. Press G or X again or move to stop.
 - Follow the beacon. It sounds on the side of the next turn, rises as you get closer and drops an octave when the place is behind you. H or D-pad up says the distance and direction, and T or D-pad down turns the beacon off and on.
 
-Walking on your own with the beacon is freer, and it helps to find more tarot cards.
+K or RB turns on hints for the tarot cards: the spots of the cards you would not pass on the way to any listed place then appear in the list as plain "Way on" places, and the choice is kept for the next start.
 
 Many objects have no name in the game, so the mod reads their internal names, which are in English. In most cases they still make clear what the object is.
 

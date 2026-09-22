@@ -44,6 +44,10 @@ namespace qa::features
     bool LookAroundActive();
     // Switches the beacon off and on, and says which.
     void ToggleBeacon();
+    // Puts the places of the scene's tarot cards into the list of things to walk to as
+    // further ways on, or takes them out again, and says which. Nothing happens outside
+    // exploration.
+    void ToggleTarotCards();
     // Records that the game has offered its own place navigation (its prompts appeared).
     void NoteDestinationPrompt();
     // The label of the use location the character stands in, empty when none.

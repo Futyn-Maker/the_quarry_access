@@ -223,6 +223,7 @@ namespace qa::hotkeys
         case Command::Where: return L"Where";
         case Command::Walk: return L"Walk";
         case Command::Beacon: return L"Beacon";
+        case Command::TarotCards: return L"TarotCards";
         case Command::DevDumpTree: return L"DevDumpTree";
         case Command::DevTrace: return L"DevTrace";
         case Command::DevLogLevel: return L"DevLogLevel";
@@ -247,6 +248,7 @@ namespace qa::hotkeys
         Bind(s.keyWhere, Command::Where);
         Bind(s.keyWalk, Command::Walk);
         Bind(s.keyBeacon, Command::Beacon);
+        Bind(s.keyTarotCards, Command::TarotCards);
         Bind(s.keyDevDumpTree, Command::DevDumpTree);
         Bind(s.keyDevTrace, Command::DevTrace);
         Bind(s.keyDevLogLevel, Command::DevLogLevel);
@@ -255,8 +257,8 @@ namespace qa::hotkeys
         for (size_t i = 0; i < g_keys.size(); ++i)
         {
             const Command c = g_keys[i].command;
-            const bool contextual =
-                c == Command::NextTarget || c == Command::PreviousTarget || c == Command::Where || c == Command::Walk || c == Command::Beacon;
+            const bool contextual = c == Command::NextTarget || c == Command::PreviousTarget || c == Command::Where || c == Command::Walk ||
+                                    c == Command::Beacon || c == Command::TarotCards;
             bindings.push_back(keyhook::Binding{g_keys[i].vk, g_keys[i].ctrl, g_keys[i].alt, g_keys[i].shift, static_cast<int>(i), contextual});
         }
         // Escape stays the game's key, for the pause menu and for backing out of a screen; the
@@ -291,9 +293,9 @@ namespace qa::hotkeys
                       L"ChordSubtitles, ChordLastSubtitle, ChordSpeech and ChordVerbosity",
                       key);
         g_exploreBindings.clear();
-        for (const auto& [key, command] :
-             {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},
-              std::pair{s.padExploreWhere, Command::Where}, std::pair{s.padExploreWalk, Command::Walk}, std::pair{s.padExploreBeacon, Command::Beacon}})
+        for (const auto& [key, command] : {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},
+                                           std::pair{s.padExploreWhere, Command::Where}, std::pair{s.padExploreWalk, Command::Walk},
+                                           std::pair{s.padExploreBeacon, Command::Beacon}, std::pair{s.padExploreTarotCards, Command::TarotCards}})
         {
             if (key.empty()) continue;
             g_exploreBindings.push_back({key, command});
@@ -369,6 +371,9 @@ namespace qa::hotkeys
                     features::ToggleAimSound();
                 else if (features::ExplorationActive())
                     features::ToggleBeacon();
+                break;
+            case Command::TarotCards:
+                if (features::ExplorationActive()) features::ToggleTarotCards();
                 break;
             case Command::DevDumpTree:
                 diag::DumpScreen();
