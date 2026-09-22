@@ -122,6 +122,21 @@ namespace qa::hotkeys
             return (GetAsyncKeyState(vk) & 0x8000) != 0;
         }
 
+        // The name of a key the hook watches, for the log.
+        std::wstring WatchedKeyName(int vk)
+        {
+            switch (vk)
+            {
+            case VK_ESCAPE: return L"Escape";
+            case VK_BACK: return L"Backspace";
+            case VK_UP: return L"Up";
+            case VK_DOWN: return L"Down";
+            case VK_LEFT: return L"Left";
+            case VK_RIGHT: return L"Right";
+            }
+            return std::to_wstring(vk);
+        }
+
         void PollKeyboard()
         {
             if (g_keys.empty()) return;
@@ -261,13 +276,15 @@ namespace qa::hotkeys
                                     c == Command::Beacon || c == Command::TarotCards;
             bindings.push_back(keyhook::Binding{g_keys[i].vk, g_keys[i].ctrl, g_keys[i].alt, g_keys[i].shift, static_cast<int>(i), contextual});
         }
-        // Escape stays the game's key, for the pause menu and for backing out of a screen; the
-        // mod only answers it, by stopping what is being said, so that a screen the player is
-        // leaving is not still being read over the one they arrive at. Only the hook can do
-        // this: it runs before the game is given the key, so the stop always lands before
-        // whatever the new screen says, while a polled key could arrive after the new screen
-        // had been announced and silence that instead.
-        keyhook::Watch({VK_ESCAPE}, []() { speech::Stop(); });
+        // The keys that move the selection or leave a screen stay the game's; the mod only
+        // answers each, by stopping what is being said the moment it goes down, whether or
+        // not the game answers it with anything new: a list moves on at once, and a screen
+        // the player is leaving is not still being read over the one they arrive at. Only
+        // the hook can do this: it runs before the game is given the key, so the stop always
+        // lands before whatever the new screen says, while a polled key could arrive after
+        // the new screen had been announced and silence that instead. Every other key only
+        // lets the next answer interrupt (speech::Focus).
+        keyhook::Watch({VK_ESCAPE, VK_BACK, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT}, [](int vk) { speech::StopForKey(WatchedKeyName(vk)); });
         if (keyhook::Install(bindings))
             log::Info(L"keyboard hook installed: the mod's keys are taken ahead of the screen reader and the game");
         else
@@ -275,6 +292,13 @@ namespace qa::hotkeys
 
         g_padHold = str::Trim(s.chordHold);
         input::SetChordHold(g_padHold);
+        // The pad's own keys for the same: the D-pad, B and Start, answered where the game
+        // reads its pad, which is before it acts on them. The sticks are never among them: a
+        // walk holds one for seconds, and a stick the game answers with a new selection is
+        // answered by the reading of that selection.
+        input::WatchPadButtons(
+            {L"Gamepad_DPad_Up", L"Gamepad_DPad_Down", L"Gamepad_DPad_Left", L"Gamepad_DPad_Right", L"Gamepad_FaceButton_Right", L"Gamepad_Special_Right"},
+            [](std::wstring_view key) { speech::StopForKey(key); });
         g_padBindings.clear();
         if (!g_padHold.empty())
         {

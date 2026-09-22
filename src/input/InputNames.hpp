@@ -4,6 +4,7 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace qa::input
 {
@@ -76,6 +77,14 @@ namespace qa::input
     // with nothing pressed, and whatever was pressed under it stays hidden until it is let go
     // of, so a chord is never also a press for the game.
     void SetChordHold(std::wstring_view keyName);
+
+    // Buttons answered the moment they go down, on the reading the game itself takes and
+    // before it acts on them, as the keyboard hook answers its watched keys. The handler
+    // gets the engine key name of the button, on the thread the game reads its pad on. A
+    // button hidden from the game under the chord hold is not answered. Only buttons: a
+    // stick or a trigger is never watched.
+    using PadWatcher = void (*)(std::wstring_view keyName);
+    void WatchPadButtons(const std::vector<std::wstring>& keyNames, PadWatcher handler);
 
     // The device the player's last mod hotkey came from is the device the answer is worded
     // for: for a moment after the press the scheme reads as that device.

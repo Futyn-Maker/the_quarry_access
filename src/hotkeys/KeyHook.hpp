@@ -25,7 +25,7 @@ namespace qa::keyhook
     // A key the mod watches but never takes: the handler runs on the hook's own thread the
     // moment the key goes down, before the game is given it, and the key goes on to the game
     // all the same. Set before Install; it is read only once the hook runs.
-    using Watcher = void (*)();
+    using Watcher = void (*)(int vk);
     void Watch(std::vector<int> vks, Watcher handler);
 
     // Starts the hook thread with the keys to take. False when the hook could not be set.

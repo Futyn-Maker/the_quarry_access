@@ -705,6 +705,31 @@ namespace qa::input
             }
         }
 
+        // ---- the buttons answered the moment they go down ---------------------------------
+        //
+        // The game learns of a button only from this reading, so a press seen here is seen
+        // before the game acts on it: a stop for the speech lands ahead of whatever the
+        // press makes the game say, where a poll every third frame could run after the new
+        // screen was announced and silence that instead.
+        std::atomic<uint16_t> g_watchMask{0};
+        PadWatcher g_padWatcher = nullptr;
+        std::wstring g_watchNames[16]; // the engine key name of each watched bit
+        uint16_t g_watchLast[8] = {};  // what each pad showed the game last time: XInput's four, then Sony's
+
+        void WatchButtons(uint32_t index, uint16_t buttons)
+        {
+            if (index >= 8) return;
+            const uint16_t mask = g_watchMask.load(std::memory_order_relaxed);
+            const uint16_t pressed = static_cast<uint16_t>(buttons & static_cast<uint16_t>(~g_watchLast[index]) & mask);
+            g_watchLast[index] = buttons;
+            if (pressed == 0 || !g_padWatcher) return;
+            g_lastInputAt.store(NowMs(), std::memory_order_relaxed);
+            for (int bit = 0; bit < 16; ++bit)
+            {
+                if (pressed & (1u << bit)) g_padWatcher(g_watchNames[bit]);
+            }
+        }
+
         uint32_t __stdcall GetStateDetour(uint32_t index, XInputState* state)
         {
             const uint32_t result = g_realGetState ? g_realGetState(index, state) : 1167u;
@@ -719,7 +744,11 @@ namespace qa::input
                 state->gamepad.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
                 state->packetNumber += 1;
             }
-            if (result == 0 && state) HideChord(state->gamepad);
+            if (result == 0 && state)
+            {
+                HideChord(state->gamepad);
+                WatchButtons(index, state->gamepad.buttons);
+            }
             return result;
         }
 
@@ -792,8 +821,8 @@ namespace qa::input
                 g_sceReadAt = NowMs();
                 g_sceConnected = true;
             }
-            // What the game is shown: the stick pushed for a walk and the chord hidden; then
-            // only what changed goes back into its data.
+            // What the game is shown: the stick pushed for a walk, the chord hidden, the
+            // watched buttons answered; then only what changed goes back into its data.
             XInputGamepad shown = real;
             if (g_injecting.load(std::memory_order_relaxed))
             {
@@ -801,6 +830,7 @@ namespace qa::input
                 shown.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
             }
             HideChord(shown);
+            WatchButtons(4 + static_cast<uint32_t>(slot), shown.buttons);
             if (shown.buttons != real.buttons)
             {
                 uint32_t buttons = head->buttons;
@@ -1139,6 +1169,27 @@ namespace qa::input
         g_latchedRightStick.store(false, std::memory_order_relaxed);
         if (g_holdButtons.load(std::memory_order_relaxed) == 0 && g_holdTrigger.load(std::memory_order_relaxed) == 0 && !lower.empty())
             log::Error(L"input: the chord hold {} is not a button or trigger the game reads", std::wstring(keyName));
+    }
+
+    void WatchPadButtons(const std::vector<std::wstring>& keyNames, PadWatcher handler)
+    {
+        uint16_t mask = 0;
+        for (const auto& name : keyNames)
+        {
+            const unsigned bit = PadButtonBit(str::ToLower(str::Trim(name)));
+            if (bit == 0 || bit > 0xFFFFu)
+            {
+                log::Error(L"input: {} is not a button the game reads, and is not watched", name);
+                continue;
+            }
+            mask |= static_cast<uint16_t>(bit);
+            for (int i = 0; i < 16; ++i)
+            {
+                if (bit == (1u << i)) g_watchNames[i] = name;
+            }
+        }
+        g_padWatcher = handler;
+        g_watchMask.store(mask, std::memory_order_relaxed);
     }
 
     long long MsSinceInput()

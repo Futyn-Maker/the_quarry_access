@@ -24,6 +24,9 @@ namespace qa::speech
     void Announce(std::wstring_view text);
     void Now(std::wstring_view text);
     void Stop();
+    // Silences everything for a key the player pressed. The log notes it at Verbose only,
+    // since the arrows and the D-pad come many times a minute.
+    void StopForKey(std::wstring_view key);
     void Repeat();
 
     // Text of the last thing spoken (for the read-screen readout).

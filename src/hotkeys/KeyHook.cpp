@@ -62,7 +62,7 @@ namespace qa::keyhook
                         if (down)
                         {
                             // The key repeats while held; only the press counts.
-                            if (!g_watchedDown[static_cast<size_t>(vk)]) g_watcher();
+                            if (!g_watchedDown[static_cast<size_t>(vk)]) g_watcher(vk);
                             g_watchedDown[static_cast<size_t>(vk)] = true;
                         }
                         else

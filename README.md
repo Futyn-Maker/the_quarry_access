@@ -41,7 +41,7 @@ If the game shows "Failed to load UE4SS.dll" at start, install the [Microsoft Vi
 
 Use the arrow keys or the D-pad to move through menus, Enter or A to select, and Backspace or B to go back. Left and right change a setting. Escape or Start pauses the game, and in the pause menu [ and ] or LB and RB switch tabs. When a clue or a tarot card is found, Q or LB opens it. The mod reads the keys each screen offers.
 
-Escape also stops the speech, so a screen you leave is not still being read over the one you arrive at.
+The arrow keys, Backspace and Escape, or the D-pad, B and Start, also stop the speech as you press them, so a list moves on at once and a screen you leave is not still being read over the one you arrive at.
 
 The game's Accessibility settings make many mechanics easier. Choice Timer, QTE Speed and Interrupt Speed give more time. Simple QTE's accepts any direction or passes quick-time events by itself. Button Mash can ask for holding or a single press instead of mashing. Don't Breathe and Aim Assist can be set to Auto.
 

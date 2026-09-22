@@ -121,6 +121,13 @@ namespace qa::speech
         log::Info(L"speech: stopped");
     }
 
+    void StopForKey(std::wstring_view key)
+    {
+        std::lock_guard lock(g_mutex);
+        outputs::Silence();
+        log::Verbose(L"speech: stopped by {}", key);
+    }
+
     void Repeat()
     {
         std::lock_guard lock(g_mutex);
