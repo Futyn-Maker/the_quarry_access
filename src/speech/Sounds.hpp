@@ -2,6 +2,10 @@
 // Short cues played through the sound card rather than the screen reader, so they
 // reach the player at once, even while a held key keeps the reader silent or while the
 // reader is still busy with a subtitle.
+//
+// PlaySound plays one of them at a time, and a new one cuts off the one playing. A cue
+// tells of something that happened once, while the blips below come again a moment later,
+// so the blips wait while a cue sounds.
 
 namespace qa::sounds
 {

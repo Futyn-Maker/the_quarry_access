@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -30,6 +32,30 @@ namespace qa::sounds
         size_t g_beaconIndex = 0;
         double g_amplitude = 0.0;
         bool g_enabled = false;
+        std::atomic<int64_t> g_cueUntil{0}; // when the last cue falls silent, in milliseconds of the steady clock
+
+        int64_t NowMs()
+        {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
+
+        // How long a sound made by Wave lasts, from its header: the bytes of its samples over
+        // the bytes it plays a second.
+        int64_t LengthMs(const Wav& wav)
+        {
+            if (wav.size() < 44) return 0;
+            uint32_t bytesPerSecond = 0;
+            uint32_t dataBytes = 0;
+            std::memcpy(&bytesPerSecond, wav.data() + 28, 4);
+            std::memcpy(&dataBytes, wav.data() + 40, 4);
+            return bytesPerSecond == 0 ? 0 : static_cast<int64_t>(dataBytes) * 1000 / bytesPerSecond;
+        }
+
+        // A blip that came now would cut off a cue still sounding.
+        bool CueSounding()
+        {
+            return NowMs() < g_cueUntil.load();
+        }
 
         void Append(Wav& out, const void* data, size_t size)
         {
@@ -146,18 +172,21 @@ namespace qa::sounds
     void Play(Cue cue)
     {
         const auto index = static_cast<size_t>(cue);
-        if (index < g_cues.size()) PlayWav(g_cues[index]);
+        if (!g_enabled || index >= g_cues.size() || g_cues[index].empty()) return;
+        g_cueUntil = NowMs() + LengthMs(g_cues[index]);
+        PlayWav(g_cues[index]);
     }
 
     void Tick(double level)
     {
+        if (CueSounding()) return;
         const int step = static_cast<int>(std::lround(std::clamp(level, 0.0, 1.0) * (kTickSteps - 1)));
         PlayWav(g_ticks[static_cast<size_t>(step)]);
     }
 
     void Beacon(double pan, double level, bool muffled)
     {
-        if (!g_enabled) return;
+        if (!g_enabled || CueSounding()) return;
         // Two octaves from far to near; an octave lower when the target is behind.
         double frequency = 330.0 * std::pow(4.0, std::clamp(level, 0.0, 1.0));
         if (muffled) frequency *= 0.5;
@@ -170,7 +199,7 @@ namespace qa::sounds
 
     void Aim(double pan, double level, bool locked, bool muffled)
     {
-        if (!g_enabled) return;
+        if (!g_enabled || CueSounding()) return;
         const double placed = std::clamp(pan, -1.0, 1.0);
         if (locked)
         {

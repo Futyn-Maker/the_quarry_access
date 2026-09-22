@@ -19,3 +19,4 @@ paths:
 - Prism reports every SAPI voice as `en-us`: it reads the token's own `Language` value, and SAPI keeps that under the token's `Attributes` key. `speech/SapiVoices` reads the attribute itself and the two lists are matched by voice name. Check this against a fresh Prism before trusting its language.
 - NVDA cannot report whether it is speaking, so the reader does all the queueing. Only the player's input interrupts (`input::MsSinceInput`).
 - Tones play through the sound card at `[Sounds] Volume`, 80 by default: quieter cues were inaudible under the game.
+- `PlaySound` plays one sound at a time for the whole process, and a new one cuts off the one playing. A cue (`sounds::Play`) tells of something that happened once; the blips (`Tick`, `Beacon`, `Aim`) come again within a second, so they wait while a cue sounds. Otherwise a breath tick could cut off the danger tone, and an aim blip the tone of a hit.
