@@ -20,3 +20,6 @@ CMakeUserPresets.json
 /screenshots/
 # Tools, extracted game files, dumps and save backups for researching the game (CLAUDE.md)
 /research/
+
+# Python caches of tools\geometry
+__pycache__/
