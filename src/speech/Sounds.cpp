@@ -25,7 +25,7 @@ namespace qa::sounds
 
         using Wav = std::vector<uint8_t>; // a WAV file in memory; PlaySound reads it while playing
 
-        std::array<Wav, 6> g_cues;
+        std::array<Wav, 8> g_cues;
         std::array<Wav, kTickSteps> g_ticks;
         std::array<Wav, 4> g_beacons; // made on demand; a few are kept so a playing one is not overwritten
         Wav g_locked;                 // the double ping of a shot that would land
@@ -77,6 +77,9 @@ namespace qa::sounds
         {
             double frequency;
             double seconds;
+            double glideTo = 0.0;  // the pitch the note slides to over its length; 0 holds it
+            double attack = 0.004; // seconds it takes to rise
+            double release = 0.03; // seconds it takes to fade, at most half the note
         };
 
         // Sine tones with a soft attack and release, so that they neither click nor startle;
@@ -91,14 +94,20 @@ namespace qa::sounds
             for (const auto& note : notes)
             {
                 const int count = static_cast<int>(note.seconds * kRate);
-                const int attack = kRate * 4 / 1000;
-                const int release = std::min(count / 2, kRate * 30 / 1000);
+                const int attack = std::max(1, static_cast<int>(std::lround(note.attack * kRate)));
+                const int release = std::min(count / 2, static_cast<int>(std::lround(note.release * kRate)));
+                double phase = 0.0;
                 for (int i = 0; i < count; ++i)
                 {
                     double envelope = 1.0;
                     if (i < attack) envelope = static_cast<double>(i) / attack;
                     if (count - i < release) envelope = std::min(envelope, static_cast<double>(count - i) / release);
-                    const double value = std::sin(2.0 * std::numbers::pi * note.frequency * i / kRate) * amplitude * envelope;
+                    const double value = std::sin(phase) * amplitude * envelope;
+                    // A slide moves by equal steps of pitch, as the ear hears them, rather than
+                    // of frequency.
+                    const double frequency =
+                        note.glideTo > 0.0 ? note.frequency * std::pow(note.glideTo / note.frequency, static_cast<double>(i) / count) : note.frequency;
+                    phase += 2.0 * std::numbers::pi * frequency / kRate;
                     if (stereo)
                     {
                         samples.push_back(static_cast<int16_t>(value * left * 32767.0));
@@ -158,6 +167,13 @@ namespace qa::sounds
         g_cues[static_cast<size_t>(Cue::Down)] = Wave({{659.0, 0.04}, {554.0, 0.04}, {440.0, 0.06}}, amplitude);
         g_cues[static_cast<size_t>(Cue::Left)] = Wave({{523.0, 0.05}, {523.0, 0.08}}, amplitude, -1.0);
         g_cues[static_cast<size_t>(Cue::Right)] = Wave({{523.0, 0.05}, {523.0, 0.08}}, amplitude, 1.0);
+        // The game handing the character over and taking it back: one note sliding up a fifth
+        // and one sliding down, softer and quieter than the cues of the mechanics, since one of
+        // them comes with every cutscene.
+        g_cues[static_cast<size_t>(Cue::ControlGained)] =
+            Wave({{.frequency = 392.0, .seconds = 0.18, .glideTo = 587.0, .attack = 0.025, .release = 0.06}}, amplitude * 0.6);
+        g_cues[static_cast<size_t>(Cue::ControlLost)] =
+            Wave({{.frequency = 587.0, .seconds = 0.18, .glideTo = 392.0, .attack = 0.025, .release = 0.06}}, amplitude * 0.6);
         // Blips two octaves apart from the lowest to the highest, quieter than the cues.
         for (int i = 0; i < kTickSteps; ++i)
         {

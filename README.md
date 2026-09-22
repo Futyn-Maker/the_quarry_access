@@ -110,7 +110,7 @@ The game has no crosshair. Your aim is the torch beam on the weapon. Move it wit
 
 ### Exploration
 
-Walk with WASD or the left stick, and hold left Shift or LB to walk faster. The mouse or the right stick turns the camera. When the game offers an interaction, the mod reads it with its key, usually the left mouse button or A.
+Walk with WASD or the left stick, and hold left Shift or LB to walk faster. The mouse or the right stick turns the camera. When the game offers an interaction, the mod reads it with its key, usually the left mouse button or A. A soft rising tone plays when you can walk, and a falling one when you no longer can.
 
 When you get control of the character, the mod names the nearest place to go. N and P or left and right D-pad keys choose another one, and F6 or Back + X lists all of them with distance and direction. "Way on" is where the scene continues. You can get to the chosen place in two ways:
 

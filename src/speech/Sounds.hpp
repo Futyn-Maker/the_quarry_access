@@ -17,6 +17,8 @@ namespace qa::sounds
         Down,
         Left,
         Right,
+        ControlGained, // the game hands the character to the player
+        ControlLost,   // the game takes the character back
     };
 
     // Prepares the cues at the given volume (0 to 100; 0 keeps the mod silent).

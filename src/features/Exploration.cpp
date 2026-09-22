@@ -118,9 +118,11 @@ namespace qa::features
         bool g_roaming = false; // the character is the player's and nothing of the game stands over it, as last logged
         std::wstring g_notRoamingWhy;
         // Who has the character, read at every frame: the player's pawn, whether the game
-        // hands it to the player, and the character's cinematic state as last logged.
+        // hands it to the player, what the cue last told them of that, and the character's
+        // cinematic state as last logged.
         UObject* g_controlPawn = nullptr;
         bool g_control = false;
+        bool g_controlHeard = false;
         std::wstring_view g_stage;
         double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
         double g_hintSaidAt = -1000.0; // when they were last said
@@ -1815,6 +1817,20 @@ namespace qa::features
             }
             const bool changed = control != g_control;
             g_control = control;
+            // The player hears each change on the frame it comes. A player leaving for the main
+            // menu is handed the character back for the seconds it takes the game to get there;
+            // that world coming apart is not sounded, and at the other end nobody holds one.
+            if (LeavingTheGame())
+            {
+                g_controlHeard = false;
+                return changed;
+            }
+            if (control != g_controlHeard)
+            {
+                g_controlHeard = control;
+                log::Info(L"explore: the game {} the character", control ? L"hands the player" : L"takes back");
+                sounds::Play(control ? sounds::Cue::ControlGained : sounds::Cue::ControlLost);
+            }
             return changed;
         }
 

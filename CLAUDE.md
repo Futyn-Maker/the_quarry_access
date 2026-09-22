@@ -68,7 +68,7 @@ The game folder comes from `-GameDir`, then `QA_GAME_DIR`, then Steam's library 
 - `Text` and `LocalisedText` properties hold English design-time placeholders; the player sees the rendered child text blocks. Bound texts never update their `Text`: call the getter.
 - Cached pointers go stale. `obj::IsLive` checks that the object-array slot points back to the object, and `ProcessEvent` on a freed widget crashes inside UE4SS. Keep no widgets across screens, and run pollers, hooks and commands under `SafeInvokeLogged`.
 - Flow `FActorReference` names resolve through the actor's `ActorRegister.ActorName`; level actors carry instance numbers (`UL_FindOldTrunk_2` is registered as `UL_FindOldTrunk`).
-- The player has the character only while it is in locomotion (`IsInLoco`), which for the player's pawn nothing but the scene's explore action grants; any cutscene, however short, takes it out on the frame it starts. A pause freezes that state rather than changing it. The mod reads it at every frame (`.claude/rules/exploration.md`).
+- The player has the character only while it is in locomotion (`IsInLoco`), which for the player's pawn nothing but the scene's explore action grants; any cutscene, however short, takes it out on the frame it starts. A pause freezes that state rather than changing it. The mod reads it at every frame and plays a cue on each change (`.claude/rules/exploration.md`).
 
 ## Researching the Game
 
