@@ -181,6 +181,8 @@ namespace qa::cfg
         s.chordLastSubtitle = ini.Get(L"Hotkeys", L"ChordLastSubtitle", s.chordLastSubtitle);
         s.chordSpeech = ini.Get(L"Hotkeys", L"ChordSpeech", s.chordSpeech);
         s.chordVerbosity = ini.Get(L"Hotkeys", L"ChordVerbosity", s.chordVerbosity);
+        s.chordDevDumpTree = ini.Get(L"Hotkeys", L"ChordDevDumpTree", s.chordDevDumpTree);
+        s.chordDevLogLevel = ini.Get(L"Hotkeys", L"ChordDevLogLevel", s.chordDevLogLevel);
         for (const wchar_t* old : {L"PadChordHold", L"PadRepeat", L"PadReadScreen", L"PadStop", L"PadHelp", L"PadSubtitles", L"PadLastSubtitle",
                                    L"PadNextTarget", L"PadPreviousTarget", L"PadWhere", L"PadBeacon"})
         {

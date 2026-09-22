@@ -82,7 +82,7 @@ namespace qa::diag
             else if (str::StartsWith(lower, L"loglevel "))
             {
                 log::Level level;
-                if (log::ParseLevel(cmd.substr(9), level)) log::SetLevel(level);
+                if (log::ParseLevel(cmd.substr(9), level)) SetLogLevel(level);
             }
             else if (str::StartsWith(lower, L"say "))
                 speech::Announce(cmd.substr(4));
@@ -239,10 +239,18 @@ namespace qa::diag
         speech::Announce(locale::Mod(on ? L"diag.trace.on" : L"diag.trace.off"));
     }
 
+    void SetLogLevel(log::Level level)
+    {
+        log::SetLevel(level);
+        // Kept in the ini, so that the next session logs the way this one was left.
+        if (!cfg::Persist(L"General", L"LogLevel", log::LevelName(level))) log::Error(L"diag: the log level could not be saved to QuarryAccess.ini");
+        log::Info(L"diag: log level {}", log::LevelName(level));
+    }
+
     void CycleLogLevel()
     {
-        const auto level = log::CycleLevel();
-        speech::Announce(locale::Mod(L"diag.loglevel", log::LevelName(level)));
+        SetLogLevel(log::CycleLevel());
+        speech::Announce(locale::Mod(L"diag.loglevel", log::LevelName(log::GetLevel())));
     }
 
     std::wstring ReadScreen()

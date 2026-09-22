@@ -47,6 +47,8 @@ namespace qa::cfg
         std::wstring chordLastSubtitle = L"Gamepad_RightShoulder";
         std::wstring chordSpeech = L"Gamepad_RightThumbstick";
         std::wstring chordVerbosity = L"Gamepad_LeftThumbstick";
+        std::wstring chordDevDumpTree = L"Gamepad_LeftShoulder";
+        std::wstring chordDevLogLevel = L"Gamepad_LeftTrigger";
         std::wstring keyNextTarget = L"N";
         std::wstring keyPreviousTarget = L"P";
         std::wstring keyBeacon = L"T";

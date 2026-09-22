@@ -305,7 +305,8 @@ namespace qa::hotkeys
             for (const auto& [key, command] :
                  {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen}, std::pair{s.chordStop, Command::Stop},
                   std::pair{s.chordHelp, Command::Help}, std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle},
-                  std::pair{s.chordSpeech, Command::Speech}, std::pair{s.chordVerbosity, Command::Verbosity}})
+                  std::pair{s.chordSpeech, Command::Speech}, std::pair{s.chordVerbosity, Command::Verbosity},
+                  std::pair{s.chordDevDumpTree, Command::DevDumpTree}, std::pair{s.chordDevLogLevel, Command::DevLogLevel}})
             {
                 if (str::Trim(key).empty()) continue;
                 g_padBindings.push_back({str::Trim(key), command});
@@ -314,7 +315,7 @@ namespace qa::hotkeys
         }
         for (const auto& key : s.obsoleteKeys)
             log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
-                      L"ChordSubtitles, ChordLastSubtitle, ChordSpeech and ChordVerbosity",
+                      L"ChordSubtitles, ChordLastSubtitle, ChordSpeech, ChordVerbosity, ChordDevDumpTree and ChordDevLogLevel",
                       key);
         g_exploreBindings.clear();
         for (const auto& [key, command] : {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},

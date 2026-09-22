@@ -1,6 +1,8 @@
 #pragma once
 // Development diagnostics and the user-facing "read screen"/"help" readouts.
 
+#include "core/Log.hpp"
+
 #include <string>
 
 namespace qa::diag
@@ -10,6 +12,8 @@ namespace qa::diag
     void DumpScreen();
 
     void ToggleTrace();
+    // Sets the log level and keeps it in the ini for the next session.
+    void SetLogLevel(log::Level level);
     void CycleLogLevel();
 
     // Composes what F6 says: screen, focused element, prompts, mechanic state, last subtitle.
