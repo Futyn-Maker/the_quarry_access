@@ -27,6 +27,7 @@
 #include <map>
 #include <numbers>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace qa::features
@@ -114,8 +115,13 @@ namespace qa::features
         double g_leftAt = -1000.0; // when the player last lost control
         Vec g_leftAtPosition;
         bool g_exploring = false;
-        bool g_inLoco = false;
-        std::wstring g_notInLocoWhy;
+        bool g_roaming = false; // the character is the player's and nothing of the game stands over it, as last logged
+        std::wstring g_notRoamingWhy;
+        // Who has the character, read at every frame: the player's pawn, whether the game
+        // hands it to the player, and the character's cinematic state as last logged.
+        UObject* g_controlPawn = nullptr;
+        bool g_control = false;
+        std::wstring_view g_stage;
         double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
         double g_hintSaidAt = -1000.0; // when they were last said
         bool g_beacon = true;
@@ -1609,9 +1615,9 @@ namespace qa::features
                 StopWalk(nullptr, false); // arriving speaks for itself
                 return;
             }
-            // The game may take the character back between two of these frames, so its own
-            // word on that is asked for here rather than waited for from the slower round.
-            if (watch::CurrentScreen() != nullptr || MechanicShown() || !obj::CallForBool(pawn, L"IsInLoco"))
+            // The game may take the character back between two rounds of the roaming, so its
+            // hold on the character, read at this frame, is asked here rather than waited for.
+            if (watch::CurrentScreen() != nullptr || MechanicShown() || !g_control)
             {
                 StopWalk(nullptr, false);
                 return;
@@ -1764,6 +1770,54 @@ namespace qa::features
             speech::Now(locale::Mod(L"explore.walk.start"));
         }
 
+        // ---- who has the character --------------------------------------------------------
+
+        // The character's cinematic state as the game names it, for the log. The game answers
+        // for each state but the three passages into, out of and between cutscenes.
+        const wchar_t* CinematicStage(UObject* pawn, bool loco)
+        {
+            if (loco) return L"Loco";
+            if (obj::CallForBool(pawn, L"IsBoundAndRunning")) return L"CinematicRunning";
+            if (obj::CallForBool(pawn, L"IsSleeping")) return L"Standby";
+            if (obj::CallForBool(pawn, L"IsInCinematicToLoco")) return L"CinematicToLoco";
+            if (obj::CallForBool(pawn, L"IsBound")) return L"Mount";
+            return L"Unmount, LocoToCinematic or CinematicToCinematic";
+        }
+
+        // Whether the game hands the player the character, read at every frame. The scene's
+        // explore action marks the player's character as explored with while it runs, and the
+        // character's state machine keeps it in locomotion only while it is so marked or while
+        // the scene lets it walk, which the scenes do only for a companion an AI walks or
+        // together with the explore action. Any cutscene takes it out of locomotion, the end of
+        // the explore action as well, and IsInLoco is that state and nothing more. A pause
+        // freezes the state rather than changing it. Returns whether the hold changed, so that
+        // exploration begins and ends on the frame it does.
+        bool PollControl()
+        {
+            UObject* pawn = Pawn();
+            const bool control = pawn && obj::CallForBool(pawn, L"IsInLoco");
+            if (pawn != g_controlPawn)
+            {
+                g_controlPawn = pawn;
+                bool needsLeave = false;
+                if (pawn && obj::ReadBool(pawn, L"bLocomotionRequiresAuthorisation", needsLeave))
+                    log::Info(L"explore: the player's character is {}, which walks {}", obj::ObjectName(pawn),
+                              needsLeave ? L"only while the scene lets it" : L"whenever no cutscene holds it");
+            }
+            const std::wstring_view stage = pawn ? CinematicStage(pawn, control) : L"";
+            if (stage != g_stage)
+            {
+                g_stage = stage;
+                if (pawn)
+                    log::Info(L"explore: {} is in the cinematic state {}", obj::ObjectName(pawn), stage);
+                else
+                    log::Info(L"explore: the player has no character");
+            }
+            const bool changed = control != g_control;
+            g_control = control;
+            return changed;
+        }
+
         // ---- free roaming ----------------------------------------------------------------
 
         // The game's own mechanics take the keys back while they are on screen. A choice
@@ -1784,21 +1838,20 @@ namespace qa::features
 
         void PollRoaming(double now)
         {
-            UObject* pawn = Pawn();
+            UObject* pawn = g_controlPawn;
             UObject* screen = watch::CurrentScreen();
             UObject* mechanic = ShownMechanic();
-            const bool loco = pawn && obj::CallForBool(pawn, L"IsInLoco");
-            const bool exploring = pawn && !screen && !mechanic && loco;
+            const bool exploring = g_control && !screen && !mechanic;
             // What keeps the character from the player is logged whenever it changes.
             const std::wstring why = exploring  ? std::wstring()
                                      : screen   ? L"a screen is up, " + obj::ClassName(screen)
                                      : mechanic ? L"a mechanic is shown, " + obj::ClassName(mechanic)
                                      : pawn     ? std::wstring(L"not walking")
                                                 : std::wstring(L"no character");
-            if (exploring != g_inLoco || why != g_notInLocoWhy)
+            if (exploring != g_roaming || why != g_notRoamingWhy)
             {
-                g_inLoco = exploring;
-                g_notInLocoWhy = why;
+                g_roaming = exploring;
+                g_notRoamingWhy = why;
                 log::Info(L"explore: {} {}{}", pawn ? obj::ObjectName(pawn) : L"<no pawn>",
                           exploring ? L"under the player's control" : L"not under the player's control: ", why);
             }
@@ -2379,8 +2432,11 @@ namespace qa::features
         void PollImpl()
         {
             const double now = gamethread::NowSeconds();
+            // Who has the character is read at every frame, and the roaming takes a change up on
+            // the frame it happens rather than at its next round.
+            const bool controlChanged = PollControl();
             PollWalk(now); // the character is pushed along every frame, as a held key would
-            if (gamethread::FrameCount() % 10 == 0) PollRoaming(now);
+            if (controlChanged || gamethread::FrameCount() % 10 == 0) PollRoaming(now);
             if (gamethread::FrameCount() % 5 == 0) PollStatic(now);
             if (gamethread::FrameCount() % 5 == 2) PollFlowWatch(now);
             if (gamethread::FrameCount() % 6 == 3) PollReading();
