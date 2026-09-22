@@ -127,11 +127,13 @@ namespace qa::features
         bool g_roaming = false; // the character is the player's and nothing of the game stands over it, as last logged
         std::wstring g_notRoamingWhy;
         // Who has the character, read at every frame: the player's pawn, whether the game
-        // hands it to the player, what the cue last told them of that, and the character's
+        // hands it to the player, whether the tone has told the player of this hold, whether
+        // the hold was found with nothing to walk to (logged once), and the character's
         // cinematic state as last logged.
         UObject* g_controlPawn = nullptr;
         bool g_control = false;
         bool g_controlHeard = false;
+        bool g_controlQuiet = false;
         std::wstring_view g_stage;
         double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
         double g_hintSaidAt = -1000.0; // when they were last said
@@ -2556,22 +2558,61 @@ namespace qa::features
             }
             const bool changed = control != g_control;
             g_control = control;
-            // The player hears each change on the frame it comes. A player leaving for the main
-            // menu is handed the character back for the seconds it takes the game to get there;
-            // that world coming apart is not sounded, and at the other end nobody holds one.
+            // A player leaving for the main menu is handed the character back for the seconds it
+            // takes the game to get there; that world coming apart is no hand-over, and at the
+            // other end nobody holds one.
             if (LeavingTheGame())
             {
                 g_controlHeard = false;
+                g_controlQuiet = false;
                 return changed;
             }
-            if (control != g_controlHeard)
+            if (changed)
             {
-                g_controlHeard = control;
                 log::Info(L"explore: the game {} the character", control ? L"hands the player" : L"takes back");
                 if (control) LogNavigationData();
-                sounds::Play(control ? sounds::Cue::ControlGained : sounds::Cue::ControlLost);
             }
             return changed;
+        }
+
+        // The tones of the hand-over and of the taking back, played once the roaming has read
+        // the frame. A hold with nothing to walk to is no scene to explore: at the end of a
+        // chapter the game hands a character over for a few seconds with nothing about, and no
+        // tone plays for such a hold, while exploration goes on as ever and N and P say there
+        // is nothing to walk to. The hand-over sounds once the roaming has listed something in
+        // the hold, which is the hand-over's own frame wherever the scene turned its use
+        // locations on before handing the character over, and the taking back sounds only after
+        // it. A list that empties while the player keeps the character (a card's prompt turns
+        // the use locations off) takes nothing back.
+        void SoundControl(bool controlChanged)
+        {
+            if (LeavingTheGame()) return;
+            if (g_controlHeard)
+            {
+                if (g_control) return;
+                g_controlHeard = false;
+                log::Info(L"explore: the taking back sounds");
+                sounds::Play(sounds::Cue::ControlLost);
+                return;
+            }
+            if (!g_control)
+            {
+                if (controlChanged && g_controlQuiet) log::Info(L"explore: the taking back of a hold with nothing to walk to is not sounded");
+                g_controlQuiet = false;
+                return;
+            }
+            // While a screen or a mechanic stands over the hold, the roaming has not read it.
+            if (!g_exploring) return;
+            if (g_targets.empty())
+            {
+                if (!g_controlQuiet) log::Info(L"explore: the hand-over has nothing to walk to and is not sounded");
+                g_controlQuiet = true;
+                return;
+            }
+            g_controlHeard = true;
+            g_controlQuiet = false;
+            log::Info(L"explore: the hand-over sounds, with {} to walk to", g_targets.size());
+            sounds::Play(sounds::Cue::ControlGained);
         }
 
         // ---- free roaming ----------------------------------------------------------------
@@ -3216,6 +3257,7 @@ namespace qa::features
             const bool controlChanged = PollControl();
             PollWalk(now); // the character is pushed along every frame, as a held key would
             if (controlChanged || gamethread::FrameCount() % 10 == 0) PollRoaming(now);
+            SoundControl(controlChanged);
             if (gamethread::FrameCount() % 5 == 0) PollStatic(now);
             if (gamethread::FrameCount() % 5 == 2) PollFlowWatch(now);
             if (gamethread::FrameCount() % 6 == 3) PollReading();
