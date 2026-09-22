@@ -642,7 +642,14 @@ namespace qa::features
             }
             if (obj::IsA(ev.instance, L"TimerBarWidgetSMG026"))
             {
-                speech::Announce(locale::Mod(L"choice.timer"));
+                // The game raises this bar beside an interruption and beside a fight. The
+                // interruption is marked by its own sound, set up a moment before the bar
+                // appears, so briefly the word is left to the sound there; the fight's bar
+                // keeps the word at either level.
+                if (InterruptPromptSetUpWithin(1.0) && !cfg::Detailed())
+                    log::Info(L"choices: the timer bar belongs to an interruption, which its sound marks");
+                else
+                    speech::Announce(locale::Mod(L"choice.timer"));
                 return;
             }
             Choice choice;

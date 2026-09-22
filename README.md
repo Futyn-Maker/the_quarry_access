@@ -89,7 +89,7 @@ The options are in the corners of the screen, and the mod reads each with its co
 
 ### Prompts and Interruptions
 
-When the game shows a button prompt or an interruption, the mod reads it with its key. Press the key to act. An interruption lasts only a moment.
+When the game shows a button prompt or an interruption, the mod reads it with its key. Press the key to act. An interruption lasts only a moment, and three quick taps mark it.
 
 ### Quick-Time Events
 
@@ -101,7 +101,7 @@ Press the key the mod names, usually the left mouse button or A, the way the gam
 
 ### Don't Breathe
 
-Hold the left mouse button or A to hold your breath, and keep holding while there is danger. Blips follow your breath and fall as it runs out. A rising tone with "The danger has passed" means you can release. A falling tone with "Danger" means the danger is coming back.
+Hold the left mouse button or A to hold your breath, and keep holding while there is danger. A falling tone marks the moment to start. Blips follow your breath and fall as it runs out. A rising tone with "The danger has passed" means you can release. A falling tone with "Danger" means the danger is coming back.
 
 ### Aiming
 

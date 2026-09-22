@@ -25,4 +25,8 @@ namespace qa::features
 
     // The input action a button prompt widget was last set up with, empty when unknown.
     std::wstring PromptAction(RC::Unreal::UObject* promptWidget);
+
+    // True when the game set an interruption prompt up within the last `seconds`, which is
+    // how the timer bar it raises beside one is told from the timer bar of a fight.
+    bool InterruptPromptSetUpWithin(double seconds);
 }

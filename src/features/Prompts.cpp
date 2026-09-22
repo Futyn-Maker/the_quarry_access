@@ -12,6 +12,7 @@
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
+#include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
@@ -34,6 +35,7 @@ namespace qa::features
             int64_t style = 0;
         };
         std::map<UObject*, Setup> g_setups;
+        double g_interruptSetUpAt = -100.0; // when the game last set an interruption up
 
         // One prompt slot of the interaction prompt widget.
         struct Slot
@@ -59,6 +61,13 @@ namespace qa::features
             // does for the player, so it is worth knowing which one was in force.
             if (setup.style == 5) log::Info(L"prompts: the aiming setting is {}", ui::GameSettingValue(L"CombatAimSetting"));
             if (setup.style == 5 || setup.action == L"CombatAttack") NoteCombatPrompt(self);
+            // An interruption lasts only a moment, so a sound marks it the instant the game
+            // sets it up, ahead of its words, which follow once the prompt has settled.
+            if (setup.style == 6)
+            {
+                g_interruptSetUpAt = gamethread::NowSeconds();
+                if (!LeavingTheGame()) sounds::Play(sounds::Cue::Interrupt);
+            }
             if (str::StartsWith(setup.action, L"ExporationDestination")) NoteDestinationPrompt();
             g_setups[self] = setup;
             if (g_setups.size() > 64)
@@ -180,6 +189,11 @@ namespace qa::features
     {
         const auto it = g_setups.find(promptWidget);
         return it == g_setups.end() ? std::wstring() : it->second.action;
+    }
+
+    bool InterruptPromptSetUpWithin(double seconds)
+    {
+        return gamethread::NowSeconds() - g_interruptSetUpAt <= seconds;
     }
 
     void PromptsFeature::Install()

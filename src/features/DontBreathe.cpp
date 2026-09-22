@@ -123,7 +123,12 @@ namespace qa::features
             breath.demo = InTutorial();
             log::Info(L"breathe: {} {} appeared, action \"{}\"{}", obj::ClassName(widget), obj::ObjectName(widget), breath.action,
                       breath.demo ? L", a tutorial playing itself out" : L"");
-            if (breath.demo) speech::Announce(locale::Mod(L"breathe.demo"));
+            // The moment to hold is marked by the tone of the danger, ahead of the game's own
+            // prompt, which is read once it has settled; a demonstration asks nothing.
+            if (breath.demo)
+                speech::Announce(locale::Mod(L"breathe.demo"));
+            else
+                sounds::Play(sounds::Cue::Down);
             g_breaths.push_back(std::move(breath));
         }
 
