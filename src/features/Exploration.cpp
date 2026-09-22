@@ -182,6 +182,7 @@ namespace qa::features
         // off the list while that thing is still there to walk to, whichever way the
         // character has wandered since. The verdict on each card is logged when it changes.
         std::map<UObject*, UObject*> g_cardHiddenBy;
+        std::map<std::pair<UObject*, UObject*>, std::vector<Vec>> g_betweenRoads; // the walked roads between listed targets, kept while the character stays
         std::map<UObject*, std::wstring> g_cardVerdict;
         double g_stepHeight = -1.0; // the step the navigation mesh lets a character climb
         double g_stepHeightAt = -10.0;
@@ -973,6 +974,7 @@ namespace qa::features
         bool TriggerBox(UObject* actor, Vec& low, Vec& high);
         double DistanceToBox(const std::vector<Vec>& road, const Vec& low, const Vec& high);
         double WalkingRadius(UObject* pawn);
+        const Vec& Aim(const Target& t);
         bool CapsuleSpan(UObject* pawn, Vec& middle, double& halfHeight);
         double VolumeDistance(UObject* volume, const Vec& point);
         bool PointInVolume(UObject* volume, const Vec& point, const Vec& low, const Vec& high);
@@ -1116,13 +1118,17 @@ namespace qa::features
             return runs;
         }
 
-        // Whether a road, walked at the character's height, comes well inside a card's
-        // volume: a point of it stands inside with the whole capsule, the four points a
-        // radius away included, counted from the first point outside the volume, since
-        // walking out of a volume the character stands in reveals nothing. The volume's own
-        // collision is asked, never its axis-aligned bounds: eleven of the card volumes are
-        // turned, and the bounds of a turned box reach where the box does not (Justice, 348
-        // cm off the road to the woods' exit, was hidden by them).
+        // Whether a road, walked at the character's height, reveals a card. The game's own
+        // test is the character's capsule touching the volume, so a point of the road within
+        // the character's width of the collision counts, from the first point that stands
+        // clear of the volume on, since walking out of a volume the character stands in
+        // reveals nothing. The volume's own collision is asked, never its axis-aligned bounds:
+        // eleven of the card volumes are turned, and the bounds of a turned box reach where
+        // the box does not (Justice, 348 cm off the road to the woods' exit, was hidden by
+        // them). Nothing stricter than a touch will do: the Devil's volume is a strip 48 cm
+        // wide laid across the path east of the tree vial, which no capsule can stand wholly
+        // inside, and the World's corner clip that a stricter test once left out was no clip
+        // to leave out but a branch not yet armed.
         // `closest`, when asked for, tells how near the road came to the collision by the
         // engine's own measure, for a log that can be set against the geometry offline.
         bool RoadRevealsCard(UObject* volume, const Vec& low, const Vec& high, const std::vector<Vec>& road, double radius, double halfHeight,
@@ -1156,7 +1162,7 @@ namespace qa::features
                         continue;
                     }
                     const double distance = VolumeDistance(volume, p);
-                    const bool inside = distance >= 0.0 ? distance == 0.0 : PointInVolume(volume, p, low, high);
+                    const bool touching = distance >= 0.0 ? distance <= radius : PointInVolume(volume, p, low, high);
                     ++sampled;
                     if (distance < 0.0)
                         unmeasured = true;
@@ -1167,20 +1173,10 @@ namespace qa::features
                     }
                     if (!started)
                     {
-                        if (inside) continue;
+                        if (touching) continue;
                         started = true;
                     }
-                    if (!inside) continue;
-                    bool whole = true;
-                    for (const auto& [dx, dy] : {std::pair{radius, 0.0}, std::pair{-radius, 0.0}, std::pair{0.0, radius}, std::pair{0.0, -radius}})
-                    {
-                        if (!PointInVolume(volume, Vec{p.x + dx, p.y + dy, p.z}, low, high))
-                        {
-                            whole = false;
-                            break;
-                        }
-                    }
-                    if (whole) return true;
+                    if (touching) return true;
                 }
             }
             if (closest)
@@ -1427,6 +1423,7 @@ namespace qa::features
                     UObject* target = nullptr;
                     std::wstring label;
                     std::vector<Vec> road;
+                    std::wstring via; // the listed target the road sets out from, when not the character
                 };
                 std::vector<Walked> walked;
                 size_t asked = 0;
@@ -1502,6 +1499,46 @@ namespace qa::features
                             points += std::format(L" ({:.0f}, {:.0f}, {:.0f})", p.x, p.y, p.z);
                         log::Verbose(L"explore: the road walked to \"{}\" for the cards:{}", w.label, points);
                     }
+                    // The roads between the listed targets as well: a player who walks from one
+                    // thing to the next walks them, and a card they pass is found without its
+                    // place. The Devil's strip lies between the tree vial and everything east of
+                    // it, off every road from the bridge where the scene starts. They are kept
+                    // while the character stays; a scene of nine targets is gathered in one pass.
+                    {
+                        std::vector<const Target*> listedAll;
+                        for (const auto& t : out)
+                            listedAll.push_back(&t);
+                        for (const auto& w : ways)
+                        {
+                            if (!w.tarot && std::find(g_waysHidden.begin(), g_waysHidden.end(), w.actor) == g_waysHidden.end()) listedAll.push_back(&w);
+                        }
+                        int gathered = 0;
+                        for (const Target* a : listedAll)
+                        {
+                            for (const Target* b : listedAll)
+                            {
+                                if (a == b) continue;
+                                const auto key = std::make_pair(a->actor, b->actor);
+                                auto found = g_betweenRoads.find(key);
+                                if (found == g_betweenRoads.end())
+                                {
+                                    if (gathered >= 72) continue;
+                                    ++gathered;
+                                    std::vector<Vec> road;
+                                    FindRoute(pawn, Aim(*a), *b, &road);
+                                    auto part = WalkedRoad(pawn, *b, road);
+                                    if (part.size() < 2) part.clear();
+                                    std::wstring points;
+                                    for (const Vec& p : part)
+                                        points += std::format(L" ({:.0f}, {:.0f}, {:.0f})", p.x, p.y, p.z);
+                                    log::Verbose(L"explore: the road walked from \"{}\" to \"{}\" for the cards:{}", a->label, b->label,
+                                                 points.empty() ? L" none" : points);
+                                    found = g_betweenRoads.emplace(key, std::move(part)).first;
+                                }
+                                if (found->second.size() >= 2) walked.push_back({b->actor, b->label, found->second, a->label});
+                            }
+                        }
+                    }
                     // What is there to walk to, by actor: the use locations and places, and
                     // the ways still on offer.
                     const auto listed = [&](UObject* actor) -> const Target*
@@ -1554,14 +1591,15 @@ namespace qa::features
                                     crossing = &w;
                                     break;
                                 }
-                                closest.push_back(L"on the road to \"" + w.label + L"\" " + near);
+                                if (w.via.empty()) closest.push_back(L"on the road to \"" + w.label + L"\" " + near);
                             }
                             const bool onRoad = crossing && !chosen;
                             if (onRoad)
                             {
                                 g_waysHidden.push_back(way.actor);
                                 g_cardHiddenBy[way.actor] = crossing->target;
-                                verdict = L"not offered, on the way to \"" + crossing->label + L"\"";
+                                verdict = crossing->via.empty() ? L"not offered, on the way to \"" + crossing->label + L"\""
+                                                                : L"not offered, on the way from \"" + crossing->via + L"\" to \"" + crossing->label + L"\"";
                             }
                             else
                             {
@@ -1967,7 +2005,11 @@ namespace qa::features
             else if (high.z < bottom)
                 storey = -1;
             if (storey != 0) return false;
-            return PointInVolume(volume, Vec{middle.x, middle.y, std::clamp((low.z + high.z) / 2.0, bottom, top)}, low, high);
+            // The game counts the character in once its capsule touches the volume.
+            const Vec probe{middle.x, middle.y, std::clamp((low.z + high.z) / 2.0, bottom, top)};
+            const double distance = VolumeDistance(volume, probe);
+            if (distance >= 0.0) return distance <= WalkingRadius(pawn);
+            return PointInVolume(volume, probe, low, high);
         }
 
         // Whether a stretch of road crosses a box laid out along the world's axes, by the
@@ -2687,6 +2729,7 @@ namespace qa::features
                 g_gone.clear();
                 g_tarotSteps.clear();
                 g_cardHiddenBy.clear();
+                g_betweenRoads.clear();
                 g_cardVerdict.clear();
                 std::erase_if(g_useLocationState, [](const auto& item) { return !obj::IsLive(item.first); });
             }
@@ -3553,6 +3596,7 @@ namespace qa::features
         g_waysScannedAt = -10.0;
         g_waysFilteredAt = -10.0;
         g_cardHiddenBy.clear();
+        g_betweenRoads.clear();
         g_cardVerdict.clear();
         if (!cfg::Persist(L"Exploration", L"TarotCards", g_tarot ? L"1" : L"0"))
             log::Error(L"explore: the tarot cards setting could not be saved to QuarryAccess.ini");
