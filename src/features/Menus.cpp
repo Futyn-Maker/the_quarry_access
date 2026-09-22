@@ -26,7 +26,6 @@ namespace qa::features
         UObject* g_screen = nullptr;
         double g_screenGoneAt = -1.0; // when the screen was first found no longer drawn
         UObject* g_focused = nullptr;
-        std::wstring g_lastFocusText;
         std::wstring g_lastPromptText;
         double g_focusChangedAt = -1.0;
 
@@ -248,7 +247,6 @@ namespace qa::features
             g_titleScreen = nullptr;
             g_lastTitle.clear();
             g_lastBody.clear();
-            g_lastFocusText.clear();
             g_lastPromptText.clear();
             g_promptCandidate.clear();
             g_group = nullptr;
@@ -269,8 +267,12 @@ namespace qa::features
             if (g_arrivalPending) return;
             const auto heading = GroupHeading(interactable);
             const auto text = DescribeFocused(interactable);
-            if (text.empty() || text == g_lastFocusText) return;
-            g_lastFocusText = text;
+            // Another control is another selection, however it reads: a list of clues still
+            // locked shows the same placeholder on every one of its rows, and a row skipped
+            // for reading like the last one leaves the player with nothing said as they
+            // move. What the same control says twice in quick succession is deduped by the
+            // speech policy.
+            if (text.empty()) return;
             speech::Focus(str::JoinSentences({heading, text}));
         }
 
@@ -350,11 +352,7 @@ namespace qa::features
 
             g_arrivalPending = false;
             g_focusChangedAt = now;
-            if (!focusText.empty())
-            {
-                g_focused = interactable;
-                g_lastFocusText = focusText;
-            }
+            if (!focusText.empty()) g_focused = interactable;
             std::vector<std::wstring> parts = g_heading;
             // The pause menu is headed by its tab, whatever made it be read.
             if (parts.empty() && pause) parts.push_back(ui::PauseTabLine());
@@ -636,7 +634,6 @@ namespace qa::features
         g_focused = nullptr;
         g_focusBeforeArrival = nullptr;
         g_valueWidget = nullptr;
-        g_lastFocusText.clear();
         g_lastPromptText.clear();
         g_promptCandidate.clear();
         g_lastValue.clear();
