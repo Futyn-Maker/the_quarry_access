@@ -763,9 +763,15 @@ namespace qa::obj
                 continue;
             }
             // Without a slot, only the root of a widget tree (drawn as the content of its
-            // owner) and a user widget added to the viewport are drawn. Anything else has been
-            // taken out of the drawn hierarchy, whatever its flags still say: the game leaves
-            // finished screens and unused options alive that way.
+            // owner), a user widget added to the viewport and a row a list view draws are
+            // drawn. Anything else has been taken out of the drawn hierarchy, whatever its
+            // flags still say: the game leaves finished screens and unused options alive that
+            // way.
+            if (UObject* list = ListOfRow(cur))
+            {
+                cur = list;
+                continue;
+            }
             UObject* outer = cur->GetOuterPrivate();
             if (outer && IsA(outer, L"WidgetTree"))
             {
@@ -842,6 +848,60 @@ namespace qa::obj
         {
             UObject* owner = outer->GetOuterPrivate();
             if (owner && IsLive(owner) && IsA(owner, L"UserWidget")) return owner;
+        }
+        return nullptr;
+    }
+
+    std::vector<UObject*> ListRows(UObject* list)
+    {
+        std::vector<UObject*> rows;
+        if (!IsLive(list) || !IsA(list, L"ListViewBase")) return rows;
+        CallReturn(list, L"GetDisplayedEntryWidgets",
+                   [&](void* params, FProperty* returnValue)
+                   {
+                       if (!returnValue || PropertyTypeName(returnValue) != L"ArrayProperty") return;
+                       ForEachArrayElement(params, returnValue,
+                                           [&](void* element, FProperty* inner)
+                                           {
+                                               UObject* row = nullptr;
+                                               if (ReadObjectAt(element, inner, row) && IsLive(row)) rows.push_back(row);
+                                           });
+                       // The array the call returned is the mod's to free.
+                       std::destroy_at(static_cast<TArray<uint8_t>*>(ValuePtrAt(params, returnValue)));
+                   });
+        return rows;
+    }
+
+    UObject* ListOfRow(UObject* widget)
+    {
+        if (!IsLive(widget) || !IsA(widget, L"UserWidget")) return nullptr;
+        UObject* slot = nullptr;
+        if (ReadObject(widget, L"Slot", slot) && slot) return nullptr;
+        // A list builds its rows in the widget tree it sits in (the chapter select's rows are
+        // "...ChapterSelector.WidgetTree.SMGUI_ChapterButton_C_..."), beside it, never below it.
+        UObject* tree = widget->GetOuterPrivate();
+        if (!tree || !IsLive(tree) || !IsA(tree, L"WidgetTree")) return nullptr;
+        UObject* root = nullptr;
+        if (ReadObject(tree, L"RootWidget", root) && root == widget) return nullptr;
+        UObject* owner = tree->GetOuterPrivate();
+        if (!owner || !IsLive(owner) || !IsA(owner, L"UserWidget")) return nullptr;
+        UObject* found = nullptr;
+        WalkWidgetTree(owner, 16,
+                       [&](UObject* candidate, int)
+                       {
+                           if (!IsA(candidate, L"ListViewBase")) return true;
+                           const auto rows = ListRows(candidate);
+                           if (std::find(rows.begin(), rows.end(), widget) != rows.end()) found = candidate;
+                           return found == nullptr;
+                       });
+        return found;
+    }
+
+    UObject* FocusedListRow(UObject* list)
+    {
+        for (auto* row : ListRows(list))
+        {
+            if (CallForBool(row, L"HasKeyboardFocus") || CallForBool(row, L"HasFocusedDescendants")) return row;
         }
         return nullptr;
     }

@@ -7,6 +7,7 @@
 #include "core/Strings.hpp"
 #include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/KeyHook.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -88,6 +89,18 @@ namespace qa::features
         unsigned long long g_lastTabSelectorScan = 0;
         std::wstring g_tabSelectorCandidate;
 
+        // A dropdown (UMG ComboBoxString, on the debug screens) opens a list that Slate alone
+        // draws: nothing in it can be read, and the list never takes the keyboard focus, so
+        // the first arrow closes it again with nothing chosen (log of 2026-09-29, 22:16:57).
+        // The mod keeps the game's list shut and stands in for it: Space opens the mod's list
+        // on the option shown; Up, Down, Home and End move through the options and set each
+        // as it is reached; Space or Enter keeps it; Escape puts back the option the list
+        // opened on. Setting an option raises the dropdown's OnSelectionChanged, which is what
+        // the game acts on (LevelVariableSingle_C: EnumSelectionChanged, SetEnum).
+        UObject* g_listBox = nullptr;
+        int64_t g_listStart = -1;
+        int64_t g_listIndex = -1;
+
         // Screens announce themselves when they show. A screen class that overrides Show
         // declares its own function, so each of these is routed separately. The pause tabs
         // are not among them: their content is shown before the menu around it is up, and the
@@ -106,6 +119,9 @@ namespace qa::features
         std::wstring GroupHeading(UObject* interactable)
         {
             UObject* group = interactable ? obj::NearestAncestorOfClass(interactable, L"CollectablesGroup_C") : nullptr;
+            // The story variables of a debug start sit under a heading row of their own, the
+            // scene they belong to, rather than inside a group widget.
+            if (!group && interactable && obj::IsA(interactable, L"LevelVariableSingle_C")) group = ui::VariableSection(interactable);
             // A selection that belongs to no group is beside the list, not in it (a line of
             // the panel next to a clue): the group stands, so coming back to the clue does
             // not name its section over again.
@@ -461,6 +477,13 @@ namespace qa::features
             }
 
             const auto description = ui::Describe(interactable);
+            // While the mod's list is open, each option it reaches is spoken by the list.
+            if (g_listBox)
+            {
+                g_valueWidget = interactable;
+                g_lastValue = description.value;
+                return;
+            }
             if (interactable != g_valueWidget)
             {
                 g_valueWidget = interactable;
@@ -473,6 +496,129 @@ namespace qa::features
             std::vector<std::wstring> parts{description.value};
             if (!description.tip.empty() && description.tip != description.label) parts.push_back(description.tip);
             speech::Focus(str::Join(parts, L", "));
+        }
+
+        // ---- the mod's list for a dropdown ----
+        constexpr int kKeySpace = 0x20;
+        constexpr int kKeyEnter = 0x0D;
+        constexpr int kKeyEscape = 0x1B;
+        constexpr int kKeyHome = 0x24;
+        constexpr int kKeyEnd = 0x23;
+        constexpr int kKeyUp = 0x26;
+        constexpr int kKeyDown = 0x28;
+
+        int64_t IntResult(UObject* target, const wchar_t* function)
+        {
+            int64_t value = -1;
+            obj::CallReturn(target, function,
+                            [&](void* params, RC::Unreal::FProperty* returnValue)
+                            {
+                                if (returnValue) obj::ReadIntAt(params, returnValue, value);
+                            });
+            return value;
+        }
+
+        std::wstring OptionAt(UObject* box, int64_t index)
+        {
+            auto* fn = obj::FindFunction(box, L"GetOptionAtIndex");
+            std::wstring option;
+            if (!fn) return option;
+            obj::Call(
+                box, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"Index") *static_cast<int32_t*>(obj::ValuePtrAt(params, prop)) = static_cast<int32_t>(index);
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") obj::ReadStringAt(params, prop, option);
+                    }
+                });
+            return str::CollapseWhitespace(option);
+        }
+
+        bool SelectOption(UObject* box, int64_t index)
+        {
+            auto* fn = obj::FindFunction(box, L"SetSelectedIndex");
+            if (!fn) return false;
+            return obj::Call(
+                box, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"Index") *static_cast<int32_t*>(obj::ValuePtrAt(params, prop)) = static_cast<int32_t>(index);
+                    }
+                },
+                nullptr);
+        }
+
+        // An option and where it stands among them; the place is the mod's own words.
+        std::wstring OptionLine(UObject* box, int64_t index)
+        {
+            std::vector<std::wstring> parts{OptionAt(box, index)};
+            const auto count = IntResult(box, L"GetOptionCount");
+            if (cfg::Detailed() && count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(index + 1), std::to_wstring(count)));
+            return str::Join(parts, L", ");
+        }
+
+        void CloseList()
+        {
+            g_listBox = nullptr;
+            g_listStart = -1;
+            g_listIndex = -1;
+        }
+
+        void PollDropdownImpl()
+        {
+            UObject* interactable = ui::Interactable(watch::CurrentFocused());
+            UObject* box = ui::Dropdown(interactable);
+            const bool usable = box && obj::IsWidgetShown(box) && obj::CallForBool(box, L"GetIsEnabled");
+            // The arrows that leave a dropdown sideways, and Tab, are still the game's: moving
+            // off it keeps the option the list was on.
+            if (g_listBox && g_listBox != box) CloseList();
+            for (const int vk : keyhook::TakeDropdownKeys())
+            {
+                if (!g_listBox)
+                {
+                    if (vk != kKeySpace || !usable || IntResult(box, L"GetOptionCount") <= 0) continue;
+                    g_listBox = box;
+                    g_listStart = g_listIndex = std::max<int64_t>(0, IntResult(box, L"GetSelectedIndex"));
+                    g_focusChangedAt = gamethread::NowSeconds();
+                    speech::Focus(str::Join(std::vector<std::wstring>{locale::Mod(L"ui.list.open"), OptionLine(box, g_listIndex)}, L", "));
+                    continue;
+                }
+                if (vk == kKeySpace || vk == kKeyEnter || vk == kKeyEscape)
+                {
+                    if (vk == kKeyEscape && g_listIndex != g_listStart) SelectOption(g_listBox, g_listStart);
+                    CloseList();
+                    // The control is read whole below; the value it now holds is not a change
+                    // to announce on its own as well.
+                    g_valueWidget = interactable;
+                    g_lastValue = ui::Describe(interactable).value;
+                    g_focusChangedAt = gamethread::NowSeconds();
+                    const auto text = DescribeFocused(interactable);
+                    if (!text.empty()) speech::Focus(text);
+                    continue;
+                }
+                const auto count = IntResult(g_listBox, L"GetOptionCount");
+                int64_t next = g_listIndex;
+                if (vk == kKeyUp) next = g_listIndex - 1;
+                if (vk == kKeyDown) next = g_listIndex + 1;
+                if (vk == kKeyHome) next = 0;
+                if (vk == kKeyEnd) next = count - 1;
+                next = std::clamp<int64_t>(next, 0, std::max<int64_t>(0, count - 1));
+                if (next != g_listIndex && SelectOption(g_listBox, next)) g_listIndex = next;
+                // At either end the option the list stays on is said again.
+                g_focusChangedAt = gamethread::NowSeconds();
+                speech::Focus(OptionLine(g_listBox, g_listIndex));
+            }
+            keyhook::SetDropdown(g_listBox ? keyhook::Dropdown::Open : (usable ? keyhook::Dropdown::Selected : keyhook::Dropdown::None));
         }
 
         void PollCarouselImpl()
@@ -613,6 +759,11 @@ namespace qa::features
         {
             obj::SafeInvokeLogged(L"menus.PollValueImpl", [](void*) { PollValueImpl(); }, nullptr);
         }
+
+        void PollDropdown(float)
+        {
+            obj::SafeInvokeLogged(L"menus.PollDropdownImpl", [](void*) { PollDropdownImpl(); }, nullptr);
+        }
     }
 
     void ArriveWith(std::vector<std::wstring> heading, UObject* screen)
@@ -653,6 +804,8 @@ namespace qa::features
         g_tabSelectors.clear();
         g_tabSelectorScreen = nullptr;
         g_tabSelectorCandidate.clear();
+        CloseList();
+        keyhook::SetDropdown(keyhook::Dropdown::None);
     }
 
     void MenusFeature::Install()
@@ -674,6 +827,7 @@ namespace qa::features
         gamethread::AddPoller(L"menus.value", &PollValue);
         gamethread::AddPoller(L"menus.pages", &PollPages);
         gamethread::AddPoller(L"menus.tabselectors", &PollTabSelectors);
+        gamethread::AddPoller(L"menus.dropdown", &PollDropdown);
     }
 
     void MenusFeature::Describe(std::vector<std::wstring>& out)
@@ -712,6 +866,11 @@ namespace qa::features
             out.push_back(locale::Mod(L"help.form", input::KeyDisplayName(L"Tab"), input::KeyForAction(L"UINavigationConfirm")));
         else
             out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"UINavigationConfirm"), input::KeyForAction(L"UINavigationCancel")));
+        // A dropdown is opened and walked with the keys the mod takes for it.
+        if (ui::Dropdown(ui::Interactable(watch::CurrentFocused())))
+            out.push_back(locale::Mod(L"help.dropdown", std::vector<std::wstring>{input::KeyDisplayName(L"SpaceBar"), input::KeyDisplayName(L"Up"),
+                                                                                  input::KeyDisplayName(L"Down"), input::KeyDisplayName(L"Enter"),
+                                                                                  input::KeyDisplayName(L"Escape")}));
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);
     }
