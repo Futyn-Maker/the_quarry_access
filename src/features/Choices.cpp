@@ -7,6 +7,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "features/Prompts.hpp"
+#include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -17,11 +18,13 @@
 #include <algorithm>
 #include <cwctype>
 #include <iterator>
+#include <map>
 #include <string>
 #include <vector>
 
 namespace qa::features
 {
+    using RC::Unreal::FFrame;
     using RC::Unreal::UObject;
 
     namespace
@@ -60,8 +63,10 @@ namespace qa::features
             int stablePolls = 0;
             bool announced = false;
             bool headingSaid = false;            // the heading was said by itself, the options still to come
+            bool timerSounded = false;           // a timed choice's clock was marked by its sound
             double seenAt = -1.0;                // when the options were first seen
             bool finished = false;               // decided: nothing more to read until new options come
+            bool timedOut = false;               // the time ran out on it, and its options are still fading
             std::wstring keys;                   // the key hints last read
             std::wstring message;                // the countdown message or the time remaining last read
             std::wstring lastCurrent;            // the option the player was last pushing toward
@@ -75,6 +80,9 @@ namespace qa::features
         // choice it came from: a four-way choice takes its widgets off screen the moment it is
         // committed, and the word must still be said.
         std::wstring g_pendingChosen;
+
+        // When each option widget last began the animation of an option not taken.
+        std::map<UObject*, double> g_notChosenAt;
 
         const Option kTwoWay[] = {
             {L"ChoiceAWidgetInstance", L"ChoiceLeft", L"dir.left", L"ButtonPromptLeft", L"ChoiceCommitLeft"},
@@ -374,14 +382,28 @@ namespace qa::features
             return str::JoinSentences(parts);
         }
 
+        // Whether the choice runs against a clock, which the game draws as a bar inside it.
+        bool Timed(const Choice& choice)
+        {
+            bool timed = false;
+            return obj::ReadBool(choice.widget, L"bHasTimer", timed) && timed;
+        }
+
+        // A timed choice is marked by the clock's sound the moment it is announced, together
+        // with the word that names it.
+        void SoundTimer(Choice& choice)
+        {
+            if (choice.timerSounded || !Timed(choice)) return;
+            choice.timerSounded = true;
+            sounds::Play(sounds::Cue::Timer);
+        }
+
         // The heading: what kind of choice it is (with the timer when it has one) and its
         // question when the game shows one.
         std::wstring HeadingText(const Choice& choice)
         {
             std::vector<std::wstring> parts;
-            bool timed = false;
-            obj::ReadBool(choice.widget, L"bHasTimer", timed);
-            parts.push_back(locale::Mod(timed ? L"choice.timed" : L"choice.heading"));
+            parts.push_back(locale::Mod(Timed(choice) ? L"choice.timed" : L"choice.heading"));
             const auto question = ui::PropertyText(choice.widget, L"TitleText");
             if (!question.empty()) parts.push_back(question);
             return str::JoinSentences(parts);
@@ -455,6 +477,35 @@ namespace qa::features
             return false;
         }
 
+        // Whether the game has passed over every option the player can take. An option is
+        // marked chosen only by the start of its own chosen animation; the one passed over
+        // plays the animation of an option not taken, and so does each of them when the time
+        // runs out, which is how the game shows a choice left unanswered.
+        bool AllPassedOver(const Choice& choice)
+        {
+            bool any = false;
+            for (const auto& option : choice.options)
+            {
+                if (!option.direction || !obj::IsLive(option.widget)) continue;
+                const auto it = g_notChosenAt.find(option.widget);
+                const bool passed = (it != g_notChosenAt.end() && it->second >= choice.seenAt) || obj::AnimationPlaying(option.widget, L"NotChosen");
+                if (!passed) return false;
+                any = true;
+            }
+            return any;
+        }
+
+        // The time of a timed choice ran out with nothing taken: the tone of a challenge lost,
+        // and the word when the mod is detailed, as when the time of a fight runs out.
+        void TimeOver(Choice& choice, const wchar_t* how)
+        {
+            choice.finished = true;
+            choice.timedOut = true;
+            log::Info(L"choices: {} ran out of time with nothing chosen ({})", obj::ClassName(choice.widget), how);
+            sounds::Play(sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
+        }
+
         std::wstring WithoutDigits(std::wstring text)
         {
             std::erase_if(text, [](wchar_t c) { return iswdigit(c) != 0; });
@@ -483,12 +534,16 @@ namespace qa::features
                 choice.stablePolls = 0;
                 // A decided choice goes on changing while its options fade; only options with
                 // nothing chosen among them are a new choice. Options still being revealed
-                // change too, and those are the same choice.
-                if (!AnyChosen(choice))
+                // change too, and those are the same choice. A choice the time ran out on fades
+                // with nothing chosen, and it is over until its options have gone: taken for a
+                // new one, it was announced again as it faded.
+                if (choice.timedOut && labels.empty()) choice.timedOut = false;
+                if (!choice.timedOut && !AnyChosen(choice))
                 {
                     if (choice.announced)
                     {
                         choice.headingSaid = false;
+                        choice.timerSounded = false;
                         choice.seenAt = -1.0;
                     }
                     choice.announced = false;
@@ -528,6 +583,7 @@ namespace qa::features
                 {
                     choice.headingSaid = true;
                     log::Info(L"choices: {} announced, its phrases still to come", obj::ClassName(choice.widget));
+                    SoundTimer(choice);
                     speech::Announce(HeadingText(choice));
                 }
                 // Should a phrase never come in, the options are read as they are after a
@@ -552,6 +608,7 @@ namespace qa::features
                 choice.announced = true;
                 choice.keys = KeyHints(choice);
                 log::Info(L"choices: {} read{}", obj::ClassName(choice.widget), revealed ? L"" : L" with a phrase still to come");
+                SoundTimer(choice);
                 speech::Announce(text);
                 return;
             }
@@ -610,6 +667,11 @@ namespace qa::features
                 return;
             }
             if (choice.finished) return;
+            if (Timed(choice) && AllPassedOver(choice))
+            {
+                TimeOver(choice, L"every option passed over");
+                return;
+            }
 
             // The seconds left, once the game starts showing them.
             const auto remaining = ui::PropertyText(choice.widget, L"TimeRemaining");
@@ -710,6 +772,12 @@ namespace qa::features
         {
             obj::SafeInvokeLogged(L"choices.PollImpl", [](void*) { PollImpl(); }, nullptr);
         }
+
+        void OnNotChosen(UObject* self, FFrame&)
+        {
+            g_notChosenAt[self] = gamethread::NowSeconds();
+            if (g_notChosenAt.size() > 32) std::erase_if(g_notChosenAt, [](const auto& entry) { return !obj::IsLive(entry.first); });
+        }
     }
 
     bool ChoiceDecided(UObject* widget)
@@ -734,6 +802,7 @@ namespace qa::features
 
     void ChoicesFeature::Install()
     {
+        hooks::OnScript(L"ChoiceWidgetSMG026_C", L"WidgetAnimationEvt_NotChosen_K2Node_WidgetAnimationEvent_1", &OnNotChosen);
         watch::AddHudListener(&OnHud);
         gamethread::AddPoller(L"choices", &Poll);
     }

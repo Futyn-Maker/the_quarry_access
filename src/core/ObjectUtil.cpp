@@ -738,6 +738,32 @@ namespace qa::obj
         return opacity;
     }
 
+    bool AnimationPlaying(UObject* userWidget, std::wstring_view animationProperty)
+    {
+        UObject* animation = nullptr;
+        if (!ReadObject(userWidget, animationProperty, animation) || !IsLive(animation)) return false;
+        auto* fn = FindFunction(userWidget, L"IsAnimationPlaying");
+        if (!fn) return false;
+        bool playing = false;
+        Call(
+            userWidget, fn,
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && PropertyTypeName(prop) == L"ObjectProperty") *static_cast<UObject**>(ValuePtrAt(params, prop)) = animation;
+                }
+            },
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && prop->GetName() == L"ReturnValue") ReadBoolAt(params, prop, playing);
+                }
+            });
+        return playing;
+    }
+
     bool IsWidgetShown(UObject* widget, bool opaque)
     {
         UObject* cur = widget;

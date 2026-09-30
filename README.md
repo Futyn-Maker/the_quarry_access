@@ -81,7 +81,7 @@ Everything the game itself shows is read at either level: menus, prompts, subtit
 
 ### Two-Option Choices
 
-The mod reads the question and both options, left and right. Hold A for the left option, or D for the right one. On the gamepad, push a stick or the D-pad left or right. Keep holding until a two-note tone plays, then release.
+The mod reads the question and both options, left and right. Hold A for the left option, or D for the right one. On the gamepad, push a stick or the D-pad left or right. Keep holding until a two-note tone plays, then release. A tick-tock marks a choice with a time limit, and a falling tone means the time ran out before you chose.
 
 ### Four-Option Choices
 

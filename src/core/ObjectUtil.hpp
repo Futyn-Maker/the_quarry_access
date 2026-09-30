@@ -92,6 +92,8 @@ namespace qa::obj
     bool IsWidgetShown(UObject* widget, bool opaque = false);
     // The opacity a widget is drawn with (its render opacity times its colour alpha).
     double WidgetOpacity(UObject* widget);
+    // True while the widget animation held in the named property of a user widget plays.
+    bool AnimationPlaying(UObject* userWidget, std::wstring_view animationProperty);
     // What UMG's property binding computes for a bound property. A binding leaves the
     // property itself at its design-time value and feeds the widget from a companion
     // delegate generated beside it ("Text" -> "TextDelegate"), which is what is drawn.

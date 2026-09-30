@@ -25,7 +25,7 @@ namespace qa::sounds
 
         using Wav = std::vector<uint8_t>; // a WAV file in memory; PlaySound reads it while playing
 
-        std::array<Wav, 9> g_cues;
+        std::array<Wav, 10> g_cues;
         std::array<Wav, kTickSteps> g_ticks;
         std::array<Wav, 4> g_beacons; // made on demand; a few are kept so a playing one is not overwritten
         Wav g_locked;                 // the double ping of a shot that would land
@@ -178,6 +178,12 @@ namespace qa::sounds
         // outcome and the runs of a direction, heard the instant the game offers it and
         // before its words. A note of no frequency is the silence between the taps.
         g_cues[static_cast<size_t>(Cue::Interrupt)] = Wave({{988.0, 0.035}, {0.0, 0.03}, {988.0, 0.035}, {0.0, 0.03}, {988.0, 0.06}}, amplitude);
+        // A clock set running: a tick and a lower tock a tenth of a second apart, two clicks
+        // high above the notes of the other cues.
+        g_cues[static_cast<size_t>(Cue::Timer)] = Wave({{.frequency = 2093.0, .seconds = 0.02, .attack = 0.002, .release = 0.01},
+                                                        {0.0, 0.1},
+                                                        {.frequency = 1568.0, .seconds = 0.025, .attack = 0.002, .release = 0.012}},
+                                                       amplitude);
         // Blips two octaves apart from the lowest to the highest, quieter than the cues.
         for (int i = 0; i < kTickSteps; ++i)
         {

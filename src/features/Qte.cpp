@@ -141,33 +141,6 @@ namespace qa::features
 
         void Speak(Qte& qte, double now);
 
-        // True while the named animation of the widget plays.
-        bool AnimationPlaying(UObject* widget, const wchar_t* animation)
-        {
-            UObject* anim = nullptr;
-            if (!obj::ReadObject(widget, animation, anim) || !obj::IsLive(anim)) return false;
-            auto* fn = obj::FindFunction(widget, L"IsAnimationPlaying");
-            if (!fn) return false;
-            bool playing = false;
-            obj::Call(
-                widget, fn,
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (prop && obj::PropertyTypeName(prop) == L"ObjectProperty") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = anim;
-                    }
-                },
-                [&](void* params)
-                {
-                    for (auto* prop : fn->ForEachProperty())
-                    {
-                        if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, playing);
-                    }
-                });
-            return playing;
-        }
-
         // The direction is said and played as soon as the widget reports its event, and
         // again every second until the event is resolved, since the arrow stays on screen the
         // whole time; the key is named when the game shows a key cap, which it does for the
@@ -302,9 +275,9 @@ namespace qa::features
                     // events come first, the animations themselves are the fallback.
                     if (qte.outcome == Outcome::Pending)
                     {
-                        if (AnimationPlaying(qte.widget, L"SuccessAnim"))
+                        if (obj::AnimationPlaying(qte.widget, L"SuccessAnim"))
                             qte.outcome = Outcome::Success;
-                        else if (AnimationPlaying(qte.widget, L"FailureAnim"))
+                        else if (obj::AnimationPlaying(qte.widget, L"FailureAnim"))
                             qte.outcome = Outcome::Failure;
                     }
                     if (qte.outcome != Outcome::Pending) Finish(qte);
