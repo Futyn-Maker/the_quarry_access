@@ -89,7 +89,7 @@ The options are in the corners of the screen, and the mod reads each with its co
 
 ### Prompts and Interruptions
 
-When the game shows a button prompt or an interruption, the mod reads it with its key. Press the key to act. An interruption lasts only a moment, and three quick taps mark it.
+When the game shows a button prompt or an interruption, the mod reads it with its key. Press the key to act. An interruption lasts only a moment, and three quick taps mark it. A rising two-note tone follows when you interrupt in time, and a falling one when the moment passes.
 
 ### Quick-Time Events
 

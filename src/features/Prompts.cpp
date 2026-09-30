@@ -2,6 +2,7 @@
 
 #include "features/Combat.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -37,6 +38,15 @@ namespace qa::features
         std::map<UObject*, Setup> g_setups;
         double g_interruptSetUpAt = -100.0; // when the game last set an interruption up
 
+        // The interruption on offer, from its set-up until the game says how it went.
+        struct Interruption
+        {
+            UObject* prompt = nullptr; // the prompt widget it was set up on
+            bool shown = false;        // the prompt has recorded itself as shown since the set-up
+            bool pending = false;
+        };
+        Interruption g_interruption;
+
         // One prompt slot of the interaction prompt widget.
         struct Slot
         {
@@ -50,6 +60,46 @@ namespace qa::features
 
         const wchar_t* const kSlots[] = {L"ButtonPromptCenter",      L"ButtonPromptLeft", L"ButtonPromptRight",
                                          L"ButtonPromptScreenSpace", L"AxisInputPrompt",  L"VotingResultLabel"};
+
+        // How an interruption went, told the way every mechanic's outcome is: the tone, and
+        // the word when the mod is detailed.
+        void InterruptionOver(bool taken, const wchar_t* readFrom)
+        {
+            g_interruption.pending = false;
+            log::Info(L"prompts: the interruption {} (read from {})", taken ? L"was taken" : L"passed", readFrom);
+            if (LeavingTheGame()) return;
+            sounds::Play(taken ? sounds::Cue::Confirm : sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(taken ? L"result.success" : L"result.timeout"));
+        }
+
+        // A prompt hides itself once the game is done with it and says whether the player used
+        // it: Hide(true) after a press, Hide(false) for a prompt left unanswered.
+        void OnPromptHide(UObject* self, FFrame& stack)
+        {
+            if (!g_interruption.pending || self != g_interruption.prompt) return;
+            bool used = false;
+            if (params::Bool(stack, L"bIsUsed", used)) InterruptionOver(used, L"its hiding");
+        }
+
+        // The twin of the hook on the hiding: the state the prompt keeps of itself, 0 shown, 1
+        // hidden unanswered, 2 hidden after a press. The prompt learns a new state from the
+        // container's tick, so right after a set-up it can still hold the last one of the
+        // prompt it showed before, which says nothing about this one.
+        void PollInterruption()
+        {
+            if (!g_interruption.pending) return;
+            if (!obj::IsLive(g_interruption.prompt))
+            {
+                g_interruption = {};
+                return;
+            }
+            int64_t state = -1;
+            if (!obj::ReadInt(g_interruption.prompt, L"CurrentInteractionPromptState", state)) return;
+            if (state == 0)
+                g_interruption.shown = true;
+            else if (g_interruption.shown && (state == 1 || state == 2))
+                InterruptionOver(state == 2, L"its state");
+        }
 
         void OnSetButtonPrompt(UObject* self, FFrame& stack)
         {
@@ -66,7 +116,13 @@ namespace qa::features
             if (setup.style == 6)
             {
                 g_interruptSetUpAt = gamethread::NowSeconds();
+                g_interruption = Interruption{self, false, true};
                 if (!LeavingTheGame()) sounds::Play(sounds::Cue::Interrupt);
+            }
+            else if (self == g_interruption.prompt && g_interruption.pending)
+            {
+                log::Info(L"prompts: the interruption's prompt is set up for something else before it was over");
+                g_interruption = {};
             }
             if (str::StartsWith(setup.action, L"ExporationDestination")) NoteDestinationPrompt();
             g_setups[self] = setup;
@@ -158,6 +214,7 @@ namespace qa::features
         // shows it anew or changes what it says.
         void PollImpl()
         {
+            PollInterruption();
             if (gamethread::FrameCount() % 2 != 0 || !obj::IsLive(g_widget)) return;
             for (auto& slot : g_slots)
             {
@@ -199,6 +256,7 @@ namespace qa::features
     void PromptsFeature::Install()
     {
         hooks::OnScript(L"InputActionInteractionPromptWidgetSMG026_C", L"SetButtonPrompt", &OnSetButtonPrompt);
+        hooks::OnScript(L"InputActionInteractionPromptWidgetSMG026_C", L"Hide", &OnPromptHide);
         watch::AddHudListener(&OnHud);
         gamethread::AddPoller(L"prompts", &Poll);
     }
