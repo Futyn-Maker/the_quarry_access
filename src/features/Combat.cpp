@@ -940,10 +940,13 @@ namespace qa::features
             return locale::Mod(L"combat.item", std::vector<std::wstring>{locale::Mod(KindKey(t.kind)), Metres(s.metres), PlaceText(s)});
         }
 
+        // Which of several targets the sound leads to, as the mod counts them: a place in a list,
+        // said at the detailed level only. The distance and the side that follow it tell the
+        // targets apart at either level.
         std::wstring TargetText(const Combat& c, const Target& t)
         {
             const auto standing = Standing(c);
-            if (standing.size() <= 1) return {};
+            if (standing.size() <= 1 || !cfg::Detailed()) return {};
             int place = 0;
             for (size_t i = 0; i < standing.size(); ++i)
                 if (standing[i] == &t) place = static_cast<int>(i) + 1;

@@ -364,7 +364,8 @@ namespace qa::ui
             obj::ReadInt(interactable, L"ButtonCount", count);
             if (obj::IsLive(current)) obj::ReadInt(current, L"ButtonIndex", index);
             std::vector<std::wstring> parts{str::CollapseWhitespace(str::StripMarkup(VisibleTextProperty(interactable, L"TitleText")))};
-            if (index >= 0 && count > 0) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(index + 1), std::to_wstring(count)));
+            // Where the strip stands is a place in a list, counted by the mod.
+            if (cfg::Detailed() && index >= 0 && count > 0) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(index + 1), std::to_wstring(count)));
             d.value = str::Join(DisplayTexts(parts), L", ");
             // A strip of pictures leaves nothing else to check afterwards, so what it gave is
             // logged as it changes.
@@ -1139,8 +1140,10 @@ namespace qa::ui
         const auto tabs = ActivePauseTabs();
         if (tabs.label.empty()) return {};
         std::vector<std::wstring> parts{tabs.label};
+        // The line is built here rather than by Speak, so it asks for the level itself.
         if (cfg::Detailed()) parts.push_back(locale::Mod(L"ui.type.tab"));
-        if (tabs.index > 0 && tabs.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(tabs.index), std::to_wstring(tabs.count)));
+        if (cfg::Detailed() && tabs.index > 0 && tabs.count > 1)
+            parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(tabs.index), std::to_wstring(tabs.count)));
         return str::Join(parts, L", ");
     }
 
