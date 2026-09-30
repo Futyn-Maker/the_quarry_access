@@ -709,18 +709,18 @@ namespace qa::features
             {
                 // The game raises this bar beside an interruption and beside a fight with a time
                 // limit. The interruption is marked by its own sound, set up a moment before the
-                // bar appears, so briefly the word is left to the sound there; the fight's bar is
-                // marked by the clock's sound and keeps the word at either level.
-                const bool interruption = InterruptPromptSetUpWithin(1.0);
-                if (!interruption)
+                // bar appears, and the fight's bar by the clock's sound, so briefly the word is
+                // left to the sound.
+                if (InterruptPromptSetUpWithin(1.0))
+                {
+                    log::Info(L"choices: the timer bar belongs to an interruption");
+                }
+                else
                 {
                     log::Info(L"choices: the timer bar belongs to a fight{}", CombatActive() ? L"" : L", though no fight has begun");
                     sounds::Play(sounds::Cue::Timer);
                 }
-                if (interruption && !cfg::Detailed())
-                    log::Info(L"choices: the timer bar belongs to an interruption, which its sound marks");
-                else
-                    speech::Announce(locale::Mod(L"choice.timer"));
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"choice.timer"));
                 return;
             }
             Choice choice;
