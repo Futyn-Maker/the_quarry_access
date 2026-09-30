@@ -114,6 +114,15 @@ namespace qa::obj
     // widget when `widget` is the root of a widget tree. Null at the top.
     UObject* ParentWidget(UObject* widget);
 
+    // The rows a list view (ListViewBase) draws at this moment: it builds a user widget for
+    // each item in view and recycles them as it scrolls, so no row stays with one item.
+    std::vector<UObject*> ListRows(UObject* list);
+    // The list view that drew `widget`, when `widget` is one of its rows: a row has no slot
+    // and is not the root of the tree it sits in. Null for anything else.
+    UObject* ListOfRow(UObject* widget);
+    // The row of `list` that holds the keyboard focus, or has it inside. Null when none does.
+    UObject* FocusedListRow(UObject* list);
+
     // Nearest ancestor of the given class, following ParentWidget. Includes `widget` itself.
     UObject* NearestAncestorOfClass(UObject* widget, std::wstring_view className, int maxDepth = 64);
 

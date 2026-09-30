@@ -38,4 +38,18 @@ namespace qa::keyhook
 
     // The ids of the bindings pressed since the last call, in order.
     std::vector<int> TakePresses();
+
+    // A dropdown whose list the mod opens in place of the game's (features/Menus): while
+    // one has the selection, Space is the mod's; while its list is open, so are Up, Down,
+    // Home, End, Enter, Space and Escape. Set from the game thread; everywhere else these
+    // keys go to the game as always.
+    enum class Dropdown
+    {
+        None,
+        Selected,
+        Open,
+    };
+    void SetDropdown(Dropdown state);
+    // The virtual-key codes taken for the dropdown since the last call, in order.
+    std::vector<int> TakeDropdownKeys();
 }

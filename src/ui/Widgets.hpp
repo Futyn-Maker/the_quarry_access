@@ -77,6 +77,14 @@ namespace qa::ui
     // What a text field holds right now, read from the widget the game draws.
     EditState EditField(UObject* field);
 
+    // The dropdown a selection is on: an engine dropdown itself, or the one a story
+    // variable of a debug start shows. Null for anything else.
+    UObject* Dropdown(UObject* interactable);
+
+    // The heading above a story variable of a debug start (LevelVariableSeparator_C, which
+    // names the scene the variables below it belong to). Null when there is none.
+    UObject* VariableSection(UObject* row);
+
     // Spoken form of a description according to the configured verbosity.
     std::wstring Speak(const Description& description);
 

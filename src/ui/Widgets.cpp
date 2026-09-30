@@ -9,10 +9,12 @@
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 
+#include <Unreal/Core/Containers/Array.hpp>
 #include <Unreal/FString.hpp>
 
 #include <algorithm>
 #include <cwctype>
+#include <memory>
 
 namespace qa::ui
 {
@@ -45,9 +47,31 @@ namespace qa::ui
             {L"PathChosenCarouselBase_C", Kind::Other},
             {L"EditableTextBox", Kind::Edit},
             {L"EditableText", Kind::Edit},
+            // The debug screens: a row of the chapter select's list, and a story variable of
+            // a debug start, whose kind is that of the control it holds (see KindOf).
+            {L"SMGUI_ChapterButton_C", Kind::Button},
+            {L"LevelVariableSingle_C", Kind::Checkbox},
             {L"UIInteractableWidgetSMG026_C", Kind::Other},
             {L"UIInteractableWidgetBaseSMG026", Kind::Other},
         };
+
+        // Unreal's own controls, used as they come on the debug screens. The game's menu
+        // controls are built of them (a menu button holds a Button), so one of these is the
+        // selection only when nothing above it is a control of the game's.
+        const KindRule kEngineKinds[] = {
+            {L"ComboBoxString", Kind::Selector},
+            {L"CheckBox", Kind::Checkbox},
+            {L"Button", Kind::Button},
+        };
+
+        bool IsEngineControl(UObject* widget)
+        {
+            for (const auto& rule : kEngineKinds)
+            {
+                if (obj::IsA(widget, rule.className)) return true;
+            }
+            return false;
+        }
 
         // Rows are laid out differently from one screen to the next, so the text they show
         // is first taken from the shallow part of the tree (where a control's own label
@@ -262,6 +286,54 @@ namespace qa::ui
             }
             return index;
         }
+
+        std::wstring CheckValue(UObject* checkBox)
+        {
+            return locale::Mod(obj::CallForBool(checkBox, L"IsChecked") ? L"ui.value.checked" : L"ui.value.unchecked");
+        }
+
+        // The words beside an engine control in the row that holds it: the chapter select
+        // puts "Automation Path:" and "Force Subtitle Names:" in the same box as their
+        // dropdown and check box.
+        std::wstring BesideText(UObject* control)
+        {
+            std::vector<std::wstring> texts;
+            for (auto* sibling : obj::PanelChildren(obj::ParentWidget(control)))
+            {
+                if (sibling == control || IsEngineControl(sibling)) continue;
+                for (const auto& text : obj::DescendantTexts(sibling, 2))
+                    texts.push_back(text);
+            }
+            return str::Join(DisplayTexts(texts), L" ");
+        }
+
+        // Where a row of the chapter select stands in its list. The list recycles its rows as
+        // it scrolls, so the row is found among the list's items by the chapter it shows:
+        // the row and the item each answer GetChapterName.
+        int ChapterPosition(UObject* row, int& count)
+        {
+            count = 0;
+            UObject* list = obj::ListOfRow(row);
+            const auto name = obj::CallForText(row, L"GetChapterName");
+            if (!list || name.empty()) return 0;
+            int index = 0;
+            obj::CallReturn(list, L"GetListItems",
+                            [&](void* params, RC::Unreal::FProperty* returnValue)
+                            {
+                                if (!returnValue || obj::PropertyTypeName(returnValue) != L"ArrayProperty") return;
+                                obj::ForEachArrayElement(params, returnValue,
+                                                         [&](void* element, RC::Unreal::FProperty* inner)
+                                                         {
+                                                             UObject* item = nullptr;
+                                                             if (!obj::ReadObjectAt(element, inner, item)) return;
+                                                             ++count;
+                                                             if (index == 0 && obj::IsLive(item) && obj::CallForText(item, L"GetChapterName") == name)
+                                                                 index = count;
+                                                         });
+                                std::destroy_at(static_cast<RC::Unreal::TArray<uint8_t>*>(obj::ValuePtrAt(params, returnValue)));
+                            });
+            return index;
+        }
     }
 
     void Install()
@@ -291,9 +363,46 @@ namespace qa::ui
         return edit;
     }
 
+    UObject* Dropdown(UObject* interactable)
+    {
+        if (!obj::IsLive(interactable)) return nullptr;
+        if (obj::IsA(interactable, L"ComboBoxString")) return interactable;
+        UObject* active = nullptr;
+        if (obj::IsA(interactable, L"LevelVariableSingle_C") && obj::ReadObject(interactable, L"ActiveDataWidget", active) && obj::IsLive(active) &&
+            obj::IsA(active, L"ComboBoxString"))
+            return active;
+        return nullptr;
+    }
+
+    UObject* VariableSection(UObject* row)
+    {
+        // The debug menu lays the variables out in a grid: a heading row spanning it, then the
+        // variables of that scene (DebugStartVariableMenuWidget: CreateSeparatorWidget,
+        // CreateWidgetForVariable). The heading is the last one before the row.
+        UObject* heading = nullptr;
+        for (auto* child : obj::PanelChildren(obj::ParentWidget(row)))
+        {
+            if (child == row) return heading;
+            if (obj::IsA(child, L"LevelVariableSeparator_C")) heading = child;
+        }
+        return nullptr;
+    }
+
     Kind KindOf(UObject* interactable)
     {
+        // A story variable of a debug start holds a check box for a yes-or-no variable and a
+        // dropdown for one with named values; ActiveDataWidget is the one it shows.
+        if (obj::IsA(interactable, L"LevelVariableSingle_C"))
+        {
+            UObject* active = nullptr;
+            obj::ReadObject(interactable, L"ActiveDataWidget", active);
+            return obj::IsA(active, L"ComboBoxString") ? Kind::Selector : Kind::Checkbox;
+        }
         for (const auto& rule : kKinds)
+        {
+            if (obj::IsA(interactable, rule.className)) return rule.kind;
+        }
+        for (const auto& rule : kEngineKinds)
         {
             if (obj::IsA(interactable, rule.className)) return rule.kind;
         }
@@ -326,7 +435,10 @@ namespace qa::ui
             }
             cur = obj::FindOuterUserWidget(cur, 12);
         }
-        return generic;
+        if (generic) return generic;
+        // Nothing above is the game's: an engine control placed on a screen as it is (the
+        // chapter select's dropdown, check box and button) is the selection itself.
+        return IsEngineControl(focused) ? focused : nullptr;
     }
 
     Description Describe(UObject* interactable)
@@ -376,6 +488,54 @@ namespace qa::ui
                 lastIndex = index;
                 log::Info(L"paths: {} moment {} of {}: {}", d.label, index + 1, count, d.value);
             }
+            return d;
+        }
+
+        // An engine control placed on a screen as it is: a dropdown or a check box is named
+        // by the words beside it and says its value; a button carries its own words.
+        if (IsEngineControl(interactable))
+        {
+            if (d.kind == Kind::Selector)
+                d.value = str::CollapseWhitespace(obj::CallForText(interactable, L"GetSelectedOption"));
+            else if (d.kind == Kind::Checkbox)
+                d.value = CheckValue(interactable);
+            if (d.kind != Kind::Button) d.label = StripTrailingColon(BesideText(interactable));
+            if (str::Trim(d.label).empty()) d.label = str::Join(DisplayTexts(obj::DescendantTexts(interactable, kLabelDepthDeep)), L", ");
+            d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
+            if (!obj::CallForBool(interactable, L"GetIsEnabled")) d.state = locale::Mod(L"ui.state.disabled");
+            return d;
+        }
+
+        // A story variable of a debug start. The debug menu builds it with the variable's
+        // description as its name and the variable's own name on the line below, or with
+        // the variable's name alone when it has no description; a variable whose condition
+        // does not hold keeps showing its value, but its control is disabled and that line
+        // reads "Condition: " and the condition (DebugLevelVariableSingleSMG026, 0x1415168b0).
+        if (obj::IsA(interactable, L"LevelVariableSingle_C"))
+        {
+            d.label = TextProperty(interactable, L"VariableNameText");
+            const auto below = str::Trim(VisibleTextProperty(interactable, L"DisabledVarText"));
+            if (!below.empty()) d.label += L", " + below;
+            d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
+            UObject* active = nullptr;
+            if (obj::ReadObject(interactable, L"ActiveDataWidget", active) && obj::IsLive(active))
+            {
+                d.value = d.kind == Kind::Selector ? str::CollapseWhitespace(obj::CallForText(active, L"GetSelectedOption")) : CheckValue(active);
+                if (!obj::CallForBool(active, L"GetIsEnabled")) d.state = locale::Mod(L"ui.state.disabled");
+            }
+            d.index = SiblingPosition(interactable, d.count);
+            return d;
+        }
+
+        // A row of the chapter select's list: its label is bound to the chapter's name and
+        // start state ("WoodlandRoad (Prologue_Woodlandroad)"), and its place is the item's
+        // place in the list, since the rows are recycled as the list scrolls.
+        if (obj::IsA(interactable, L"SMGUI_ChapterButton_C"))
+        {
+            d.label = str::Join(DisplayTexts(obj::DescendantTexts(interactable, kLabelDepth)), L", ");
+            if (str::Trim(d.label).empty()) d.label = obj::CallForText(interactable, L"Get_ButtonLabel_Text_0");
+            d.label = str::CollapseWhitespace(str::StripMarkup(d.label));
+            d.index = ChapterPosition(interactable, d.count);
             return d;
         }
 

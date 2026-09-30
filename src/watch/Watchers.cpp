@@ -235,6 +235,7 @@ namespace qa::watch
         std::vector<FocusListener> g_focusListeners;
         UObject* g_screen = nullptr;
         UObject* g_focused = nullptr;
+        UObject* g_focusList = nullptr; // the list view the selection moves in, while it does
         std::vector<UObject*> g_screenCandidates;
         std::vector<UObject*> g_controlCandidates;
         std::vector<UObject*> g_editCandidates;
@@ -365,6 +366,21 @@ namespace qa::watch
                 (!obj::IsA(g_focused, L"EditableTextBox") || obj::CallForBool(g_focused, L"HasKeyboardFocus")))
             {
                 focused = g_focused;
+            }
+
+            // A list view keeps the screen's record of the focus on itself while the selection
+            // moves over its rows (the debug chapter select: LastFocusedWidget stays
+            // ChapterList), so the row is asked of the list at every poll, for as long as the
+            // selection stays in it.
+            UObject* list = nullptr;
+            if (focused && obj::IsA(focused, L"ListViewBase"))
+                list = focused;
+            else if (focused && focused == g_focused && obj::IsLive(g_focusList) && obj::ListOfRow(focused) == g_focusList)
+                list = g_focusList;
+            g_focusList = list;
+            if (list)
+            {
+                if (UObject* row = obj::FocusedListRow(list)) focused = row;
             }
 
             UObject* screen = focused ? obj::RootScreen(focused) : nullptr;
@@ -510,5 +526,6 @@ namespace qa::watch
         g_editCandidates.clear();
         g_screen = nullptr;
         g_focused = nullptr;
+        g_focusList = nullptr;
     }
 }
