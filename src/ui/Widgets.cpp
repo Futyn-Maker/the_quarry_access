@@ -531,14 +531,19 @@ namespace qa::ui
     {
         std::vector<std::wstring> parts;
         parts.push_back(d.label);
-        switch (d.kind)
+        // The kind of a control is the mod's word for what the eye takes from its look, so
+        // briefly the label and the value stand for it.
+        if (cfg::Detailed())
         {
-        case Kind::Selector: parts.push_back(locale::Mod(L"ui.type.selector")); break;
-        case Kind::Slider: parts.push_back(locale::Mod(L"ui.type.slider")); break;
-        case Kind::Checkbox: parts.push_back(locale::Mod(L"ui.type.checkbox")); break;
-        case Kind::Tab: parts.push_back(locale::Mod(L"ui.type.tab")); break;
-        case Kind::Edit: parts.push_back(locale::Mod(L"ui.type.edit")); break;
-        default: break;
+            switch (d.kind)
+            {
+            case Kind::Selector: parts.push_back(locale::Mod(L"ui.type.selector")); break;
+            case Kind::Slider: parts.push_back(locale::Mod(L"ui.type.slider")); break;
+            case Kind::Checkbox: parts.push_back(locale::Mod(L"ui.type.checkbox")); break;
+            case Kind::Tab: parts.push_back(locale::Mod(L"ui.type.tab")); break;
+            case Kind::Edit: parts.push_back(locale::Mod(L"ui.type.edit")); break;
+            default: break;
+            }
         }
         if (!d.value.empty()) parts.push_back(d.value);
         if (!d.state.empty()) parts.push_back(d.state);
@@ -1133,7 +1138,8 @@ namespace qa::ui
     {
         const auto tabs = ActivePauseTabs();
         if (tabs.label.empty()) return {};
-        std::vector<std::wstring> parts{tabs.label, locale::Mod(L"ui.type.tab")};
+        std::vector<std::wstring> parts{tabs.label};
+        if (cfg::Detailed()) parts.push_back(locale::Mod(L"ui.type.tab"));
         if (tabs.index > 0 && tabs.count > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(tabs.index), std::to_wstring(tabs.count)));
         return str::Join(parts, L", ");
     }
