@@ -400,11 +400,13 @@ namespace qa::features
         }
 
         // The heading: what kind of choice it is (with the timer when it has one) and its
-        // question when the game shows one.
+        // question when the game shows one. The kind is the mod's own word for what a sound
+        // already says, the game's own for a choice and the clock's for a timed one, so
+        // briefly the options follow the question at once.
         std::wstring HeadingText(const Choice& choice)
         {
             std::vector<std::wstring> parts;
-            parts.push_back(locale::Mod(Timed(choice) ? L"choice.timed" : L"choice.heading"));
+            if (cfg::Detailed()) parts.push_back(locale::Mod(Timed(choice) ? L"choice.timed" : L"choice.heading"));
             const auto question = ui::PropertyText(choice.widget, L"TitleText");
             if (!question.empty()) parts.push_back(question);
             return str::JoinSentences(parts);
