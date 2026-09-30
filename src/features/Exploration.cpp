@@ -950,6 +950,58 @@ namespace qa::features
             return out;
         }
 
+        // Whether a flow's button-press action asks with a prompt labelled by this locale key.
+        bool PromptLabelled(UObject* action, const std::wstring& labelKey)
+        {
+            bool labelled = false;
+            obj::ForEachArrayElement(action, obj::FindProperty(action, L"ButtonPressPrompts"),
+                                     [&](void* element, FProperty* inner)
+                                     {
+                                         auto* label = obj::StructMember(inner, L"Label");
+                                         std::wstring key;
+                                         if (label && obj::ReadStringAt(obj::ValuePtrAt(element, label), obj::StructMember(label, L"Key"), key) &&
+                                             key == labelKey)
+                                             labelled = true;
+                                     });
+            return labelled;
+        }
+
+        // States that only route the flow and show nothing of their own.
+        bool Routes(UObject* state)
+        {
+            return obj::IsA(state, L"GFStateDiverge") || obj::IsA(state, L"GFStatePassThrough") || obj::IsA(state, L"GFStateBaseSwitch") ||
+                   obj::IsA(state, L"GFStateEnumSwitch") || obj::IsA(state, L"GFStateConverge");
+        }
+
+        // Whether the flow goes on from a state to one of the given states, directly or through
+        // states that only route it: the lodge of chapter 4 forks the flow once more between
+        // its card's prompt and the collecting.
+        bool LeadsTo(UObject* from, const std::vector<UObject*>& targets)
+        {
+            std::vector<UObject*> frontier{from};
+            std::vector<UObject*> seen{from};
+            for (int hop = 0; hop < 4 && !frontier.empty(); ++hop)
+            {
+                std::vector<UObject*> next;
+                for (auto* state : frontier)
+                {
+                    std::vector<UObject*> transitions;
+                    obj::ReadObjectArray(state, L"Transitions", transitions);
+                    for (auto* transition : transitions)
+                    {
+                        UObject* target = nullptr;
+                        if (!obj::IsLive(transition) || !obj::ReadObject(transition, L"TargetState", target) || !obj::IsLive(target)) continue;
+                        if (std::find(targets.begin(), targets.end(), target) != targets.end()) return true;
+                        if (std::find(seen.begin(), seen.end(), target) != seen.end()) continue;
+                        seen.push_back(target);
+                        if (Routes(target)) next.push_back(target);
+                    }
+                }
+                frontier = std::move(next);
+            }
+            return false;
+        }
+
         std::wstring DestinationLabel(UObject* actor)
         {
             const auto label = str::CollapseWhitespace(str::StripMarkup(gametext::ReadLocalized(actor, L"PromptLabel")));
@@ -3637,6 +3689,34 @@ namespace qa::features
             if (t.actor == current) return t.label;
         }
         return UseLocationLabel(current);
+    }
+
+    bool PromptOffersTarotCard(const std::wstring& labelKey)
+    {
+        if (labelKey.empty()) return false;
+        // Most prompts come from no such action at all (a use location's comes from the use
+        // location), so the states that collect a card are looked for only once one asks.
+        std::vector<UObject*> collecting;
+        bool gathered = false;
+        for (auto* prompt : obj::FindAllLive(L"GFActionPromptForButtonPressSMG026"))
+        {
+            if (!PromptLabelled(prompt, labelKey)) continue;
+            UObject* schema = obj::Outer(prompt);
+            UObject* state = schema ? obj::Outer(schema) : nullptr;
+            if (!obj::IsLive(state)) continue;
+            if (!gathered)
+            {
+                gathered = true;
+                for (auto* collect : obj::FindAllLive(L"GFActionCollectTarotCardSMG026"))
+                {
+                    UObject* collectSchema = obj::Outer(collect);
+                    UObject* collectState = collectSchema ? obj::Outer(collectSchema) : nullptr;
+                    if (obj::IsLive(collectState)) collecting.push_back(collectState);
+                }
+            }
+            if (LeadsTo(state, collecting)) return true;
+        }
+        return false;
     }
 
     void DumpExploration()

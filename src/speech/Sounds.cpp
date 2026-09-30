@@ -25,7 +25,7 @@ namespace qa::sounds
 
         using Wav = std::vector<uint8_t>; // a WAV file in memory; PlaySound reads it while playing
 
-        std::array<Wav, 10> g_cues;
+        std::array<Wav, 11> g_cues;
         std::array<Wav, kTickSteps> g_ticks;
         std::array<Wav, 4> g_beacons; // made on demand; a few are kept so a playing one is not overwritten
         Wav g_locked;                 // the double ping of a shot that would land
@@ -184,6 +184,11 @@ namespace qa::sounds
                                                         {0.0, 0.1},
                                                         {.frequency = 1568.0, .seconds = 0.025, .attack = 0.002, .release = 0.012}},
                                                        amplitude);
+        // A tarot card within reach: a quick sweep up an octave to a high note left ringing,
+        // like light catching the card; no other cue slides that fast or rings that long.
+        g_cues[static_cast<size_t>(Cue::Tarot)] = Wave({{.frequency = 1175.0, .seconds = 0.08, .glideTo = 2349.0, .attack = 0.005, .release = 0.01},
+                                                        {.frequency = 2349.0, .seconds = 0.24, .attack = 0.002, .release = 0.22}},
+                                                       amplitude * 0.8);
         // Blips two octaves apart from the lowest to the highest, quieter than the cues.
         for (int i = 0; i < kTickSteps; ++i)
         {

@@ -52,6 +52,10 @@ namespace qa::features
     void NoteDestinationPrompt();
     // The label of the use location the character stands in, empty when none.
     std::wstring CurrentUseLocationLabel();
+    // Whether a button prompt the game shows with this label (its locale key) offers a tarot
+    // card: the scene's flow asks for the press in a state from which a press goes on, through
+    // states that only route the flow, to the state that collects a card.
+    bool PromptOffersTarotCard(const std::wstring& labelKey);
     // Writes everything the exploration reads (character, camera, use locations, places,
     // routes, glints) to the log.
     void DumpExploration();

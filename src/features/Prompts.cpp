@@ -34,9 +34,16 @@ namespace qa::features
         {
             std::wstring action;
             int64_t style = 0;
+            std::wstring labelKey; // the locale key of its label, when the game showed it with one
         };
         std::map<UObject*, Setup> g_setups;
         double g_interruptSetUpAt = -100.0; // when the game last set an interruption up
+
+        // The locale key of the label the game is showing a prompt with, from the moment it
+        // hands the prompt container the prompt's data until the container is done with it.
+        // The container sets a prompt up from within, and a choice sets up its prompts of its
+        // own accord, so the key is kept only for as long as the container is at it.
+        std::wstring g_showingLabelKey;
 
         // The interruption on offer, from its set-up until the game says how it went.
         struct Interruption
@@ -101,12 +108,37 @@ namespace qa::features
                 InterruptionOver(state == 2, L"its state");
         }
 
+        // The game hands the prompt container what it shows: the action, the style and the
+        // label, an FLocaleString in the info's base struct.
+        void OnShowInputAction(UObject*, FFrame& stack)
+        {
+            g_showingLabelKey.clear();
+            auto* info = params::Find(stack.Node(), L"PromptInfo");
+            void* value = params::StructPtr(stack, L"PromptInfo");
+            auto* label = obj::StructMember(info, L"Label");
+            if (value && label) obj::ReadStringAt(obj::ValuePtrAt(value, label), obj::StructMember(label, L"Key"), g_showingLabelKey);
+        }
+
+        void OnShownInputAction(UObject*, FFrame&)
+        {
+            g_showingLabelKey.clear();
+        }
+
         void OnSetButtonPrompt(UObject* self, FFrame& stack)
         {
             Setup setup;
             params::String(stack, L"ButtonInputMappingName", setup.action);
             params::Int(stack, L"Style", setup.style);
-            log::Info(L"prompts: {} set up with {} style {}", obj::ObjectName(self), setup.action, setup.style);
+            setup.labelKey = g_showingLabelKey;
+            log::Info(L"prompts: {} set up with {} style {}{}", obj::ObjectName(self), setup.action, setup.style,
+                      setup.labelKey.empty() ? std::wstring() : L" label " + setup.labelKey);
+            // A tarot card within reach: the prompt that takes it is marked by its own sound,
+            // every time the game offers it, since it lasts only a few seconds.
+            if (PromptOffersTarotCard(setup.labelKey))
+            {
+                log::Info(L"prompts: the prompt offers a tarot card");
+                if (!LeavingTheGame()) sounds::Play(sounds::Cue::Tarot);
+            }
             // An aiming prompt: the game's own aiming setting decides how much of the work it
             // does for the player, so it is worth knowing which one was in force.
             if (setup.style == 5) log::Info(L"prompts: the aiming setting is {}", ui::GameSettingValue(L"CombatAimSetting"));
@@ -255,6 +287,8 @@ namespace qa::features
 
     void PromptsFeature::Install()
     {
+        hooks::OnScriptPre(L"InteractionPromptWidgetSMG026_C", L"ShowInputActionEvent", &OnShowInputAction);
+        hooks::OnScript(L"InteractionPromptWidgetSMG026_C", L"ShowInputActionEvent", &OnShownInputAction);
         hooks::OnScript(L"InputActionInteractionPromptWidgetSMG026_C", L"SetButtonPrompt", &OnSetButtonPrompt);
         hooks::OnScript(L"InputActionInteractionPromptWidgetSMG026_C", L"Hide", &OnPromptHide);
         watch::AddHudListener(&OnHud);
