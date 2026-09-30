@@ -43,6 +43,8 @@ Use the arrow keys or the D-pad to move through menus, Enter or A to select, and
 
 The arrow keys, Backspace and Escape, or the D-pad, B and Start, also stop the speech as you press them, so a list moves on at once and a screen you leave is not still being read over the one you arrive at.
 
+On the keyboard, Space opens the list of a dropdown. The up and down arrows move through its options, Home and End go to the first and last, Space or Enter keeps the option you are on, and Escape puts back the one it had.
+
 The game's Accessibility settings make many mechanics easier. Choice Timer, QTE Speed and Interrupt Speed give more time. Simple QTE's accepts any direction or passes quick-time events by itself. Button Mash can ask for holding or a single press instead of mashing. Don't Breathe and Aim Assist can be set to Auto.
 
 ### Mod Keys
