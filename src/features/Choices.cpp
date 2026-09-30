@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "features/Combat.hpp"
 #include "features/Prompts.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
@@ -704,11 +705,17 @@ namespace qa::features
             }
             if (obj::IsA(ev.instance, L"TimerBarWidgetSMG026"))
             {
-                // The game raises this bar beside an interruption and beside a fight. The
-                // interruption is marked by its own sound, set up a moment before the bar
-                // appears, so briefly the word is left to the sound there; the fight's bar
-                // keeps the word at either level.
-                if (InterruptPromptSetUpWithin(1.0) && !cfg::Detailed())
+                // The game raises this bar beside an interruption and beside a fight with a time
+                // limit. The interruption is marked by its own sound, set up a moment before the
+                // bar appears, so briefly the word is left to the sound there; the fight's bar is
+                // marked by the clock's sound and keeps the word at either level.
+                const bool interruption = InterruptPromptSetUpWithin(1.0);
+                if (!interruption)
+                {
+                    log::Info(L"choices: the timer bar belongs to a fight{}", CombatActive() ? L"" : L", though no fight has begun");
+                    sounds::Play(sounds::Cue::Timer);
+                }
+                if (interruption && !cfg::Detailed())
                     log::Info(L"choices: the timer bar belongs to an interruption, which its sound marks");
                 else
                     speech::Announce(locale::Mod(L"choice.timer"));

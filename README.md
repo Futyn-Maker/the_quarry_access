@@ -107,7 +107,7 @@ Hold the left mouse button or A to hold your breath, and keep holding while ther
 
 > Aiming is accessible and voiced, but it is very hard: most fights last only a few seconds. It is recommended to set Aim Assist to Auto in the game's Accessibility settings. The game then aims and optionally shoots for you.
 
-The game has no crosshair. Your aim is the torch beam on the weapon. Move it with the mouse or the right stick. A blip sounds on the side of the target. It is higher when the target is above the beam and lower when it is below, and it gets faster as the beam gets closer. A double ping means a shot would hit, and the mod says "Fire!" when the hit is certain. Shoot with the left mouse button or the right trigger. With Aim Assist set to On, the game also pulls the aim onto a nearby target.
+The game has no crosshair. Your aim is the torch beam on the weapon. Move it with the mouse or the right stick. A tick-tock at the start of a fight means it has a time limit. A blip sounds on the side of the target. It is higher when the target is above the beam and lower when it is below, and it gets faster as the beam gets closer. A double ping means a shot would hit, and the mod says "Fire!" when the hit is certain. Shoot with the left mouse button or the right trigger. With Aim Assist set to On, the game also pulls the aim onto a nearby target.
 
 ### Exploration
 
