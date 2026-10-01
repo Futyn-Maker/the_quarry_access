@@ -29,7 +29,8 @@ namespace qa::features
 
     // Records that the game has shown the prompt to fire: the sign of a fight.
     void NoteCombatPrompt(RC::Unreal::UObject* prompt);
-    // True while a fight is on.
+    // True while a fight is on and running: not while it stands still with a paused world, a
+    // screen over the picture or the way out to the main menu, when the keys are the game's.
     bool CombatActive();
     // Leads the aim sound to the next or the previous target and says which; says where the
     // current one stands when there is only one.

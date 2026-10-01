@@ -108,7 +108,8 @@ namespace qa::features
             int leading = -1; // the target it led to at the last poll
             Sight sight;
             double startedAt = 0.0;
-            double activeAt = 0.0; // the last moment a sign of the fight was seen
+            double heldSince = -1.0; // when the fight began to stand still with the world, -1 while it runs
+            double activeAt = 0.0;   // the last moment a sign of the fight was seen
             bool hasTimeLimit = false;
             double timeLimit = 0.0;
             bool automatic = false; // the game's aiming setting fights by itself
@@ -1047,18 +1048,22 @@ namespace qa::features
             Combat& c = g_combat;
             if (!c.on) return;
             const double elapsed = c.activeAt - c.startedAt;
-            Judge(c, true);
+            // A fight that ends while it stands still ends with the world taken apart or turned
+            // back, and has no outcome to tell.
+            const bool still = c.heldSince >= 0.0;
+            if (!still) Judge(c, true);
             // Time ran out when the fight closed at its limit with no hit, and not on the heels
             // of a shot.
             const bool afterShot = c.lastShotAt >= 0.0 && c.activeAt - c.lastShotAt < 1.0;
-            if (!c.anyHit && c.hasTimeLimit && !afterShot && elapsed >= c.timeLimit - 0.5)
+            if (!still && !c.anyHit && c.hasTimeLimit && !afterShot && elapsed >= c.timeLimit - 0.5)
             {
                 log::Info(L"combat: the time ran out");
                 // The tone of a loss, and briefly nothing more, as with a missed shot.
                 sounds::Play(sounds::Cue::Fail);
                 if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
             }
-            log::Info(L"combat: over ({}) after {:.2f} s, {} shot(s), {}", why, elapsed, c.shots, c.anyHit ? L"a hit" : L"no hit");
+            log::Info(L"combat: over ({}) after {:.2f} s, {} shot(s), {}{}", why, elapsed, c.shots, c.anyHit ? L"a hit" : L"no hit",
+                      still ? L", standing still" : L"");
             g_combat = Combat{};
         }
 
@@ -1270,11 +1275,38 @@ namespace qa::features
             sounds::Aim(pan, level, best.onTarget, std::fabs(best.horizontal) > 90.0);
         }
 
+        // Whether the fight stands still: the world paused, a screen of the game over the
+        // picture, or the player on the way out to the main menu.
+        bool FightHeld()
+        {
+            return GamePaused() || watch::CurrentScreen() != nullptr || LeavingTheGame();
+        }
+
+        // The fight takes up where it stood: its clocks move on past the time it stood still,
+        // so that the pause counts neither toward its time limit nor against a shot in flight,
+        // and the word to fire is earned afresh.
+        void Resume(Combat& c, double now)
+        {
+            const double held = now - c.heldSince;
+            c.heldSince = -1.0;
+            c.startedAt += held;
+            c.activeAt = now;
+            if (c.shotAt >= 0.0) c.shotAt += held;
+            if (c.lastShotAt >= 0.0) c.lastShotAt += held;
+            c.onSince = -1.0;
+            c.fireCalled = false;
+            g_modifierAt = std::max(g_modifierAt, now);
+            log::Info(L"combat: the fight goes on after standing still for {:.1f} s", held);
+        }
+
         void PollImpl()
         {
             const double now = gamethread::NowSeconds();
             const auto frame = gamethread::FrameCount();
-            // The fight's camera modifier is one sign of a fight, looked for now and then.
+            const bool held = FightHeld();
+            // The fight's camera modifier is one sign of a fight, looked for now and then. The
+            // pause switches the camera modifiers off as it begins and on again just before the
+            // world runs again, which is no fight beginning.
             if (frame % 10 == 0)
             {
                 const bool on = ModifierOn();
@@ -1283,37 +1315,49 @@ namespace qa::features
                     g_modifierOn = on;
                     g_modifierAt = now;
                     log::Info(L"combat: the fight's camera modifier is {}", on ? L"on" : L"off");
-                    if (on && !g_combat.on) Begin(L"the camera modifier");
+                    if (on && !g_combat.on && !held) Begin(L"the camera modifier");
                     if (on) g_combat.modifierSeen = true;
                 }
             }
             Combat& c = g_combat;
             if (!c.on) return;
+            // The fight's replicator lives as long as the fight: a new one is spawned for each.
+            if (c.replicator && (!obj::IsLive(c.replicator) || obj::CallForBool(c.replicator, L"IsActorBeingDestroyed")))
+            {
+                End(L"the fight's replicator is gone");
+                return;
+            }
+            if (!Pawn())
+            {
+                End(L"the character went");
+                return;
+            }
+            // A pause, a screen of the game over the picture or the way out to the main menu
+            // stops the fight with the world rather than ending it: ended there, nothing would
+            // begin it again once the game resumed, and the aim would fall silent for the rest
+            // of it. Nothing is judged, sounded or timed out meanwhile.
+            if (held)
+            {
+                if (c.heldSince < 0.0)
+                {
+                    c.heldSince = now;
+                    log::Info(L"combat: the fight stands still: {}", GamePaused()       ? L"the game is paused"
+                                                                     : LeavingTheGame() ? L"the player is leaving the game"
+                                                                                        : L"a screen is over the picture");
+                }
+                return;
+            }
+            if (c.heldSince >= 0.0) Resume(c, now);
             if (g_modifierOn) c.activeAt = now;
             if (obj::IsLive(c.prompt) && obj::IsWidgetShown(c.prompt, true)) c.activeAt = now;
+            if (c.replicator) c.activeAt = now;
             if (obj::IsLive(c.status)) Shot(c, ShotsFired(c.status), L"counted by the game");
             Judge(c, false);
             // The fight is over once its signs have been gone for a while: the modifier off
-            // when it was seen on, the fire prompt hidden and no shot for a few seconds, the
-            // character gone, the world paused, or a screen of the game over the picture.
+            // when it was seen on, the fire prompt hidden and no shot for a few seconds.
             if (c.modifierSeen && !g_modifierOn && now - g_modifierAt > 0.5)
             {
                 End(L"the camera modifier went off");
-                return;
-            }
-            // The fight's replicator lives as long as the fight: a new one is spawned for each.
-            if (c.replicator)
-            {
-                if (!obj::IsLive(c.replicator) || obj::CallForBool(c.replicator, L"IsActorBeingDestroyed"))
-                {
-                    End(L"the fight's replicator is gone");
-                    return;
-                }
-                c.activeAt = now;
-            }
-            if (!Pawn() || GamePaused() || watch::CurrentScreen())
-            {
-                End(L"the character or the picture went");
                 return;
             }
             if (now - c.activeAt > 3.0)
@@ -1447,7 +1491,7 @@ namespace qa::features
 
     bool CombatActive()
     {
-        return g_combat.on;
+        return g_combat.on && !FightHeld();
     }
 
     void NextCombatTarget()
