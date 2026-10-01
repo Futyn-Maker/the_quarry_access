@@ -24,6 +24,7 @@ namespace qa::features
         bool g_up = false;
         bool g_leaving = false;   // the player answered the quit popup by leaving
         bool g_dismissed = false; // they answered it by staying, and the menu is theirs again
+        bool g_paused = false;    // the world stood paused at the last poll
 
         std::wstring PausedText()
         {
@@ -44,6 +45,12 @@ namespace qa::features
 
         void PollImpl()
         {
+            const bool paused = GamePaused();
+            if (paused != g_paused)
+            {
+                g_paused = paused;
+                log::Info(L"pause: the world {}", paused ? L"is paused" : L"runs again");
+            }
             if (gamethread::FrameCount() % 4 != 0) return;
             // The state is read at every poll: reading it only now and then once missed whole
             // openings, and a menu opened and closed again in between was taken for one.
@@ -101,6 +108,41 @@ namespace qa::features
     bool LeavingTheGame()
     {
         return g_leaving;
+    }
+
+    bool GamePaused()
+    {
+        // The pause menu pauses the world through the engine (GFActionPauseGameSMG026, the
+        // player controller's SetPause) and the game's own flows wait on the same answer
+        // (GFConditionIsGamePausedSMG026), so it is asked of the engine as they ask it.
+        static bool cached = false;
+        static unsigned long long cachedFrame = 0;
+        static UObject* statics = nullptr;
+        const auto frame = gamethread::FrameCount();
+        if (frame != 0 && frame == cachedFrame) return cached;
+        cachedFrame = frame;
+        cached = false;
+        if (!obj::IsLive(statics)) statics = obj::FindObject(L"/Script/Engine.Default__GameplayStatics");
+        auto* fn = statics ? obj::FindFunction(statics, L"IsGamePaused") : nullptr;
+        UObject* context = obj::LocalPlayerController();
+        if (!fn || !context) return cached;
+        obj::Call(
+            statics, fn,
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && prop->GetName() == L"WorldContextObject") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = context;
+                }
+            },
+            [&](void* params)
+            {
+                for (auto* prop : fn->ForEachProperty())
+                {
+                    if (prop && prop->GetName() == L"ReturnValue") obj::ReadBoolAt(params, prop, cached);
+                }
+            });
+        return cached;
     }
 
     void PauseFeature::Describe(std::vector<std::wstring>& out)

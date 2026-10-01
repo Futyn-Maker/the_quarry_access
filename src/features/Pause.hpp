@@ -23,4 +23,10 @@ namespace qa::features
     // the player, handing the character and its prompts back for a few seconds on the way
     // out, and none of that world is worth saying.
     bool LeavingTheGame();
+
+    // True while the game's world stands paused: the pause menu and everything opened from it
+    // (its settings, the tutorial videos, its popups), the death-rewind pause and a couch
+    // co-op hand-over. The engine's own answer, the one the game's flows wait on. Game thread
+    // only; asked once per frame whoever asks.
+    bool GamePaused();
 }

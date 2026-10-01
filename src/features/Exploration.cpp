@@ -27,6 +27,7 @@
 #include <functional>
 #include <map>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -135,8 +136,11 @@ namespace qa::features
         bool g_controlHeard = false;
         bool g_controlQuiet = false;
         std::wstring_view g_stage;
-        double g_hintDueAt = -1.0;     // when the keys are to be said, after the game's own word about the stick
-        double g_hintSaidAt = -1000.0; // when they were last said
+        std::optional<bool> g_mark;        // the explore action's mark on the character, as last logged
+        bool g_locoUnmarked = false;       // the character stood in Loco without the mark, as last logged
+        UObject* g_undrivenPawn = nullptr; // a pawn that is not the controller's character, as last logged
+        double g_hintDueAt = -1.0;         // when the keys are to be said, after the game's own word about the stick
+        double g_hintSaidAt = -1000.0;     // when they were last said
         bool g_beacon = true;
         double g_beaconAt = -10.0;
         double g_destinationsScannedAt = -10.0;
@@ -2421,7 +2425,7 @@ namespace qa::features
             }
             // The game may take the character back between two rounds of the roaming, so its
             // hold on the character, read at this frame, is asked here rather than waited for.
-            if (watch::CurrentScreen() != nullptr || MechanicShown() || !g_control)
+            if (GamePaused() || watch::CurrentScreen() != nullptr || MechanicShown() || !g_control)
             {
                 StopWalk(nullptr, false);
                 return;
@@ -2586,16 +2590,17 @@ namespace qa::features
 
         // ---- who has the character --------------------------------------------------------
 
-        // The character's cinematic state as the game names it, for the log. The game answers
-        // for each state but the three passages into, out of and between cutscenes.
+        // The character's cinematic state as the game names it, for the log. IsBound answers
+        // every state from Mount on (0x140eae6f0), so it is asked last and stands for the four
+        // states no getter answers alone.
         const wchar_t* CinematicStage(UObject* pawn, bool loco)
         {
             if (loco) return L"Loco";
             if (obj::CallForBool(pawn, L"IsBoundAndRunning")) return L"CinematicRunning";
             if (obj::CallForBool(pawn, L"IsSleeping")) return L"Standby";
             if (obj::CallForBool(pawn, L"IsInCinematicToLoco")) return L"CinematicToLoco";
-            if (obj::CallForBool(pawn, L"IsBound")) return L"Mount";
-            return L"Unmount, LocoToCinematic or CinematicToCinematic";
+            if (obj::CallForBool(pawn, L"IsBound")) return L"Mount, Unmount, LocoToCinematic or CinematicToCinematic";
+            return L"unknown";
         }
 
         // Which navigation data answers the mod's questions about roads, and how the game builds
@@ -2621,18 +2626,87 @@ namespace qa::features
             }
         }
 
-        // Whether the game hands the player the character, read at every frame. The scene's
-        // explore action marks the player's character as explored with while it runs, and the
-        // character's state machine keeps it in locomotion only while it is so marked or while
-        // the scene lets it walk, which the scenes do only for a companion an AI walks or
-        // together with the explore action. Any cutscene takes it out of locomotion, the end of
-        // the explore action as well, and IsInLoco is that state and nothing more. A pause
-        // freezes the state rather than changing it. Returns whether the hold changed, so that
-        // exploration begins and ends on the frame it does.
+        // The game lets the player's keys and stick move the character only while the scene's
+        // explore action marks it: the action sets a byte of the character as it starts and at
+        // every update of its state and clears it when the state is left (0x140dc7e79,
+        // 0x140dc786e), and the controller's movement code replaces the player's input with
+        // nothing while the byte is clear (0x1413b9b71). Nothing reflected reads the byte, so it
+        // is read at its place in the character class, and only once the class has been found
+        // laid out as in the build that place was taken from: a patch that moved it would move
+        // the class's last reflected member or change its size as well.
+        constexpr int32_t kExploreMark = 0x786;
+        constexpr int32_t kCharacterClassSize = 0x7F0;
+        constexpr int32_t kHeldItemsOffset = 0x770; // CurrentHeldItems, the class's last reflected member
+
+        enum class MarkLayout
+        {
+            Unchecked,
+            Known,
+            Foreign,
+        };
+        MarkLayout g_markLayout = MarkLayout::Unchecked;
+
+        bool MarkLayoutKnown(UObject* pawn)
+        {
+            if (g_markLayout != MarkLayout::Unchecked) return g_markLayout == MarkLayout::Known;
+            RC::Unreal::UStruct* cls = pawn->GetClassPrivate();
+            for (int depth = 0; cls && depth < 64 && obj::ClassName(static_cast<RC::Unreal::UClass*>(cls)) != L"CharacterBaseSMG"; ++depth)
+                cls = cls->GetSuperStruct();
+            // Not a character of this game: asked again of the next pawn.
+            if (!cls) return false;
+            FProperty* held = obj::FindProperty(static_cast<RC::Unreal::UClass*>(cls), L"CurrentHeldItems");
+            const int32_t size = cls->GetPropertiesSize();
+            const int32_t heldAt = held ? held->GetOffset_Internal() : -1;
+            g_markLayout = size == kCharacterClassSize && heldAt == kHeldItemsOffset ? MarkLayout::Known : MarkLayout::Foreign;
+            if (g_markLayout == MarkLayout::Known)
+                log::Info(L"explore: the character class is laid out as the mod knows it, and the explore action's mark is read");
+            else
+                log::Error(L"explore: the character class is laid out otherwise (size {:#x}, CurrentHeldItems at {:#x}), so the explore action's mark "
+                           L"is not read and locomotion alone says who has the character",
+                           size, heldAt);
+            return g_markLayout == MarkLayout::Known;
+        }
+
+        // Whether the scene's explore action marks the character, or nothing when the mark
+        // cannot be read. Only a character of the game's own class carries it.
+        std::optional<bool> ExploreMark(UObject* pawn)
+        {
+            if (!pawn || !obj::IsA(pawn, L"CharacterBaseSMG") || !MarkLayoutKnown(pawn)) return std::nullopt;
+            const uint8_t mark = *(reinterpret_cast<const uint8_t*>(pawn) + kExploreMark);
+            // The action writes 1 and 0 and nothing else; any other value is not the mark.
+            if (mark > 1)
+            {
+                g_markLayout = MarkLayout::Foreign;
+                log::Error(L"explore: the explore action's mark reads {}, so it is not read again and locomotion alone says who has the character", mark);
+                return std::nullopt;
+            }
+            return mark == 1;
+        }
+
+        // Whether the game hands the player the character, read at every frame: the character
+        // in locomotion and marked by the scene's explore action. The character's state machine
+        // keeps it in locomotion while it is so marked, while the scene authorises its walking
+        // (GFActionSetLocomotionAuthorised), or when its walking needs no authorisation, so
+        // locomotion alone is no proof: seven explorations authorise the player's own
+        // character as they begin and never take it back, and after the cutscene that ends
+        // one the character stands in Loco while the game drops every push. Any cutscene takes
+        // the character out of locomotion, and the end of the explore action clears the mark. A
+        // pause freezes both rather than changing them. Returns whether the hold changed, so
+        // that exploration begins and ends on the frame it does.
         bool PollControl()
         {
             UObject* pawn = Pawn();
-            const bool control = pawn && obj::CallForBool(pawn, L"IsInLoco");
+            // The game moves the controller's own character from the player's input, and nothing
+            // when it has none (0x1413b9b1b), so the pawn counts only while it is that character.
+            UObject* driven = pawn;
+            if (UObject* controller = obj::LocalPlayerController()) obj::ReadObject(controller, L"CharacterSMG", driven);
+            const bool loco = pawn && pawn == driven && obj::CallForBool(pawn, L"IsInLoco");
+            const std::optional<bool> mark = ExploreMark(pawn);
+            const bool control = loco && mark.value_or(true);
+            if (pawn && pawn != driven && pawn != g_undrivenPawn)
+                log::Info(L"explore: the pawn {} is not the controller's character {}, and the player's input moves no pawn", obj::ObjectName(pawn),
+                          driven ? obj::ObjectName(driven) : L"<none>");
+            g_undrivenPawn = pawn && pawn != driven ? pawn : nullptr;
             if (pawn != g_controlPawn)
             {
                 g_controlPawn = pawn;
@@ -2641,7 +2715,7 @@ namespace qa::features
                     log::Info(L"explore: the player's character is {}, which walks {}", obj::ObjectName(pawn),
                               needsLeave ? L"only while the scene lets it" : L"whenever no cutscene holds it");
             }
-            const std::wstring_view stage = pawn ? CinematicStage(pawn, control) : L"";
+            const std::wstring_view stage = pawn ? CinematicStage(pawn, loco) : L"";
             if (stage != g_stage)
             {
                 g_stage = stage;
@@ -2649,6 +2723,20 @@ namespace qa::features
                     log::Info(L"explore: {} is in the cinematic state {}", obj::ObjectName(pawn), stage);
                 else
                     log::Info(L"explore: the player has no character");
+            }
+            if (mark != g_mark)
+            {
+                g_mark = mark;
+                if (mark) log::Info(L"explore: the explore action {} the player's character", *mark ? L"marks" : L"no longer marks");
+            }
+            const bool unmarked = loco && mark.has_value() && !*mark;
+            if (unmarked != g_locoUnmarked)
+            {
+                g_locoUnmarked = unmarked;
+                if (unmarked)
+                    log::Info(L"explore: {} is in Loco without the explore action's mark, which the scene's authorisation alone keeps, and the game drops the "
+                              L"player's input",
+                              obj::ObjectName(pawn));
             }
             const bool changed = control != g_control;
             g_control = control;
@@ -2670,14 +2758,15 @@ namespace qa::features
         }
 
         // The tones of the hand-over and of the taking back, played once the roaming has read
-        // the frame. A hold with nothing to walk to is no scene to explore: at the end of a
-        // chapter the game hands a character over for a few seconds with nothing about, and no
-        // tone plays for such a hold, while exploration goes on as ever and N and P say there
-        // is nothing to walk to. The hand-over sounds once the roaming has listed something in
-        // the hold, which is the hand-over's own frame wherever the scene turned its use
-        // locations on before handing the character over, and the taking back sounds only after
-        // it. A list that empties while the player keeps the character (a card's prompt turns
-        // the use locations off) takes nothing back.
+        // the frame. A hold with nothing to walk to is no scene to explore, and no tone plays
+        // for it, while exploration goes on as ever and N and P say there is nothing to walk
+        // to. (The seconds at the end of a chapter once taken for such a hold were no hold:
+        // the scene's authorisation kept the character in Loco without the explore action's
+        // mark, and the game dropped every push.) The hand-over sounds once the roaming has
+        // listed something in the hold, which is the hand-over's own frame wherever the scene
+        // turned its use locations on before handing the character over, and the taking back
+        // sounds only after it. A list that empties while the player keeps the character (a
+        // card's prompt turns the use locations off) takes nothing back.
         void SoundControl(bool controlChanged)
         {
             if (LeavingTheGame()) return;
@@ -2730,11 +2819,16 @@ namespace qa::features
         void PollRoaming(double now)
         {
             UObject* pawn = g_controlPawn;
+            // A pause freezes the hold rather than ending it, and a screen of the pause menu
+            // need hold no focus at all (a tutorial video from its settings has nothing to
+            // focus), so the world standing paused is asked of the game on its own.
+            const bool paused = GamePaused();
             UObject* screen = watch::CurrentScreen();
             UObject* mechanic = ShownMechanic();
-            const bool exploring = g_control && !screen && !mechanic;
+            const bool exploring = g_control && !paused && !screen && !mechanic;
             // What keeps the character from the player is logged whenever it changes.
             const std::wstring why = exploring  ? std::wstring()
+                                     : paused   ? std::wstring(L"the game is paused")
                                      : screen   ? L"a screen is up, " + obj::ClassName(screen)
                                      : mechanic ? L"a mechanic is shown, " + obj::ClassName(mechanic)
                                      : pawn     ? std::wstring(L"not walking")
@@ -3121,7 +3215,7 @@ namespace qa::features
         void PollStatic(double now)
         {
             LookAround& look = g_look;
-            if (!look.on || watch::CurrentScreen() != nullptr) return;
+            if (!look.on || GamePaused() || watch::CurrentScreen() != nullptr) return;
             Vec eye;
             double pitch = 0.0;
             double yaw = 0.0;
@@ -3629,7 +3723,7 @@ namespace qa::features
 
     bool LookAroundActive()
     {
-        return g_look.on;
+        return g_look.on && !GamePaused();
     }
 
     void ToggleBeacon()

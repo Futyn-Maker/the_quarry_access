@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
+#include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
@@ -1294,7 +1295,7 @@ namespace qa::features
             Judge(c, false);
             // The fight is over once its signs have been gone for a while: the modifier off
             // when it was seen on, the fire prompt hidden and no shot for a few seconds, the
-            // character gone, or a screen of the game over the picture.
+            // character gone, the world paused, or a screen of the game over the picture.
             if (c.modifierSeen && !g_modifierOn && now - g_modifierAt > 0.5)
             {
                 End(L"the camera modifier went off");
@@ -1310,7 +1311,7 @@ namespace qa::features
                 }
                 c.activeAt = now;
             }
-            if (!Pawn() || watch::CurrentScreen())
+            if (!Pawn() || GamePaused() || watch::CurrentScreen())
             {
                 End(L"the character or the picture went");
                 return;
