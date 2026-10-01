@@ -85,6 +85,12 @@ namespace qa::features
         // When each option widget last began the animation of an option not taken.
         std::map<UObject*, double> g_notChosenAt;
 
+        // The timer bars already announced, by pointer and name, since a freed bar's address
+        // can come back as another object. The game builds a bar for every timer (each of the
+        // nine bars in the logs to 2026-09-30 was an instance of its own) and shows the same
+        // one again when the HUD comes back after a pause, which is no new timer.
+        std::vector<std::pair<UObject*, std::wstring>> g_timerBarsSaid;
+
         const Option kTwoWay[] = {
             {L"ChoiceAWidgetInstance", L"ChoiceLeft", L"dir.left", L"ButtonPromptLeft", L"ChoiceCommitLeft"},
             {L"ChoiceBWidgetInstance", L"ChoiceRight", L"dir.right", L"ButtonPromptRight", L"ChoiceCommitRight"},
@@ -707,6 +713,14 @@ namespace qa::features
             }
             if (obj::IsA(ev.instance, L"TimerBarWidgetSMG026"))
             {
+                const auto bar = std::pair{ev.instance, obj::ObjectName(ev.instance)};
+                std::erase_if(g_timerBarsSaid, [](const auto& said) { return !obj::IsLive(said.first) || obj::ObjectName(said.first) != said.second; });
+                if (std::find(g_timerBarsSaid.begin(), g_timerBarsSaid.end(), bar) != g_timerBarsSaid.end())
+                {
+                    log::Info(L"choices: the timer bar {} is shown again, no new timer", bar.second);
+                    return;
+                }
+                g_timerBarsSaid.push_back(bar);
                 // The game raises this bar beside an interruption and beside a fight with a time
                 // limit. The interruption is marked by its own sound, set up a moment before the
                 // bar appears, and the fight's bar by the clock's sound, so briefly the word is
