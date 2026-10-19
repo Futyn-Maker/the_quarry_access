@@ -25,6 +25,10 @@ namespace qa::keyhook
         std::atomic<bool> g_active{false};
         std::atomic<bool> g_context{false};
         std::atomic<bool> g_on{true};
+        // Presses waiting for the game thread, a few at most: ones that piled up while the
+        // game stood still are stale, and replaying them would act on a screen that has
+        // since changed.
+        constexpr size_t kMaxPresses = 8;
         std::atomic<DWORD> g_threadId{0};
         HHOOK g_hook = nullptr;
         HANDLE g_ready = nullptr;
@@ -88,6 +92,7 @@ namespace qa::keyhook
                             if (!g_down[static_cast<size_t>(vk)])
                             {
                                 std::lock_guard lock(g_mutex);
+                                if (g_presses.size() >= kMaxPresses) g_presses.erase(g_presses.begin());
                                 g_presses.push_back(binding.id);
                             }
                             g_down[static_cast<size_t>(vk)] = true;
