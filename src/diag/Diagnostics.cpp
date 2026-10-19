@@ -332,6 +332,11 @@ namespace qa::diag
             parts.push_back(locale::Mod(L"help.onoff", hotkeys::KeyOf(Command::ModOnOff)));
         }
         features::HelpAll(parts);
+        // The developer's keys close the help, after everything a player uses.
+        if (pad)
+            parts.push_back(locale::Mod(L"help.diag.pad", std::vector<std::wstring>{hold, chord(Command::DevDumpTree), chord(Command::DevLogLevel)}));
+        else
+            parts.push_back(locale::Mod(L"help.diag", hotkeys::KeyOf(Command::DevDumpTree), hotkeys::KeyOf(Command::DevLogLevel)));
         return str::JoinSentences(parts);
     }
 }

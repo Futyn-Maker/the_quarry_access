@@ -145,7 +145,7 @@ During the game, whenever the next scene belongs to somebody else, the game stop
 
 ## Reporting Problems
 
-[Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9, or hold Back and press LB, while it is shown and attach the file it saves in the `dumps` folder next to the log.
+[Open an issue](https://github.com/Futyn-Maker/the_quarry_access/issues) and attach the log, `SMG026\Binaries\Win64\ue4ss\Mods\QuarryAccess\QuarryAccess.log` in the game folder. If something on screen is not read, press Ctrl+F9, or hold Back and press LB, while it is shown and attach the file it saves in the `dumps` folder next to the log. If asked for a more detailed log, press Ctrl+F11, or hold Back and press LT: it switches the log level and says which one is on, and the choice is kept for the next start.
 
 If the game crashed, attach the crash dump as well. Where it is depends on the window the crash showed:
 
