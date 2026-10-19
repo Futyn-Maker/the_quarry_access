@@ -9,6 +9,7 @@
 #include "features/Feature.hpp"
 #include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -287,26 +288,27 @@ namespace qa::diag
 
     std::wstring Help()
     {
-        const auto& s = cfg::Get();
+        using hotkeys::Command;
         std::vector<std::wstring> parts;
         parts.push_back(locale::Mod(L"help.intro"));
         // The keys of the device in the player's hands: the gamepad's chords after a gamepad
         // press, the keyboard's keys otherwise.
-        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
-            parts.push_back(locale::Mod(L"help.chords", std::vector<std::wstring>{input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordRepeat),
-                                                                                  input::KeyDisplayName(s.chordReadScreen), input::KeyDisplayName(s.chordStop),
-                                                                                  input::KeyDisplayName(s.chordHelp)}));
-        else
-            parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{s.keyRepeat, s.keyReadScreen, s.keyStop, s.keyHelp}));
-        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
+        const bool pad = hotkeys::ChordsInHand();
+        const auto hold = input::KeyDisplayName(hotkeys::ChordHold());
+        const auto chord = [](Command command) { return input::KeyDisplayName(hotkeys::ChordOf(command)); };
+        if (pad)
         {
-            parts.push_back(locale::Mod(L"help.speech.pad", input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordSpeech)));
-            parts.push_back(locale::Mod(L"help.verbosity.pad", input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordVerbosity)));
+            parts.push_back(locale::Mod(L"help.chords", std::vector<std::wstring>{hold, chord(Command::Repeat), chord(Command::ReadScreen),
+                                                                                  chord(Command::Stop), chord(Command::Help)}));
+            parts.push_back(locale::Mod(L"help.speech.pad", hold, chord(Command::Speech)));
+            parts.push_back(locale::Mod(L"help.verbosity.pad", hold, chord(Command::Verbosity)));
         }
         else
         {
-            parts.push_back(locale::Mod(L"help.speech", s.keySpeech));
-            parts.push_back(locale::Mod(L"help.verbosity", s.keyVerbosity));
+            parts.push_back(locale::Mod(L"help.hotkeys", std::vector<std::wstring>{hotkeys::KeyOf(Command::Repeat), hotkeys::KeyOf(Command::ReadScreen),
+                                                                                   hotkeys::KeyOf(Command::Stop), hotkeys::KeyOf(Command::Help)}));
+            parts.push_back(locale::Mod(L"help.speech", hotkeys::KeyOf(Command::Speech)));
+            parts.push_back(locale::Mod(L"help.verbosity", hotkeys::KeyOf(Command::Verbosity)));
         }
         features::HelpAll(parts);
         return str::JoinSentences(parts);

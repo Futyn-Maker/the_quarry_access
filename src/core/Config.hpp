@@ -24,47 +24,12 @@ namespace qa::cfg
         std::wstring logLevel = L"Info";
         bool logFile = true;
 
-        // [Hotkeys]
-        std::wstring keyRepeat = L"F5";
-        std::wstring keyReadScreen = L"F6";
-        std::wstring keyStop = L"F7";
-        std::wstring keyHelp = L"F8";
-        std::wstring keySubtitles = L"F9";
-        std::wstring keyLastSubtitle = L"F4";
-        std::wstring keySpeech = L"F3";
-        std::wstring keyVerbosity = L"F2";
-        std::wstring keyDevDumpTree = L"Ctrl+F9";
-        std::wstring keyDevTrace = L"Ctrl+F10";
-        std::wstring keyDevLogLevel = L"Ctrl+F11";
-        // Gamepad chords: the hold button and the button pressed under it. The hold is
-        // taken with one thumb and the second button with the other.
-        std::wstring chordHold = L"Gamepad_Special_Left";
-        std::wstring chordRepeat = L"Gamepad_FaceButton_Bottom";
-        std::wstring chordReadScreen = L"Gamepad_FaceButton_Left";
-        std::wstring chordStop = L"Gamepad_FaceButton_Right";
-        std::wstring chordHelp = L"Gamepad_FaceButton_Top";
-        std::wstring chordSubtitles = L"Gamepad_RightTrigger";
-        std::wstring chordLastSubtitle = L"Gamepad_RightShoulder";
-        std::wstring chordSpeech = L"Gamepad_RightThumbstick";
-        std::wstring chordVerbosity = L"Gamepad_LeftThumbstick";
-        std::wstring chordDevDumpTree = L"Gamepad_LeftShoulder";
-        std::wstring chordDevLogLevel = L"Gamepad_LeftTrigger";
-        std::wstring keyNextTarget = L"N";
-        std::wstring keyPreviousTarget = L"P";
-        std::wstring keyBeacon = L"T";
-        std::wstring keyWhere = L"H";
-        std::wstring keyWalk = L"G";
-        std::wstring keyTarotCards = L"K";
+        // [Hotkeys]: every setting of the section by its name in lower case, as it was
+        // written. The defaults are the hotkey table's (hotkeys/HotkeyTable), which asks for
+        // a setting through Hotkey().
+        std::map<std::wstring, std::wstring> hotkeys;
         // Keys of earlier versions found in the file, for a line in the log.
         std::vector<std::wstring> obsoleteKeys;
-        // Buttons the game leaves unused while the player walks the character freely, so
-        // exploration answers them on their own there.
-        std::wstring padExploreNext = L"Gamepad_DPad_Right";
-        std::wstring padExplorePrevious = L"Gamepad_DPad_Left";
-        std::wstring padExploreWhere = L"Gamepad_DPad_Up";
-        std::wstring padExploreBeacon = L"Gamepad_DPad_Down";
-        std::wstring padExploreWalk = L"Gamepad_FaceButton_Left";
-        std::wstring padExploreTarotCards = L"Gamepad_RightShoulder";
 
         // [Speech]
         int focusDedupeMs = 150;
@@ -95,6 +60,8 @@ namespace qa::cfg
                                                      L"Mash", L"Breathe", L"Popup",  L"Notification", L"Reading"};
 
         bool FeatureEnabled(std::wstring_view name) const;
+        // A [Hotkeys] setting by name, or the default given when the file does not set it.
+        std::wstring Hotkey(std::wstring_view name, std::wstring_view def) const;
     };
 
     // Generic INI document: section -> key -> value (keys are case-insensitive).

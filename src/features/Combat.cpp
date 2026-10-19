@@ -8,6 +8,7 @@
 #include "core/Strings.hpp"
 #include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -1472,12 +1473,9 @@ namespace qa::features
     void CombatFeature::Help(std::vector<std::wstring>& out)
     {
         if (!CombatActive()) return;
-        const auto& s = cfg::Get();
-        const bool pad = input::CurrentScheme() == input::Scheme::Gamepad;
-        out.push_back(locale::Mod(L"help.combat", std::vector<std::wstring>{input::KeyForAction(L"CombatAttack"),
-                                                                            pad ? input::KeyDisplayName(s.padExploreNext) : s.keyNextTarget,
-                                                                            pad ? input::KeyDisplayName(s.padExplorePrevious) : s.keyPreviousTarget,
-                                                                            pad ? input::KeyDisplayName(s.padExploreBeacon) : s.keyBeacon}));
+        using hotkeys::Command;
+        out.push_back(locale::Mod(L"help.combat", std::vector<std::wstring>{input::KeyForAction(L"CombatAttack"), hotkeys::SpokenKey(Command::NextTarget),
+                                                                            hotkeys::SpokenKey(Command::PreviousTarget), hotkeys::SpokenKey(Command::Beacon)}));
     }
 
     void NoteCombatPrompt(UObject* prompt)

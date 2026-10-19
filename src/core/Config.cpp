@@ -27,6 +27,12 @@ namespace qa::cfg
         return it == features.end() ? true : it->second;
     }
 
+    std::wstring Settings::Hotkey(std::wstring_view name, std::wstring_view def) const
+    {
+        const auto it = hotkeys.find(Key(name));
+        return it == hotkeys.end() ? std::wstring(def) : it->second;
+    }
+
     bool Ini::Load(const std::wstring& path, std::wstring* error)
     {
         std::ifstream in(path, std::ios::binary);
@@ -161,45 +167,16 @@ namespace qa::cfg
         s.logLevel = ini.Get(L"General", L"LogLevel", L"Info");
         s.logFile = ini.GetBool(L"General", L"LogFile", true);
 
-        s.keyRepeat = ini.Get(L"Hotkeys", L"Repeat", s.keyRepeat);
-        s.keyReadScreen = ini.Get(L"Hotkeys", L"ReadScreen", s.keyReadScreen);
-        s.keyStop = ini.Get(L"Hotkeys", L"Stop", s.keyStop);
-        s.keyHelp = ini.Get(L"Hotkeys", L"Help", s.keyHelp);
-        s.keySubtitles = ini.Get(L"Hotkeys", L"Subtitles", s.keySubtitles);
-        s.keyLastSubtitle = ini.Get(L"Hotkeys", L"LastSubtitle", s.keyLastSubtitle);
-        s.keySpeech = ini.Get(L"Hotkeys", L"Speech", s.keySpeech);
-        s.keyVerbosity = ini.Get(L"Hotkeys", L"Verbosity", s.keyVerbosity);
-        s.keyDevDumpTree = ini.Get(L"Hotkeys", L"DevDumpTree", s.keyDevDumpTree);
-        s.keyDevTrace = ini.Get(L"Hotkeys", L"DevTrace", s.keyDevTrace);
-        s.keyDevLogLevel = ini.Get(L"Hotkeys", L"DevLogLevel", s.keyDevLogLevel);
-        s.chordHold = ini.Get(L"Hotkeys", L"ChordHold", s.chordHold);
-        s.chordRepeat = ini.Get(L"Hotkeys", L"ChordRepeat", s.chordRepeat);
-        s.chordReadScreen = ini.Get(L"Hotkeys", L"ChordReadScreen", s.chordReadScreen);
-        s.chordStop = ini.Get(L"Hotkeys", L"ChordStop", s.chordStop);
-        s.chordHelp = ini.Get(L"Hotkeys", L"ChordHelp", s.chordHelp);
-        s.chordSubtitles = ini.Get(L"Hotkeys", L"ChordSubtitles", s.chordSubtitles);
-        s.chordLastSubtitle = ini.Get(L"Hotkeys", L"ChordLastSubtitle", s.chordLastSubtitle);
-        s.chordSpeech = ini.Get(L"Hotkeys", L"ChordSpeech", s.chordSpeech);
-        s.chordVerbosity = ini.Get(L"Hotkeys", L"ChordVerbosity", s.chordVerbosity);
-        s.chordDevDumpTree = ini.Get(L"Hotkeys", L"ChordDevDumpTree", s.chordDevDumpTree);
-        s.chordDevLogLevel = ini.Get(L"Hotkeys", L"ChordDevLogLevel", s.chordDevLogLevel);
+        if (const auto* hotkeys = ini.Section(L"Hotkeys"))
+        {
+            for (const auto& [k, v] : *hotkeys)
+                s.hotkeys[k] = v;
+        }
         for (const wchar_t* old : {L"PadChordHold", L"PadRepeat", L"PadReadScreen", L"PadStop", L"PadHelp", L"PadSubtitles", L"PadLastSubtitle",
                                    L"PadNextTarget", L"PadPreviousTarget", L"PadWhere", L"PadBeacon"})
         {
             if (ini.Has(L"Hotkeys", old)) s.obsoleteKeys.push_back(old);
         }
-        s.keyNextTarget = ini.Get(L"Hotkeys", L"NextTarget", s.keyNextTarget);
-        s.keyPreviousTarget = ini.Get(L"Hotkeys", L"PreviousTarget", s.keyPreviousTarget);
-        s.keyBeacon = ini.Get(L"Hotkeys", L"Beacon", s.keyBeacon);
-        s.keyWhere = ini.Get(L"Hotkeys", L"Where", s.keyWhere);
-        s.keyWalk = ini.Get(L"Hotkeys", L"Walk", s.keyWalk);
-        s.keyTarotCards = ini.Get(L"Hotkeys", L"TarotCards", s.keyTarotCards);
-        s.padExploreNext = ini.Get(L"Hotkeys", L"ExploreNext", s.padExploreNext);
-        s.padExplorePrevious = ini.Get(L"Hotkeys", L"ExplorePrevious", s.padExplorePrevious);
-        s.padExploreWhere = ini.Get(L"Hotkeys", L"ExploreWhere", s.padExploreWhere);
-        s.padExploreBeacon = ini.Get(L"Hotkeys", L"ExploreBeacon", s.padExploreBeacon);
-        s.padExploreWalk = ini.Get(L"Hotkeys", L"ExploreWalk", s.padExploreWalk);
-        s.padExploreTarotCards = ini.Get(L"Hotkeys", L"ExploreTarotCards", s.padExploreTarotCards);
 
         s.focusDedupeMs = ini.GetInt(L"Speech", L"FocusDedupeMs", s.focusDedupeMs);
         s.preferSapi = ini.GetBool(L"Speech", L"PreferSapi", s.preferSapi);

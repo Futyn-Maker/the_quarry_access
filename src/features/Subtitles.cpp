@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -184,13 +185,13 @@ namespace qa::features
 
     void SubtitlesFeature::Help(std::vector<std::wstring>& out)
     {
-        const auto& s = cfg::Get();
-        if (input::CurrentScheme() == input::Scheme::Gamepad && !str::Trim(s.chordHold).empty())
-            out.push_back(
-                locale::Mod(L"help.subtitles.pad", std::vector<std::wstring>{input::KeyDisplayName(s.chordHold), input::KeyDisplayName(s.chordSubtitles),
-                                                                             input::KeyDisplayName(s.chordLastSubtitle)}));
+        using hotkeys::Command;
+        if (hotkeys::ChordsInHand())
+            out.push_back(locale::Mod(L"help.subtitles.pad", std::vector<std::wstring>{input::KeyDisplayName(hotkeys::ChordHold()),
+                                                                                       input::KeyDisplayName(hotkeys::ChordOf(Command::Subtitles)),
+                                                                                       input::KeyDisplayName(hotkeys::ChordOf(Command::LastSubtitle))}));
         else
-            out.push_back(locale::Mod(L"help.subtitles", s.keySubtitles, s.keyLastSubtitle));
+            out.push_back(locale::Mod(L"help.subtitles", hotkeys::KeyOf(Command::Subtitles), hotkeys::KeyOf(Command::LastSubtitle)));
     }
 
     void ToggleSubtitles()

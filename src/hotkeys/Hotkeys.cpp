@@ -10,102 +10,47 @@
 #include "features/Exploration.hpp"
 #include "features/Subtitles.hpp"
 #include "hotkeys/KeyHook.hpp"
+#include "hotkeys/KeySpec.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 
-#include <Unreal/NameTypes.hpp>
-
 #include <windows.h>
 
-#include <map>
-#include <memory>
 #include <vector>
 
 namespace qa::hotkeys
 {
-    using RC::Unreal::UObject;
-
     namespace
     {
         struct KeyBinding
         {
             Command command;
-            int vk = 0;
-            bool ctrl = false;
-            bool alt = false;
-            bool shift = false;
+            KeySpec key;
             bool wasDown = false;
-        };
-
-        const std::map<std::wstring, int> kNamedKeys = {
-            {L"space", 0x20},  {L"enter", 0x0D},  {L"return", 0x0D}, {L"escape", 0x1B}, {L"esc", 0x1B},      {L"tab", 0x09},      {L"backspace", 0x08},
-            {L"insert", 0x2D}, {L"delete", 0x2E}, {L"home", 0x24},   {L"end", 0x23},    {L"pageup", 0x21},   {L"pagedown", 0x22}, {L"up", 0x26},
-            {L"down", 0x28},   {L"left", 0x25},   {L"right", 0x27},  {L"pause", 0x13},  {L"capslock", 0x14}, {L"numlock", 0x90},  {L"scrolllock", 0x91},
         };
 
         std::vector<KeyBinding> g_keys;
 
-        bool Parse(const std::wstring& spec, Command command, KeyBinding& out)
+        // The situations in which the mod's own letters are the mod's: the player walking the
+        // character, fighting or looking around. Elsewhere they are the game's, or a text
+        // field's.
+        bool InContext()
         {
-            out = KeyBinding{};
-            out.command = command;
-            const auto lower = str::ToLower(str::Trim(spec));
-            if (lower.empty() || lower == L"none") return false;
-            for (auto& token : str::Split(lower, L'+'))
-            {
-                if (token == L"ctrl" || token == L"control")
-                {
-                    out.ctrl = true;
-                    continue;
-                }
-                if (token == L"alt")
-                {
-                    out.alt = true;
-                    continue;
-                }
-                if (token == L"shift")
-                {
-                    out.shift = true;
-                    continue;
-                }
-                int vk = 0;
-                if (token.size() >= 2 && token[0] == L'f' && iswdigit(token[1]))
-                {
-                    const int n = std::stoi(token.substr(1));
-                    if (n >= 1 && n <= 24) vk = 0x70 + (n - 1);
-                }
-                else if (token.size() == 1 && token[0] >= L'a' && token[0] <= L'z')
-                {
-                    vk = 0x41 + (token[0] - L'a');
-                }
-                else if (token.size() == 1 && iswdigit(token[0]))
-                {
-                    vk = 0x30 + (token[0] - L'0');
-                }
-                else if (str::StartsWith(token, L"numpad") && token.size() == 7 && iswdigit(token[6]))
-                {
-                    vk = 0x60 + (token[6] - L'0');
-                }
-                else if (const auto it = kNamedKeys.find(token); it != kNamedKeys.end())
-                {
-                    vk = it->second;
-                }
-                if (vk != 0) out.vk = vk;
-            }
-            return out.vk != 0;
+            return features::ExplorationActive() || features::CombatActive() || features::LookAroundActive();
         }
 
-        void Bind(const std::wstring& spec, Command command)
+        void Bind(const Hotkey& hotkey)
         {
-            KeyBinding binding;
-            if (!Parse(spec, command, binding))
+            const std::wstring spec = KeyOf(hotkey.command);
+            KeyBinding binding{hotkey.command};
+            if (!ParseKeySpec(spec, binding.key))
             {
-                if (!str::Trim(spec).empty()) log::Error(L"hotkey '{}' for {} not understood", spec, CommandName(command));
+                if (!spec.empty()) log::Error(L"hotkey '{}' for {} not understood", spec, hotkey.name);
                 return;
             }
             g_keys.push_back(binding);
-            log::Info(L"hotkey {} = {}", CommandName(command), spec);
+            log::Info(L"hotkey {} = {}", hotkey.name, spec);
         }
 
         bool GameWindowInForeground()
@@ -147,7 +92,7 @@ namespace qa::hotkeys
                 // The exploration letters are the game's, or a text field's, outside
                 // exploration, the fights and the look-arounds; the hook leaves them alone
                 // there.
-                keyhook::SetContext(features::ExplorationActive() || features::CombatActive() || features::LookAroundActive());
+                keyhook::SetContext(InContext());
                 for (const int id : keyhook::TakePresses())
                 {
                     if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
@@ -165,8 +110,8 @@ namespace qa::hotkeys
             const bool shift = Down(VK_SHIFT);
             for (auto& k : g_keys)
             {
-                const bool down = Down(k.vk);
-                if (down && !k.wasDown && ctrl == k.ctrl && alt == k.alt && shift == k.shift)
+                const bool down = Down(k.key.vk);
+                if (down && !k.wasDown && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift)
                 {
                     Run(k.command, Source::Keyboard);
                 }
@@ -211,8 +156,7 @@ namespace qa::hotkeys
             const input::PadReading pad = GameWindowInForeground() ? input::ReadPad() : input::PadReading{};
             const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
             PollBindings(pad, g_padBindings, pad.valid && chord);
-            PollBindings(pad, g_exploreBindings,
-                         pad.valid && !chord && (features::ExplorationActive() || features::CombatActive() || features::LookAroundActive()));
+            PollBindings(pad, g_exploreBindings, pad.valid && !chord && InContext());
         }
     }
 
@@ -221,60 +165,58 @@ namespace qa::hotkeys
         keyhook::Uninstall();
     }
 
-    std::wstring CommandName(Command command)
+    std::wstring KeyOf(Command command)
     {
-        switch (command)
+        const Hotkey& hotkey = Of(command);
+        return str::Trim(cfg::Get().Hotkey(hotkey.name, hotkey.key));
+    }
+
+    std::wstring ChordOf(Command command)
+    {
+        const Hotkey& hotkey = Of(command);
+        if (std::wstring_view(hotkey.chordName).empty()) return {};
+        return str::Trim(cfg::Get().Hotkey(hotkey.chordName, hotkey.chord));
+    }
+
+    std::wstring PadOf(Command command)
+    {
+        const Hotkey& hotkey = Of(command);
+        if (std::wstring_view(hotkey.padName).empty()) return {};
+        return str::Trim(cfg::Get().Hotkey(hotkey.padName, hotkey.pad));
+    }
+
+    std::wstring ChordHold()
+    {
+        return str::Trim(cfg::Get().Hotkey(kChordHoldSetting, kChordHoldDefault));
+    }
+
+    bool ChordsInHand()
+    {
+        return input::CurrentScheme() == input::Scheme::Gamepad && !ChordHold().empty();
+    }
+
+    std::wstring SpokenKey(Command command)
+    {
+        if (input::CurrentScheme() == input::Scheme::Gamepad)
         {
-        case Command::Repeat: return L"Repeat";
-        case Command::ReadScreen: return L"ReadScreen";
-        case Command::Stop: return L"Stop";
-        case Command::Help: return L"Help";
-        case Command::Subtitles: return L"Subtitles";
-        case Command::LastSubtitle: return L"LastSubtitle";
-        case Command::Speech: return L"Speech";
-        case Command::Verbosity: return L"Verbosity";
-        case Command::NextTarget: return L"NextTarget";
-        case Command::PreviousTarget: return L"PreviousTarget";
-        case Command::Where: return L"Where";
-        case Command::Walk: return L"Walk";
-        case Command::Beacon: return L"Beacon";
-        case Command::TarotCards: return L"TarotCards";
-        case Command::DevDumpTree: return L"DevDumpTree";
-        case Command::DevTrace: return L"DevTrace";
-        case Command::DevLogLevel: return L"DevLogLevel";
+            const auto pad = PadOf(command);
+            if (!pad.empty()) return input::KeyDisplayName(pad);
         }
-        return L"?";
+        return KeyOf(command);
     }
 
     void Install()
     {
-        const auto& s = cfg::Get();
         g_keys.clear();
-        Bind(s.keyRepeat, Command::Repeat);
-        Bind(s.keyReadScreen, Command::ReadScreen);
-        Bind(s.keyStop, Command::Stop);
-        Bind(s.keyHelp, Command::Help);
-        Bind(s.keySubtitles, Command::Subtitles);
-        Bind(s.keyLastSubtitle, Command::LastSubtitle);
-        Bind(s.keySpeech, Command::Speech);
-        Bind(s.keyVerbosity, Command::Verbosity);
-        Bind(s.keyNextTarget, Command::NextTarget);
-        Bind(s.keyPreviousTarget, Command::PreviousTarget);
-        Bind(s.keyWhere, Command::Where);
-        Bind(s.keyWalk, Command::Walk);
-        Bind(s.keyBeacon, Command::Beacon);
-        Bind(s.keyTarotCards, Command::TarotCards);
-        Bind(s.keyDevDumpTree, Command::DevDumpTree);
-        Bind(s.keyDevTrace, Command::DevTrace);
-        Bind(s.keyDevLogLevel, Command::DevLogLevel);
+        for (const Hotkey& hotkey : Table())
+            Bind(hotkey);
 
         std::vector<keyhook::Binding> bindings;
         for (size_t i = 0; i < g_keys.size(); ++i)
         {
-            const Command c = g_keys[i].command;
-            const bool contextual = c == Command::NextTarget || c == Command::PreviousTarget || c == Command::Where || c == Command::Walk ||
-                                    c == Command::Beacon || c == Command::TarotCards;
-            bindings.push_back(keyhook::Binding{g_keys[i].vk, g_keys[i].ctrl, g_keys[i].alt, g_keys[i].shift, static_cast<int>(i), contextual});
+            const Scope scope = Of(g_keys[i].command).scope;
+            bindings.push_back(
+                keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i), scope == Scope::Context});
         }
         // The keys that move the selection or leave a screen stay the game's; the mod only
         // answers each, by stopping what is being said the moment it goes down, whether or
@@ -290,7 +232,7 @@ namespace qa::hotkeys
         else
             log::Error(L"the keyboard hook could not be set; the mod's keys are polled, and a key the screen reader takes for itself is lost");
 
-        g_padHold = str::Trim(s.chordHold);
+        g_padHold = ChordHold();
         input::SetChordHold(g_padHold);
         // The pad's own keys for the same: the D-pad, B and Start, answered where the game
         // reads its pad, which is before it acts on them. The sticks are never among them: a
@@ -302,29 +244,25 @@ namespace qa::hotkeys
         g_padBindings.clear();
         if (!g_padHold.empty())
         {
-            for (const auto& [key, command] :
-                 {std::pair{s.chordRepeat, Command::Repeat}, std::pair{s.chordReadScreen, Command::ReadScreen}, std::pair{s.chordStop, Command::Stop},
-                  std::pair{s.chordHelp, Command::Help}, std::pair{s.chordSubtitles, Command::Subtitles}, std::pair{s.chordLastSubtitle, Command::LastSubtitle},
-                  std::pair{s.chordSpeech, Command::Speech}, std::pair{s.chordVerbosity, Command::Verbosity},
-                  std::pair{s.chordDevDumpTree, Command::DevDumpTree}, std::pair{s.chordDevLogLevel, Command::DevLogLevel}})
+            for (const Hotkey& hotkey : Table())
             {
-                if (str::Trim(key).empty()) continue;
-                g_padBindings.push_back({str::Trim(key), command});
-                log::Info(L"gamepad {} + {} = {}", g_padHold, str::Trim(key), CommandName(command));
+                const auto button = ChordOf(hotkey.command);
+                if (button.empty()) continue;
+                g_padBindings.push_back({button, hotkey.command});
+                log::Info(L"gamepad {} + {} = {}", g_padHold, button, hotkey.name);
             }
         }
-        for (const auto& key : s.obsoleteKeys)
+        for (const auto& key : cfg::Get().obsoleteKeys)
             log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
                       L"ChordSubtitles, ChordLastSubtitle, ChordSpeech, ChordVerbosity, ChordDevDumpTree and ChordDevLogLevel",
                       key);
         g_exploreBindings.clear();
-        for (const auto& [key, command] : {std::pair{s.padExploreNext, Command::NextTarget}, std::pair{s.padExplorePrevious, Command::PreviousTarget},
-                                           std::pair{s.padExploreWhere, Command::Where}, std::pair{s.padExploreWalk, Command::Walk},
-                                           std::pair{s.padExploreBeacon, Command::Beacon}, std::pair{s.padExploreTarotCards, Command::TarotCards}})
+        for (const Hotkey& hotkey : Table())
         {
-            if (key.empty()) continue;
-            g_exploreBindings.push_back({key, command});
-            log::Info(L"gamepad while walking: {} = {}", key, CommandName(command));
+            const auto button = PadOf(hotkey.command);
+            if (button.empty()) continue;
+            g_exploreBindings.push_back({button, hotkey.command});
+            log::Info(L"gamepad while walking: {} = {}", button, hotkey.name);
         }
         gamethread::AddPoller(L"hotkeys",
                               [](float)

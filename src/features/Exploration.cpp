@@ -12,6 +12,7 @@
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
@@ -2358,12 +2359,9 @@ namespace qa::features
         // What the mod's keys do here, named for the device in the player's hands.
         std::wstring HintText()
         {
-            const auto& s = cfg::Get();
-            if (input::CurrentScheme() == input::Scheme::Gamepad)
-                return locale::Mod(L"explore.hint", {input::KeyDisplayName(s.padExploreNext), input::KeyDisplayName(s.padExplorePrevious),
-                                                     input::KeyDisplayName(s.padExploreWalk), input::KeyDisplayName(s.padExploreWhere),
-                                                     input::KeyDisplayName(s.padExploreBeacon)});
-            return locale::Mod(L"explore.hint", {s.keyNextTarget, s.keyPreviousTarget, s.keyWalk, s.keyWhere, s.keyBeacon});
+            using hotkeys::Command;
+            return locale::Mod(L"explore.hint", {hotkeys::SpokenKey(Command::NextTarget), hotkeys::SpokenKey(Command::PreviousTarget),
+                                                 hotkeys::SpokenKey(Command::Walk), hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)});
         }
 
         void Select(Target* t, UObject* pawn, const Vec& here, double yaw, bool say)
@@ -3648,28 +3646,27 @@ namespace qa::features
             return;
         }
         if (!g_exploring && !g_look.on) return;
-        const auto& s = cfg::Get();
+        using hotkeys::Command;
         if (!g_exploring)
         {
             // A look-around has one key of the mod's: the aim sound.
-            out.push_back(
-                locale::Mod(L"help.look", input::CurrentScheme() == input::Scheme::Gamepad ? input::KeyDisplayName(s.padExploreBeacon) : s.keyBeacon));
+            out.push_back(locale::Mod(L"help.look", hotkeys::SpokenKey(Command::Beacon)));
             return;
         }
         if (input::CurrentScheme() == input::Scheme::Gamepad)
         {
-            out.push_back(locale::Mod(L"help.explore.pad", {input::KeyDisplayName(s.padExploreNext), input::KeyDisplayName(s.padExplorePrevious),
-                                                            input::KeyDisplayName(s.padExploreWhere), input::KeyDisplayName(s.padExploreBeacon),
-                                                            input::KeyDisplayName(s.padExploreWalk)}));
+            out.push_back(
+                locale::Mod(L"help.explore.pad", {hotkeys::SpokenKey(Command::NextTarget), hotkeys::SpokenKey(Command::PreviousTarget),
+                                                  hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon), hotkeys::SpokenKey(Command::Walk)}));
         }
         else
         {
-            out.push_back(locale::Mod(L"help.explore", {s.keyNextTarget, s.keyPreviousTarget, s.keyBeacon}));
-            out.push_back(locale::Mod(L"help.where", s.keyWhere));
-            out.push_back(locale::Mod(L"help.walk", s.keyWalk));
+            out.push_back(
+                locale::Mod(L"help.explore", {hotkeys::KeyOf(Command::NextTarget), hotkeys::KeyOf(Command::PreviousTarget), hotkeys::KeyOf(Command::Beacon)}));
+            out.push_back(locale::Mod(L"help.where", hotkeys::KeyOf(Command::Where)));
+            out.push_back(locale::Mod(L"help.walk", hotkeys::KeyOf(Command::Walk)));
         }
-        out.push_back(
-            locale::Mod(L"help.tarot", input::CurrentScheme() == input::Scheme::Gamepad ? input::KeyDisplayName(s.padExploreTarotCards) : s.keyTarotCards));
+        out.push_back(locale::Mod(L"help.tarot", hotkeys::SpokenKey(Command::TarotCards)));
         if (!g_destinationPrompt) return;
         std::vector<std::wstring> keys;
         for (const wchar_t* action :
