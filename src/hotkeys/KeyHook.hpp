@@ -20,6 +20,8 @@ namespace qa::keyhook
         // A key that is the mod's only in some contexts (the exploration letters) and the
         // game's, or the text field's, elsewhere.
         bool contextual = false;
+        // The mod's own switch, taken while the mod is off as well.
+        bool switchKey = false;
     };
 
     // A key the mod watches but never takes: the handler runs on the hook's own thread the
@@ -35,6 +37,9 @@ namespace qa::keyhook
     // Whether the contextual bindings are taken now; set from the game thread as the
     // context comes and goes.
     void SetContext(bool active);
+    // Whether the mod is on; off, the hook takes nothing but the switch. Set from the game
+    // thread as the mod is switched.
+    void SetOn(bool on);
 
     // The ids of the bindings pressed since the last call, in order.
     std::vector<int> TakePresses();

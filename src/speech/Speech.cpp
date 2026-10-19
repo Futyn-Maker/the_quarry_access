@@ -1,6 +1,7 @@
 #include "speech/Speech.hpp"
 
 #include "core/Config.hpp"
+#include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
@@ -74,6 +75,16 @@ namespace qa::speech
             const long long sinceInput = input::MsSinceInput();
             return sinceInput < kFreshInputMs || sinceInput <= MsSince(g_lastOutputAt);
         }
+
+        // Whether a line is said now: the mod has a voice and is switched on. Off, the line
+        // goes to the log at Verbose and no further.
+        bool Says(std::wstring_view text)
+        {
+            if (!outputs::CanSpeak()) return false;
+            if (gate::IsOn()) return true;
+            log::Verbose(L"speech: dropped while the mod is off: \"{}\"", text);
+            return false;
+        }
     }
 
     void Init()
@@ -85,7 +96,7 @@ namespace qa::speech
 
     void Focus(std::wstring_view text)
     {
-        if (text.empty() || !outputs::CanSpeak()) return;
+        if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         if (text == g_lastSpoken && MsSince(g_lastSpokenAt) < cfg::Get().focusDedupeMs)
         {
@@ -102,14 +113,14 @@ namespace qa::speech
 
     void Announce(std::wstring_view text)
     {
-        if (text.empty() || !outputs::CanSpeak()) return;
+        if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, false, L"announce");
     }
 
     void Now(std::wstring_view text)
     {
-        if (text.empty() || !outputs::CanSpeak()) return;
+        if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, true, L"now");
     }
@@ -131,7 +142,7 @@ namespace qa::speech
     void Repeat()
     {
         std::lock_guard lock(g_mutex);
-        if (g_history.empty()) return;
+        if (g_history.empty() || !gate::IsOn()) return;
         const std::wstring last = g_history.back();
         log::Say(L"repeat", last);
         Emit(last, true);

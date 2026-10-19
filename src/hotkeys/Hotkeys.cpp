@@ -2,6 +2,7 @@
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
+#include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
@@ -38,6 +39,13 @@ namespace qa::hotkeys
         bool InContext()
         {
             return features::ExplorationActive() || features::CombatActive() || features::LookAroundActive();
+        }
+
+        // Whether a command answers now: every one while the mod is on, its switch alone
+        // while it is off.
+        bool Answers(Command command)
+        {
+            return gate::IsOn() || command == Command::ModOnOff;
         }
 
         void Bind(const Hotkey& hotkey)
@@ -91,8 +99,9 @@ namespace qa::hotkeys
             {
                 // The exploration letters are the game's, or a text field's, outside
                 // exploration, the fights and the look-arounds; the hook leaves them alone
-                // there.
-                keyhook::SetContext(InContext());
+                // there. While the mod is off the hook takes nothing but the switch.
+                keyhook::SetOn(gate::IsOn());
+                keyhook::SetContext(gate::IsOn() && InContext());
                 for (const int id : keyhook::TakePresses())
                 {
                     if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
@@ -111,7 +120,7 @@ namespace qa::hotkeys
             for (auto& k : g_keys)
             {
                 const bool down = Down(k.key.vk);
-                if (down && !k.wasDown && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift)
+                if (down && !k.wasDown && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift && Answers(k.command))
                 {
                     Run(k.command, Source::Keyboard);
                 }
@@ -143,7 +152,7 @@ namespace qa::hotkeys
                     continue;
                 }
                 const bool down = input::PadKeyDown(pad, b.keyName);
-                if (down && !b.wasDown) Run(b.command, Source::Gamepad);
+                if (down && !b.wasDown && Answers(b.command)) Run(b.command, Source::Gamepad);
                 b.wasDown = down;
             }
         }
@@ -156,7 +165,24 @@ namespace qa::hotkeys
             const input::PadReading pad = GameWindowInForeground() ? input::ReadPad() : input::PadReading{};
             const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
             PollBindings(pad, g_padBindings, pad.valid && chord);
-            PollBindings(pad, g_exploreBindings, pad.valid && !chord && InContext());
+            PollBindings(pad, g_exploreBindings, pad.valid && !chord && gate::IsOn() && InContext());
+        }
+
+        // The mod switched off and on. Off is said before the switch turns, so that it is
+        // heard; on is followed by the screen as F6 reads it, since whatever came up while
+        // the mod was off went unsaid.
+        void ToggleMod()
+        {
+            if (gate::IsOn())
+            {
+                speech::Now(locale::Mod(L"onoff.off"));
+                gate::Set(false);
+                return;
+            }
+            gate::Set(true);
+            speech::Now(locale::Mod(L"onoff.on"));
+            const auto readout = diag::Readout();
+            if (!readout.empty()) speech::Announce(readout);
         }
     }
 
@@ -215,8 +241,8 @@ namespace qa::hotkeys
         for (size_t i = 0; i < g_keys.size(); ++i)
         {
             const Scope scope = Of(g_keys[i].command).scope;
-            bindings.push_back(
-                keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i), scope == Scope::Context});
+            bindings.push_back(keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i),
+                                                scope == Scope::Context, scope == Scope::Switch});
         }
         // The keys that move the selection or leave a screen stay the game's; the mod only
         // answers each, by stopping what is being said the moment it goes down, whether or
@@ -254,7 +280,7 @@ namespace qa::hotkeys
         }
         for (const auto& key : cfg::Get().obsoleteKeys)
             log::Info(L"config: [Hotkeys] {} is no longer read; the chords are set with ChordHold, ChordRepeat, ChordReadScreen, ChordStop, ChordHelp, "
-                      L"ChordSubtitles, ChordLastSubtitle, ChordSpeech, ChordVerbosity, ChordDevDumpTree and ChordDevLogLevel",
+                      L"ChordSubtitles, ChordLastSubtitle, ChordSpeech, ChordVerbosity, ChordModOnOff, ChordDevDumpTree and ChordDevLogLevel",
                       key);
         g_exploreBindings.clear();
         for (const Hotkey& hotkey : Table())
@@ -306,6 +332,7 @@ namespace qa::hotkeys
             case Command::LastSubtitle: features::SpeakLastSubtitle(); break;
             case Command::Speech: speech::ToggleOutput(); break;
             case Command::Verbosity: speech::Now(locale::Mod(cfg::ToggleVerbosity() ? L"verbosity.full" : L"verbosity.brief")); break;
+            case Command::ModOnOff: ToggleMod(); break;
             // The target keys serve the fight while one is on, exploration while the player
             // walks the character, and nothing anywhere else.
             case Command::NextTarget:

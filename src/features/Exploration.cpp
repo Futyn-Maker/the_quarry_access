@@ -7,6 +7,7 @@
 #include "core/Config.hpp"
 #include "core/Flow.hpp"
 #include "core/GameThread.hpp"
+#include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
@@ -2414,6 +2415,12 @@ namespace qa::features
         void PollWalk(double now)
         {
             if (!g_walking) return;
+            // Switched off, the mod walks nobody.
+            if (!gate::IsOn())
+            {
+                StopWalk(nullptr, false);
+                return;
+            }
             UObject* pawn = Pawn();
             Target* target = Selected();
             if (!g_exploring || !pawn || !target || target->reached)

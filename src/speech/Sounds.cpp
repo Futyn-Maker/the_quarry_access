@@ -1,5 +1,6 @@
 #include "speech/Sounds.hpp"
 
+#include "core/Gate.hpp"
 #include "core/Log.hpp"
 
 #include <windows.h>
@@ -141,7 +142,8 @@ namespace qa::sounds
 
         void PlayWav(const Wav& wav)
         {
-            if (!g_enabled || wav.empty()) return;
+            // While the mod is switched off nothing sounds either.
+            if (!g_enabled || wav.empty() || !gate::IsOn()) return;
             PlaySoundW(reinterpret_cast<LPCWSTR>(wav.data()), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
         }
     }

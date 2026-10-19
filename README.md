@@ -57,8 +57,11 @@ The game's Accessibility settings make many mechanics easier. Choice Timer, QTE 
 | F4       | Back + RB                | Repeat the last subtitle                         |
 | F3       | Back + right stick click | Switch speech between the screen reader and SAPI |
 | F2       | Back + left stick click  | Switch the verbosity level                       |
+| F1       | Back + Start             | Turn the mod off and on                          |
 
 On the gamepad, hold Back (View) and press the second button. The game does not see buttons pressed while Back is held.
+
+F1, or Back + Start, turns the mod off. It then says nothing and plays no sound, and its keys for walking and fighting go back to the game. The same key turns it on again, and it reads the current screen.
 
 These keys work while you walk and during fights:
 

@@ -20,6 +20,7 @@ namespace qa::hotkeys
         LastSubtitle,
         Speech,
         Verbosity,
+        ModOnOff,
         NextTarget,
         PreviousTarget,
         Where,
@@ -37,6 +38,7 @@ namespace qa::hotkeys
         Always,  // wherever the game is in front
         Context, // only while the player walks the character, fights or looks around; the game's otherwise
         Dev,     // a developer's key: everywhere, and not in the README
+        Switch,  // the mod's own switch, which works while the mod is off as well
     };
 
     struct Hotkey

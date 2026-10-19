@@ -13,6 +13,7 @@ namespace qa::hotkeys
             {Command::LastSubtitle, L"LastSubtitle", L"F4", L"ChordLastSubtitle", L"Gamepad_RightShoulder", L"", L"", Scope::Always},
             {Command::Speech, L"Speech", L"F3", L"ChordSpeech", L"Gamepad_RightThumbstick", L"", L"", Scope::Always},
             {Command::Verbosity, L"Verbosity", L"F2", L"ChordVerbosity", L"Gamepad_LeftThumbstick", L"", L"", Scope::Always},
+            {Command::ModOnOff, L"ModOnOff", L"F1", L"ChordModOnOff", L"Gamepad_Special_Right", L"", L"", Scope::Switch},
             {Command::NextTarget, L"NextTarget", L"N", L"", L"", L"ExploreNext", L"Gamepad_DPad_Right", Scope::Context},
             {Command::PreviousTarget, L"PreviousTarget", L"P", L"", L"", L"ExplorePrevious", L"Gamepad_DPad_Left", Scope::Context},
             {Command::Where, L"Where", L"H", L"", L"", L"ExploreWhere", L"Gamepad_DPad_Up", Scope::Context},

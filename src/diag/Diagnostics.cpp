@@ -80,6 +80,8 @@ namespace qa::diag
                 speech::Now(ReadScreen());
             else if (lower == L"help")
                 speech::Now(Help());
+            else if (lower == L"onoff")
+                hotkeys::Run(hotkeys::Command::ModOnOff);
             else if (str::StartsWith(lower, L"loglevel "))
             {
                 log::Level level;
@@ -254,6 +256,27 @@ namespace qa::diag
         speech::Announce(locale::Mod(L"diag.loglevel", log::LevelName(log::GetLevel())));
     }
 
+    namespace
+    {
+        // The texts of the HUD elements on screen, after whatever the features said.
+        void AddHudTexts(std::vector<std::wstring>& parts)
+        {
+            for (const auto& [name, instance] : watch::LiveHudInstances())
+            {
+                const auto texts = obj::DescendantTexts(instance, 6);
+                if (!texts.empty()) parts.push_back(str::Join(texts, L", "));
+            }
+        }
+    }
+
+    std::wstring Readout()
+    {
+        std::vector<std::wstring> parts;
+        features::DescribeAll(parts);
+        AddHudTexts(parts);
+        return str::JoinSentences(parts);
+    }
+
     std::wstring ReadScreen()
     {
         // Features describe the current screen (menus, HUD, ...). Only when none of them
@@ -270,11 +293,7 @@ namespace qa::diag
                 parts.push_back(locale::Mod(L"read.focused", text));
             }
         }
-        for (const auto& [name, instance] : watch::LiveHudInstances())
-        {
-            const auto texts = obj::DescendantTexts(instance, 6);
-            if (!texts.empty()) parts.push_back(str::Join(texts, L", "));
-        }
+        AddHudTexts(parts);
         if (parts.empty())
         {
             const auto last = speech::Last();
@@ -302,6 +321,7 @@ namespace qa::diag
                                                                                   chord(Command::Stop), chord(Command::Help)}));
             parts.push_back(locale::Mod(L"help.speech.pad", hold, chord(Command::Speech)));
             parts.push_back(locale::Mod(L"help.verbosity.pad", hold, chord(Command::Verbosity)));
+            parts.push_back(locale::Mod(L"help.onoff.pad", hold, chord(Command::ModOnOff)));
         }
         else
         {
@@ -309,6 +329,7 @@ namespace qa::diag
                                                                                    hotkeys::KeyOf(Command::Stop), hotkeys::KeyOf(Command::Help)}));
             parts.push_back(locale::Mod(L"help.speech", hotkeys::KeyOf(Command::Speech)));
             parts.push_back(locale::Mod(L"help.verbosity", hotkeys::KeyOf(Command::Verbosity)));
+            parts.push_back(locale::Mod(L"help.onoff", hotkeys::KeyOf(Command::ModOnOff)));
         }
         features::HelpAll(parts);
         return str::JoinSentences(parts);

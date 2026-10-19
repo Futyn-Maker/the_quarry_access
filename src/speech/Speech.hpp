@@ -11,6 +11,8 @@
 //   Stop()         - silence everything.
 //   Repeat()       - speak the last utterance again.
 //
+// While the mod is switched off (core/Gate) nothing is said.
+//
 // Thread-safe.
 
 #include <string>

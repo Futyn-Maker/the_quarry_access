@@ -24,6 +24,7 @@ namespace qa::keyhook
         std::array<bool, 256> g_watchedDown{}; // likewise, for the keys that are only watched
         std::atomic<bool> g_active{false};
         std::atomic<bool> g_context{false};
+        std::atomic<bool> g_on{true};
         std::atomic<DWORD> g_threadId{0};
         HHOOK g_hook = nullptr;
         HANDLE g_ready = nullptr;
@@ -82,6 +83,7 @@ namespace qa::keyhook
                         {
                             if (ctrl != binding.ctrl || alt != binding.alt || shift != binding.shift) continue;
                             if (binding.contextual && !g_context.load(std::memory_order_relaxed)) continue;
+                            if (!binding.switchKey && !g_on.load(std::memory_order_relaxed)) continue;
                             // The key repeats while held; only the press counts.
                             if (!g_down[static_cast<size_t>(vk)])
                             {
@@ -165,6 +167,11 @@ namespace qa::keyhook
     void SetContext(bool active)
     {
         g_context.store(active, std::memory_order_relaxed);
+    }
+
+    void SetOn(bool on)
+    {
+        g_on.store(on, std::memory_order_relaxed);
     }
 
     std::vector<int> TakePresses()

@@ -18,6 +18,9 @@ namespace qa::diag
 
     // Composes what F6 says: screen, focused element, prompts, mechanic state, last subtitle.
     std::wstring ReadScreen();
+    // The same without the fallbacks for an empty screen: what the features describe and
+    // the HUD shows, or nothing.
+    std::wstring Readout();
 
     // Composes what F8 says.
     std::wstring Help();
@@ -27,7 +30,7 @@ namespace qa::diag
     // Developer command file: Mods\QuarryAccess\command.txt is polled twice a second;
     // each line is executed and the file is deleted. Commands: "trace on|off",
     // "dump", "loglevel Error|Info|Verbose|Trace", "say <text>", "read", "help",
-    // "props <object path or class name>".
+    // "onoff" (the mod's switch, as F1), "props <object path or class name>".
     void InstallCommandFile();
 
     // Writes every property of an object to the log (by full path, or the first live
