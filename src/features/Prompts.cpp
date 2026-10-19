@@ -36,7 +36,7 @@ namespace qa::features
             int64_t style = 0;
             std::wstring labelKey; // the locale key of its label, when the game showed it with one
         };
-        std::map<UObject*, Setup> g_setups;
+        std::map<obj::ObjectKey, Setup> g_setups;
         double g_interruptSetUpAt = -100.0; // when the game last set an interruption up
 
         // The locale key of the label the game is showing a prompt with, from the moment it
@@ -157,10 +157,10 @@ namespace qa::features
                 g_interruption = {};
             }
             if (str::StartsWith(setup.action, L"ExporationDestination")) NoteDestinationPrompt();
-            g_setups[self] = setup;
+            g_setups[obj::KeyOf(self)] = setup;
             if (g_setups.size() > 64)
             {
-                std::erase_if(g_setups, [](const auto& entry) { return !obj::IsLive(entry.first); });
+                std::erase_if(g_setups, [](const auto& entry) { return !obj::IsSame(entry.first); });
             }
         }
 
@@ -276,7 +276,8 @@ namespace qa::features
 
     std::wstring PromptAction(UObject* promptWidget)
     {
-        const auto it = g_setups.find(promptWidget);
+        if (!obj::IsLive(promptWidget)) return {};
+        const auto it = g_setups.find(obj::KeyOf(promptWidget));
         return it == g_setups.end() ? std::wstring() : it->second.action;
     }
 

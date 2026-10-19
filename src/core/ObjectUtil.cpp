@@ -131,6 +131,22 @@ namespace qa::obj
         }
     }
 
+    ObjectKey KeyOf(UObject* object)
+    {
+        ObjectKey key;
+        if (!object) return key;
+        key.object = object;
+        const auto name = object->GetFName();
+        key.nameIndex = name.GetComparisonIndex().ToUnstableInt();
+        key.nameNumber = name.GetNumber();
+        return key;
+    }
+
+    bool IsSame(const ObjectKey& key)
+    {
+        return key.object && IsLive(key.object) && KeyOf(key.object) == key;
+    }
+
     bool IsCDO(UObject* object)
     {
         if (!object) return true;

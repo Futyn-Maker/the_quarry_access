@@ -8,6 +8,7 @@
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
 
+#include <compare>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -31,6 +32,21 @@ namespace qa::obj
     bool IsA(UObject* object, std::wstring_view className); // walks the super chain by short name
     bool ClassIsChildOf(UClass* cls, std::wstring_view className);
     UObject* Outer(UObject* object);
+
+    // An object's identity beyond its address: the address with the name the object had
+    // (the index and the number of its FName), so that a freed slot reused for another
+    // object is not taken for the one that was there. Taken from a live object only; a
+    // memory that outlives the frame it was taken in is keyed by this, never by the pointer.
+    struct ObjectKey
+    {
+        UObject* object = nullptr;
+        uint32_t nameIndex = 0;
+        int32_t nameNumber = 0;
+        auto operator<=>(const ObjectKey&) const = default;
+    };
+    ObjectKey KeyOf(UObject* object); // the empty key for null
+    // True while the object the key was taken from is live and still the one at its address.
+    bool IsSame(const ObjectKey& key);
     UObject* FindOuterOfClass(UObject* object, std::wstring_view className, int maxDepth = 12);
     UObject* FindOuterUserWidget(UObject* widget, int maxDepth = 12); // nearest outer that is a UserWidget
 

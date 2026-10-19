@@ -26,6 +26,7 @@ namespace qa::features
         UObject* g_screen = nullptr;
         double g_screenGoneAt = -1.0; // when the screen was first found no longer drawn
         UObject* g_focused = nullptr;
+        obj::ObjectKey g_focusedKey; // its identity beyond the address, which the game reuses
         std::wstring g_lastPromptText;
         double g_focusChangedAt = -1.0;
 
@@ -244,6 +245,7 @@ namespace qa::features
             g_screen = nullptr;
             g_screenGoneAt = -1.0;
             g_focused = nullptr;
+            g_focusedKey = {};
             g_titleScreen = nullptr;
             g_lastTitle.clear();
             g_lastBody.clear();
@@ -260,8 +262,9 @@ namespace qa::features
         {
             if (screen) BeginArrival(screen, L"focus");
             UObject* interactable = ui::Interactable(focused);
-            if (!interactable || IsTab(interactable) || interactable == g_focused) return;
+            if (!interactable || IsTab(interactable) || (interactable == g_focused && obj::KeyOf(interactable) == g_focusedKey)) return;
             g_focused = interactable;
+            g_focusedKey = obj::KeyOf(interactable);
             g_focusChangedAt = gamethread::NowSeconds();
             // While a screen is opening the item is spoken by the arrival sequence, in order.
             if (g_arrivalPending) return;
@@ -352,7 +355,11 @@ namespace qa::features
 
             g_arrivalPending = false;
             g_focusChangedAt = now;
-            if (!focusText.empty()) g_focused = interactable;
+            if (!focusText.empty())
+            {
+                g_focused = interactable;
+                g_focusedKey = obj::KeyOf(interactable);
+            }
             std::vector<std::wstring> parts = g_heading;
             // The pause menu is headed by its tab, whatever made it be read.
             if (parts.empty() && pause) parts.push_back(ui::PauseTabLine());
@@ -632,6 +639,7 @@ namespace qa::features
         g_screen = nullptr;
         g_screenGoneAt = -1.0;
         g_focused = nullptr;
+        g_focusedKey = {};
         g_focusBeforeArrival = nullptr;
         g_valueWidget = nullptr;
         g_lastPromptText.clear();

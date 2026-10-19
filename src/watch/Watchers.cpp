@@ -28,7 +28,7 @@ namespace qa::watch
         };
         struct HudState
         {
-            UObject* instance = nullptr;
+            obj::ObjectKey instance;
             bool visible = false;
         };
 
@@ -36,7 +36,7 @@ namespace qa::watch
         UObject* g_watchedController = nullptr;
         std::vector<HudSlot> g_slots;
         std::map<std::pair<UObject*, FProperty*>, HudState> g_hudState;
-        std::map<std::pair<UObject*, FProperty*>, std::set<UObject*>> g_hudArrayState;
+        std::map<std::pair<UObject*, FProperty*>, std::set<obj::ObjectKey>> g_hudArrayState;
         unsigned long long g_lastSlotScan = 0;
 
         void Emit(const HudSlot& slot, UObject* instance, bool appeared)
@@ -134,42 +134,40 @@ namespace qa::watch
                 {
                     UObject* instance = nullptr;
                     obj::ReadObjectAt(slot.hud, slot.property, instance);
-                    bool visible = instance && obj::IsLive(instance) && obj::IsWidgetVisible(instance);
-                    if (!instance || !obj::IsLive(instance))
-                    {
-                        instance = nullptr;
-                        visible = false;
-                    }
+                    if (!instance || !obj::IsLive(instance)) instance = nullptr;
+                    const bool visible = instance && obj::IsWidgetVisible(instance);
+                    // Another object at the address of the last one is another instance:
+                    // gone, and appeared.
+                    const obj::ObjectKey current = obj::KeyOf(instance);
                     auto& state = g_hudState[key];
-                    if (state.instance != instance || state.visible != visible)
+                    if (state.instance != current || state.visible != visible)
                     {
-                        if (state.instance && state.visible) Emit(slot, state.instance, false);
+                        if (state.instance.object && state.visible) Emit(slot, state.instance.object, false);
                         if (instance && visible) Emit(slot, instance, true);
-                        state.instance = instance;
+                        state.instance = current;
                         state.visible = visible;
                     }
                 }
                 else
                 {
-                    std::vector<UObject*> items;
+                    std::set<obj::ObjectKey> current;
                     auto* arr = slot.property->ContainerPtrToValuePtr<RC::Unreal::TArray<UObject*>>(slot.hud);
                     if (arr && arr->Num() > 0 && arr->Num() < 256 && arr->GetData())
                     {
                         for (int32_t i = 0; i < arr->Num(); ++i)
                         {
                             UObject* item = arr->GetData()[i];
-                            if (item && obj::IsLive(item) && obj::IsWidgetVisible(item)) items.push_back(item);
+                            if (item && obj::IsLive(item) && obj::IsWidgetVisible(item)) current.insert(obj::KeyOf(item));
                         }
                     }
                     auto& known = g_hudArrayState[key];
-                    std::set<UObject*> current(items.begin(), items.end());
-                    for (auto* old : known)
+                    for (const auto& old : known)
                     {
-                        if (!current.contains(old)) Emit(slot, old, false);
+                        if (!current.contains(old)) Emit(slot, old.object, false);
                     }
-                    for (auto* item : current)
+                    for (const auto& item : current)
                     {
-                        if (!known.contains(item)) Emit(slot, item, true);
+                        if (!known.contains(item)) Emit(slot, item.object, true);
                     }
                     known = std::move(current);
                 }
@@ -235,11 +233,14 @@ namespace qa::watch
         std::vector<FocusListener> g_focusListeners;
         UObject* g_screen = nullptr;
         UObject* g_focused = nullptr;
+        obj::ObjectKey g_focusedKey; // the identity of g_focused, beyond its address
         std::vector<UObject*> g_screenCandidates;
         std::vector<UObject*> g_controlCandidates;
         std::vector<UObject*> g_editCandidates;
-        std::map<UObject*, UObject*> g_screenFocus;  // screen -> its last seen focused widget
-        std::map<UObject*, bool> g_controlHighlight; // control -> was it highlighted
+        // Memories that outlive a frame are keyed by the object's identity, not its address,
+        // which the game reuses for another object once this one is freed.
+        std::map<obj::ObjectKey, obj::ObjectKey> g_screenFocus; // screen -> its last seen focused widget
+        std::map<obj::ObjectKey, bool> g_controlHighlight;      // control -> was it highlighted
         unsigned long long g_lastScreenScan = 0;
 
         std::vector<UObject*> g_currentScreens;
@@ -304,9 +305,9 @@ namespace qa::watch
             // Forget widgets that are gone so their state cannot be compared against a
             // recycled pointer later.
             for (auto it = g_screenFocus.begin(); it != g_screenFocus.end();)
-                it = obj::IsLive(it->first) ? std::next(it) : g_screenFocus.erase(it);
+                it = obj::IsSame(it->first) ? std::next(it) : g_screenFocus.erase(it);
             for (auto it = g_controlHighlight.begin(); it != g_controlHighlight.end();)
-                it = obj::IsLive(it->first) ? std::next(it) : g_controlHighlight.erase(it);
+                it = obj::IsSame(it->first) ? std::next(it) : g_controlHighlight.erase(it);
         }
 
         void PollFocusImpl()
@@ -326,9 +327,10 @@ namespace qa::watch
             {
                 if (!obj::IsLive(control) || !obj::IsWidgetVisible(control) || !OnCurrentScreen(control)) continue;
                 const bool highlighted = IsHighlighted(control);
-                const auto previous = g_controlHighlight.find(control);
+                const obj::ObjectKey controlKey = obj::KeyOf(control);
+                const auto previous = g_controlHighlight.find(controlKey);
                 const bool wasHighlighted = previous != g_controlHighlight.end() && previous->second;
-                g_controlHighlight[control] = highlighted;
+                g_controlHighlight[controlKey] = highlighted;
                 if (highlighted && !wasHighlighted && !focused && !PassiveHighlight(control)) focused = control;
             }
 
@@ -348,10 +350,12 @@ namespace qa::watch
                 if (!obj::IsLive(candidate)) continue;
                 UObject* last = nullptr;
                 obj::ReadObject(candidate, L"LastFocusedWidget", last);
-                const auto known = g_screenFocus.find(candidate);
+                // A dead reference is remembered by its address alone; its name cannot be read.
+                const obj::ObjectKey lastKey = obj::IsLive(last) ? obj::KeyOf(last) : obj::ObjectKey{last, 0, 0};
+                const auto known = g_screenFocus.find(obj::KeyOf(candidate));
                 const bool first = known == g_screenFocus.end();
-                const bool changed = !first && known->second != last;
-                g_screenFocus[candidate] = last;
+                const bool changed = !first && known->second != lastKey;
+                g_screenFocus[obj::KeyOf(candidate)] = lastKey;
                 if (!last || !obj::IsLive(last) || !obj::IsWidgetVisible(last)) continue;
                 if (!OnCurrentScreen(last)) continue;
                 if ((changed || (first && screensAreNew)) && !focused) focused = last;
@@ -361,17 +365,19 @@ namespace qa::watch
             // enough, since a closed screen leaves its widgets alive with their flags as they
             // were. A text field is kept only while it still holds the focus, since leaving
             // one does not always move the screen's own reference.
-            if (!focused && g_focused && obj::IsLive(g_focused) && obj::IsWidgetShown(g_focused) && OnCurrentScreen(g_focused) &&
+            if (!focused && g_focused && obj::IsSame(g_focusedKey) && obj::IsWidgetShown(g_focused) && OnCurrentScreen(g_focused) &&
                 (!obj::IsA(g_focused, L"EditableTextBox") || obj::CallForBool(g_focused, L"HasKeyboardFocus")))
             {
                 focused = g_focused;
             }
 
             UObject* screen = focused ? obj::RootScreen(focused) : nullptr;
-            if (screen != g_screen || focused != g_focused)
+            const obj::ObjectKey focusedKey = obj::KeyOf(focused);
+            if (screen != g_screen || focusedKey != g_focusedKey)
             {
                 g_screen = screen;
                 g_focused = focused;
+                g_focusedKey = focusedKey;
                 log::Verbose(L"focus: screen={} focused={} {}", obj::ClassName(screen), obj::ClassName(focused), obj::ObjectName(focused));
                 for (auto& listener : g_focusListeners)
                 {
@@ -409,13 +415,13 @@ namespace qa::watch
         std::vector<std::pair<std::wstring, UObject*>> out;
         for (const auto& [key, state] : g_hudState)
         {
-            if (state.instance && state.visible && obj::IsLive(state.instance))
+            if (state.visible && obj::IsSame(state.instance))
             {
                 for (const auto& slot : g_slots)
                 {
                     if (slot.hud == key.first && slot.property == key.second)
                     {
-                        out.emplace_back(slot.hudClass + L"." + slot.propertyName, state.instance);
+                        out.emplace_back(slot.hudClass + L"." + slot.propertyName, state.instance.object);
                         break;
                     }
                 }
@@ -423,14 +429,14 @@ namespace qa::watch
         }
         for (const auto& [key, items] : g_hudArrayState)
         {
-            for (auto* item : items)
+            for (const auto& item : items)
             {
-                if (!obj::IsLive(item)) continue;
+                if (!obj::IsSame(item)) continue;
                 for (const auto& slot : g_slots)
                 {
                     if (slot.hud == key.first && slot.property == key.second)
                     {
-                        out.emplace_back(slot.hudClass + L"." + slot.propertyName, item);
+                        out.emplace_back(slot.hudClass + L"." + slot.propertyName, item.object);
                         break;
                     }
                 }
@@ -488,7 +494,7 @@ namespace qa::watch
 
     UObject* CurrentFocused()
     {
-        return obj::IsLive(g_focused) ? g_focused : nullptr;
+        return obj::IsSame(g_focusedKey) ? g_focused : nullptr;
     }
 
     void Install()
@@ -508,7 +514,10 @@ namespace qa::watch
         g_textWatches.clear();
         g_screenCandidates.clear();
         g_editCandidates.clear();
+        g_screenFocus.clear();
+        g_controlHighlight.clear();
         g_screen = nullptr;
         g_focused = nullptr;
+        g_focusedKey = {};
     }
 }
