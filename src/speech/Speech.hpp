@@ -11,7 +11,8 @@
 //   Stop()         - silence everything.
 //   Repeat()       - speak the last utterance again.
 //
-// While the mod is switched off (core/Gate) nothing is said.
+// Every line is cleaned here, once: the game's markup stripped and its whitespace collapsed,
+// so that no reader has to. While the mod is switched off (core/Gate) nothing is said.
 //
 // Thread-safe.
 

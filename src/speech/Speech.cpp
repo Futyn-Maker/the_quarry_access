@@ -3,6 +3,7 @@
 #include "core/Config.hpp"
 #include "core/Gate.hpp"
 #include "core/Log.hpp"
+#include "core/Strings.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Outputs.hpp"
@@ -76,6 +77,14 @@ namespace qa::speech
             return sinceInput < kFreshInputMs || sinceInput <= MsSince(g_lastOutputAt);
         }
 
+        // Every line is cleaned once, here: the game's markup stripped and its whitespace
+        // collapsed, so that no reader has to, and a line that is nothing but markup is not
+        // said at all.
+        std::wstring Clean(std::wstring_view text)
+        {
+            return str::Trim(str::StripMarkup(text));
+        }
+
         // Whether a line is said now: the mod has a voice and is switched on. Off, the line
         // goes to the log at Verbose and no further.
         bool Says(std::wstring_view text)
@@ -94,8 +103,9 @@ namespace qa::speech
         g_lastMessage.clear();
     }
 
-    void Focus(std::wstring_view text)
+    void Focus(std::wstring_view raw)
     {
+        const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         if (text == g_lastSpoken && MsSince(g_lastSpokenAt) < cfg::Get().focusDedupeMs)
@@ -111,15 +121,17 @@ namespace qa::speech
         OutputNow(text, true, L"focus");
     }
 
-    void Announce(std::wstring_view text)
+    void Announce(std::wstring_view raw)
     {
+        const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, false, L"announce");
     }
 
-    void Now(std::wstring_view text)
+    void Now(std::wstring_view raw)
     {
+        const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
         std::lock_guard lock(g_mutex);
         OutputNow(text, true, L"now");
