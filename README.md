@@ -191,6 +191,16 @@ The result is in `dist\TheQuarryAccess-<version>`. Copy its contents into the ga
 
 Before a pull request, run `scripts\format.cmd` to format the C++ code. It needs the "C++ Clang tools for Windows" component of Visual Studio.
 
+### Tests
+
+The parts of the mod that do not touch the game, such as the string helpers, the settings file, the language tables and the key table, have tests in `tests`. Run them from the repository folder before a pull request:
+
+```
+scripts\test.cmd
+```
+
+The first run downloads the doctest framework and builds the tests into `build\tests`.
+
 ### Translation
 
 The mod's own messages are in `mod\lang`, one file per game language: `ru_RU.ini`, `de_DE.ini` and so on. `en_US.ini` is the reference. The descriptions of the tarot visions are in `mod\lang\tarot`, in the same way.

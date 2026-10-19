@@ -2,6 +2,7 @@
 
 #include "features/Choices.hpp"
 #include "features/Combat.hpp"
+#include "features/ExploreText.hpp"
 #include "features/Pause.hpp"
 
 #include "core/Config.hpp"
@@ -346,12 +347,9 @@ namespace qa::features
             return ActorLocation(camera, eye) && RotationOf(camera, L"GetCameraRotation", pitch, yaw);
         }
 
-        double NormalizeDegrees(double a)
-        {
-            a = std::fmod(a + 180.0, 360.0);
-            if (a < 0) a += 360.0;
-            return a - 180.0;
-        }
+        using explore::Metres;
+        using explore::NormalizeDegrees;
+        using explore::SectorKey;
 
         // Degrees a point stands above the level line from a spot.
         double ElevationDegrees(const Vec& from, const Vec& to)
@@ -392,19 +390,6 @@ namespace qa::features
             return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
         }
 
-        const wchar_t* SectorKey(double bearing)
-        {
-            const int sector = (static_cast<int>(std::lround(bearing / 45.0)) % 8 + 8) % 8;
-            static const wchar_t* const keys[] = {L"dir8.ahead",  L"dir8.aheadright", L"dir8.right", L"dir8.behindright",
-                                                  L"dir8.behind", L"dir8.behindleft", L"dir8.left",  L"dir8.aheadleft"};
-            return keys[sector];
-        }
-
-        std::wstring Metres(double centimetres)
-        {
-            return std::to_wstring(std::max<long>(1, std::lround(centimetres / 100.0)));
-        }
-
         // ---- the scene ------------------------------------------------------------------
 
         UObject* Pawn()
@@ -424,38 +409,11 @@ namespace qa::features
             return false;
         }
 
-        // The name an actor carries in the level, read as words: the prefix of its kind and
-        // the copy number are dropped, and the run-together words are parted where the
-        // capitals allow it ("UL_CampMap" -> "Camp Map"). It is all there is to say about a
-        // thing the game gives no text for.
+        // The name an actor carries in the level, read as words (explore::NameWords). It is
+        // all there is to say about a thing the game gives no text for.
         std::wstring TechnicalName(UObject* actor)
         {
-            std::wstring name = obj::ObjectName(actor);
-            for (const wchar_t* prefix : {L"UL_", L"UI_", L"EDI_", L"EDN_", L"ED_", L"EDG_", L"BP_"})
-            {
-                if (str::StartsWith(name, prefix)) name.erase(0, wcslen(prefix));
-            }
-            while (!name.empty() && (iswdigit(name.back()) || name.back() == L'_'))
-                name.pop_back();
-            std::wstring out;
-            for (size_t i = 0; i < name.size(); ++i)
-            {
-                const wchar_t c = name[i];
-                if (c == L'_')
-                {
-                    out += L' ';
-                    continue;
-                }
-                if (i > 0 && iswupper(c))
-                {
-                    const wchar_t previous = name[i - 1];
-                    const bool opensWord = !iswupper(previous);
-                    const bool closesRun = iswupper(previous) && i + 1 < name.size() && iswlower(name[i + 1]);
-                    if (opensWord || closesRun) out += L' ';
-                }
-                out += c;
-            }
-            return str::CollapseWhitespace(out);
+            return explore::NameWords(obj::ObjectName(actor));
         }
 
         // The words the game shows over a use location: one of the few verbs it has, never
