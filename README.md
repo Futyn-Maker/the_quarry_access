@@ -154,17 +154,17 @@ The main menu then has a Debug prompt, Z on the keyboard. Blockouts in the debug
 
 Some of these menus have dropdowns. On a dropdown, these keys work its list:
 
-| Keyboard | Action                                                     |
-| -------- | ---------------------------------------------------------- |
-| Space    | Open the list of a dropdown, or keep the option you are on |
-| Enter    | The same as Space                                          |
-| Up       | Previous option                                            |
-| Down     | Next option                                                |
-| Home     | First option                                               |
-| End      | Last option                                                |
-| Escape   | Close the list and put back the option it had              |
+| Keyboard | Gamepad    | Action                                                     |
+| -------- | ---------- | ---------------------------------------------------------- |
+| Space    | A          | Open the list of a dropdown, or keep the option you are on |
+| Enter    |            | The same as Space                                          |
+| Up       | D-pad up   | Previous option                                            |
+| Down     | D-pad down | Next option                                                |
+| Home     | LB         | First option                                               |
+| End      | RB         | Last option                                                |
+| Escape   | B          | Close the list and put back the option it had              |
 
-Each option is set as you reach it, and Left, Right or Tab leaves the list with the option you are on.
+Each option is set as you reach it. Left, Right or Tab, or the D-pad left and right, leaves the list with the option you are on.
 
 ## Reporting Problems
 

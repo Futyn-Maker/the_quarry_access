@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "input/PadTake.hpp"
 #include "locale/Locale.hpp"
 #include "watch/Watchers.hpp"
 
@@ -730,6 +731,36 @@ namespace qa::input
             }
         }
 
+        // ---- the buttons the mod takes for a situation of its own ---------------------------
+        //
+        // On a dropdown the buttons the mod needs for its list are the game's own navigation,
+        // so they cannot be read beside the game like the exploration buttons: while the mod's
+        // list stands in for the game's, they are taken from the reading the game is given, a
+        // press at a time (input/PadTake), after the chord has been hidden and the watched
+        // buttons answered. The presses wait for the game thread, a few at most.
+        std::atomic<uint16_t> g_takeMask{0};
+        std::wstring g_takeNames[16]; // the engine key name of each taken bit, under g_takeMutex
+        PadTake g_take[8];            // what each pad's taking stands at: XInput's four, then Sony's
+        std::mutex g_takeMutex;
+        std::vector<std::wstring> g_takenPresses; // under g_takeMutex
+        constexpr size_t kMaxTakenPresses = 8;
+
+        void TakeButtons(uint32_t index, uint16_t& buttons)
+        {
+            if (index >= 8) return;
+            uint16_t pressed = 0;
+            buttons = Take(g_take[index], buttons, g_takeMask.load(std::memory_order_relaxed), pressed);
+            if (pressed == 0) return;
+            g_lastInputAt.store(NowMs(), std::memory_order_relaxed);
+            std::lock_guard lock(g_takeMutex);
+            for (int bit = 0; bit < 16; ++bit)
+            {
+                if (!(pressed & (1u << bit))) continue;
+                if (g_takenPresses.size() >= kMaxTakenPresses) g_takenPresses.erase(g_takenPresses.begin());
+                g_takenPresses.push_back(g_takeNames[bit]);
+            }
+        }
+
         uint32_t __stdcall GetStateDetour(uint32_t index, XInputState* state)
         {
             const uint32_t result = g_realGetState ? g_realGetState(index, state) : 1167u;
@@ -748,6 +779,7 @@ namespace qa::input
             {
                 HideChord(state->gamepad);
                 WatchButtons(index, state->gamepad.buttons);
+                TakeButtons(index, state->gamepad.buttons);
             }
             return result;
         }
@@ -822,7 +854,8 @@ namespace qa::input
                 g_sceConnected = true;
             }
             // What the game is shown: the stick pushed for a walk, the chord hidden, the
-            // watched buttons answered; then only what changed goes back into its data.
+            // watched buttons answered, the taken ones kept from it; then only what changed
+            // goes back into its data.
             XInputGamepad shown = real;
             if (g_injecting.load(std::memory_order_relaxed))
             {
@@ -831,6 +864,7 @@ namespace qa::input
             }
             HideChord(shown);
             WatchButtons(4 + static_cast<uint32_t>(slot), shown.buttons);
+            TakeButtons(4 + static_cast<uint32_t>(slot), shown.buttons);
             if (shown.buttons != real.buttons)
             {
                 uint32_t buttons = head->buttons;
@@ -1190,6 +1224,35 @@ namespace qa::input
         }
         g_padWatcher = handler;
         g_watchMask.store(mask, std::memory_order_relaxed);
+    }
+
+    void TakePadButtons(const std::vector<std::wstring>& keyNames)
+    {
+        uint16_t mask = 0;
+        std::lock_guard lock(g_takeMutex);
+        for (const auto& name : keyNames)
+        {
+            const unsigned bit = PadButtonBit(str::ToLower(str::Trim(name)));
+            if (bit == 0 || bit > 0xFFFFu)
+            {
+                log::Error(L"input: {} is not a button the game reads, and is not taken", name);
+                continue;
+            }
+            mask |= static_cast<uint16_t>(bit);
+            for (int i = 0; i < 16; ++i)
+            {
+                if (bit == (1u << i)) g_takeNames[i] = name;
+            }
+        }
+        g_takeMask.store(mask, std::memory_order_relaxed);
+    }
+
+    std::vector<std::wstring> TakenPadPresses()
+    {
+        std::lock_guard lock(g_takeMutex);
+        std::vector<std::wstring> presses = std::move(g_takenPresses);
+        g_takenPresses.clear();
+        return presses;
     }
 
     long long MsSinceInput()

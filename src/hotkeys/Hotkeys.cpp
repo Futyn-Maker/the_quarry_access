@@ -207,6 +207,52 @@ namespace qa::hotkeys
             PollBindings(pad, g_exploreBindings, pad.valid && !chord && gate::IsOn() && InContext());
         }
 
+        // ---- the pad buttons of a dropdown's list ----
+        // On a dropdown the buttons of the mod's list are the game's own navigation, so they
+        // are taken from the reading the game is given (input::TakePadButtons) while the
+        // dropdown has the selection or the list is open, and answered press by press, at
+        // every frame, as the hook answers the keys.
+        struct DropdownButton
+        {
+            std::wstring keyName;
+            Command command;
+            Scope scope;
+        };
+        std::vector<DropdownButton> g_dropdownButtons;
+        keyhook::Dropdown g_takenFor = keyhook::Dropdown::None; // the state the taken buttons were set for
+
+        void TakeDropdownButtons()
+        {
+            const keyhook::Dropdown state = HookDropdown();
+            if (state == g_takenFor) return;
+            g_takenFor = state;
+            std::vector<std::wstring> taken;
+            for (const auto& button : g_dropdownButtons)
+            {
+                const bool listKey = button.scope == Scope::DropdownList;
+                if (state == keyhook::Dropdown::Open || (state == keyhook::Dropdown::Selected && !listKey)) taken.push_back(button.keyName);
+            }
+            input::TakePadButtons(taken);
+        }
+
+        void PollDropdownPad()
+        {
+            if (g_dropdownButtons.empty()) return;
+            TakeDropdownButtons();
+            for (const auto& key : input::TakenPadPresses())
+            {
+                for (const auto& button : g_dropdownButtons)
+                {
+                    if (button.keyName != key) continue;
+                    Run(button.command, Source::Gamepad);
+                    break;
+                }
+                // A press may have opened or closed the list; the next button is taken by what
+                // it did.
+                TakeDropdownButtons();
+            }
+        }
+
         // The mod switched off and on. Off is said before the switch turns, so that it is
         // heard; on is followed by the screen as F6 reads it, since whatever came up while
         // the mod was off went unsaid.
@@ -322,10 +368,17 @@ namespace qa::hotkeys
                       L"ChordSubtitles, ChordLastSubtitle, ChordSpeech, ChordVerbosity, ChordModOnOff, ChordDevDumpTree and ChordDevLogLevel",
                       key);
         g_exploreBindings.clear();
+        g_dropdownButtons.clear();
         for (const Hotkey& hotkey : Table())
         {
             const auto button = PadOf(hotkey.command);
             if (button.empty()) continue;
+            if (OnDropdown(hotkey.scope))
+            {
+                g_dropdownButtons.push_back({button, hotkey.command, hotkey.scope});
+                log::Info(L"gamepad on a dropdown: {} = {}", button, hotkey.name);
+                continue;
+            }
             g_exploreBindings.push_back({button, hotkey.command});
             log::Info(L"gamepad while walking: {} = {}", button, hotkey.name);
         }
@@ -334,6 +387,7 @@ namespace qa::hotkeys
                               {
                                   PollKeyboard();
                                   PollPad();
+                                  PollDropdownPad();
                               });
     }
 

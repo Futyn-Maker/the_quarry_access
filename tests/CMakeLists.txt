@@ -28,12 +28,14 @@ add_executable(tests
     HotkeyTableTests.cpp
     ExploreTextTests.cpp
     DropdownListTests.cpp
+    PadTakeTests.cpp
     "${QA_SRC}/core/Strings.cpp"
     "${QA_SRC}/core/Config.cpp"
     "${QA_SRC}/locale/Locale.cpp"
     "${QA_SRC}/hotkeys/KeySpec.cpp"
     "${QA_SRC}/hotkeys/HotkeyTable.cpp"
     "${QA_SRC}/features/DropdownList.cpp"
+    "${QA_SRC}/input/PadTake.cpp"
     "${QA_SRC}/features/ExploreText.cpp")
 
 target_include_directories(tests PRIVATE "${QA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
