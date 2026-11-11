@@ -915,6 +915,31 @@ namespace qa::obj
         return rows;
     }
 
+    namespace
+    {
+        // Whether a user widget's tree holds a list view, remembered by the widget's class: the
+        // tree is built from the class's design, so one walk answers for every instance. The
+        // game leaves many widgets alive outside any tree (finished screens, unused options),
+        // and IsWidgetShown asks about them all the time; without this, each of those asks
+        // would walk its owner's whole tree, while only the debug screens hold a list at all.
+        bool TreeHoldsList(UObject* owner)
+        {
+            static std::map<ObjectKey, bool> known;
+            const ObjectKey key = KeyOf(owner->GetClassPrivate());
+            if (const auto it = known.find(key); it != known.end()) return it->second;
+            bool found = false;
+            WalkWidgetTree(owner, 16,
+                           [&](UObject* candidate, int)
+                           {
+                               found = IsA(candidate, L"ListViewBase");
+                               return !found;
+                           });
+            if (known.size() > 1024) known.clear();
+            known[key] = found;
+            return found;
+        }
+    }
+
     UObject* ListOfRow(UObject* widget)
     {
         if (!IsLive(widget) || !IsA(widget, L"UserWidget")) return nullptr;
@@ -927,7 +952,7 @@ namespace qa::obj
         UObject* root = nullptr;
         if (ReadObject(tree, L"RootWidget", root) && root == widget) return nullptr;
         UObject* owner = tree->GetOuterPrivate();
-        if (!owner || !IsLive(owner) || !IsA(owner, L"UserWidget")) return nullptr;
+        if (!owner || !IsLive(owner) || !IsA(owner, L"UserWidget") || !TreeHoldsList(owner)) return nullptr;
         UObject* found = nullptr;
         WalkWidgetTree(owner, 16,
                        [&](UObject* candidate, int)
