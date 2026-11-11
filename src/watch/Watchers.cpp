@@ -235,6 +235,7 @@ namespace qa::watch
         UObject* g_focused = nullptr;
         obj::ObjectKey g_focusedKey;    // the identity of g_focused, beyond its address
         UObject* g_focusList = nullptr; // the list view the selection moves in, while it does
+        obj::ObjectKey g_focusListKey;  // its identity
         std::vector<UObject*> g_screenCandidates;
         std::vector<UObject*> g_controlCandidates;
         std::vector<UObject*> g_editCandidates;
@@ -379,9 +380,10 @@ namespace qa::watch
             UObject* list = nullptr;
             if (focused && obj::IsA(focused, L"ListViewBase"))
                 list = focused;
-            else if (focused && focused == g_focused && obj::IsLive(g_focusList) && obj::ListOfRow(focused) == g_focusList)
+            else if (focused && obj::KeyOf(focused) == g_focusedKey && obj::IsSame(g_focusListKey) && obj::ListOfRow(focused) == g_focusList)
                 list = g_focusList;
             g_focusList = list;
+            g_focusListKey = obj::KeyOf(list);
             if (list)
             {
                 if (UObject* row = obj::FocusedListRow(list)) focused = row;
@@ -536,5 +538,6 @@ namespace qa::watch
         g_focused = nullptr;
         g_focusedKey = {};
         g_focusList = nullptr;
+        g_focusListKey = {};
     }
 }
