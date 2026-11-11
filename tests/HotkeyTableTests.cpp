@@ -102,6 +102,32 @@ TEST_CASE("The mod's switch is one key of the table, on the keyboard and under t
     CHECK(switches == 1);
 }
 
+TEST_CASE("A dropdown's keys are taken on a dropdown alone, its list's keys only while that list is open")
+{
+    const Command opening[] = {Command::DropdownOpen, Command::DropdownConfirm};
+    const Command listing[] = {Command::DropdownPrevious, Command::DropdownNext, Command::DropdownFirst, Command::DropdownLast, Command::DropdownCancel};
+    for (const Command command : opening)
+    {
+        INFO(U8(CommandName(command)));
+        CHECK(Of(command).scope == Scope::Dropdown);
+        CHECK(*Of(command).key);
+        CHECK_FALSE(*Of(command).chordName);
+    }
+    for (const Command command : listing)
+    {
+        INFO(U8(CommandName(command)));
+        CHECK(Of(command).scope == Scope::DropdownList);
+        CHECK(*Of(command).key);
+        CHECK_FALSE(*Of(command).chordName);
+    }
+    int dropdownKeys = 0;
+    for (const auto& hotkey : Table())
+    {
+        if (hotkey.scope == Scope::Dropdown || hotkey.scope == Scope::DropdownList) ++dropdownKeys;
+    }
+    CHECK(dropdownKeys == 7);
+}
+
 TEST_CASE("The shipped ini sets every key of the table to its default, with the chord hold")
 {
     const auto ini = ReadText(Repo() / "mod" / "QuarryAccess.ini");

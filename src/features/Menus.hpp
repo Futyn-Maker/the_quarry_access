@@ -33,4 +33,28 @@ namespace qa::features
 
     // Forgets every screen and control (after a map change).
     void ResetMenus();
+
+    // A dropdown, whose own list nobody can read or use, has the mod's list in its place: no
+    // dropdown has the selection, one has it with its list shut, or the mod's list of it is
+    // open. The hotkeys take a dropdown's keys only then.
+    enum class DropdownState
+    {
+        None,
+        Selected,
+        Open,
+    };
+    DropdownState CurrentDropdown();
+    // The keys of the mod's list for a dropdown (game thread): opening it on the option the
+    // dropdown shows, or keeping the option it is on; the steps through it, each setting its
+    // option; and putting back the option the list opened on.
+    enum class DropdownKey
+    {
+        OpenOrKeep,
+        Previous,
+        Next,
+        First,
+        Last,
+        Cancel,
+    };
+    void PressDropdownKey(DropdownKey key);
 }

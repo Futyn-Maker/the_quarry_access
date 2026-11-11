@@ -9,6 +9,7 @@
 #include "diag/Diagnostics.hpp"
 #include "features/Combat.hpp"
 #include "features/Exploration.hpp"
+#include "features/Menus.hpp"
 #include "features/Subtitles.hpp"
 #include "hotkeys/KeyHook.hpp"
 #include "hotkeys/KeySpec.hpp"
@@ -46,6 +47,37 @@ namespace qa::hotkeys
         bool Answers(Command command)
         {
             return gate::IsOn() || command == Command::ModOnOff;
+        }
+
+        // The keys of a dropdown's list stand in for the game's own list, so they are the
+        // mod's only on a dropdown, and only while they can be taken from the game.
+        bool OnDropdown(Scope scope)
+        {
+            return scope == Scope::Dropdown || scope == Scope::DropdownList;
+        }
+
+        // Where the hook takes a key of the table.
+        keyhook::Situation SituationOf(Scope scope)
+        {
+            switch (scope)
+            {
+            case Scope::Context: return keyhook::Situation::Context;
+            case Scope::Dropdown: return keyhook::Situation::Dropdown;
+            case Scope::DropdownList: return keyhook::Situation::DropdownList;
+            default: return keyhook::Situation::Always;
+            }
+        }
+
+        // The dropdown the hook takes the keys for: none while the mod is off.
+        keyhook::Dropdown HookDropdown()
+        {
+            if (!gate::IsOn()) return keyhook::Dropdown::None;
+            switch (features::CurrentDropdown())
+            {
+            case features::DropdownState::Selected: return keyhook::Dropdown::Selected;
+            case features::DropdownState::Open: return keyhook::Dropdown::Open;
+            default: return keyhook::Dropdown::None;
+            }
         }
 
         void Bind(const Hotkey& hotkey)
@@ -98,14 +130,19 @@ namespace qa::hotkeys
             if (keyhook::Active())
             {
                 // The exploration letters are the game's, or a text field's, outside
-                // exploration, the fights and the look-arounds; the hook leaves them alone
-                // there. While the mod is off the hook takes nothing but the switch.
+                // exploration, the fights and the look-arounds, and a dropdown's keys are the
+                // game's away from a dropdown; the hook leaves them alone there. While the mod
+                // is off the hook takes nothing but the switch.
                 keyhook::SetOn(gate::IsOn());
                 keyhook::SetContext(gate::IsOn() && InContext());
+                keyhook::SetDropdown(HookDropdown());
                 for (const int id : keyhook::TakePresses())
                 {
                     if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
                 }
+                // A press may have opened or closed a dropdown's list; the next key is taken by
+                // what it did.
+                keyhook::SetDropdown(HookDropdown());
                 return;
             }
             if (!GameWindowInForeground())
@@ -119,6 +156,8 @@ namespace qa::hotkeys
             const bool shift = Down(VK_SHIFT);
             for (auto& k : g_keys)
             {
+                // A poll cannot keep a key from the game, so a dropdown's keys stay its own.
+                if (OnDropdown(Of(k.command).scope)) continue;
                 const bool down = Down(k.key.vk);
                 if (down && !k.wasDown && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift && Answers(k.command))
                 {
@@ -242,7 +281,7 @@ namespace qa::hotkeys
         {
             const Scope scope = Of(g_keys[i].command).scope;
             bindings.push_back(keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i),
-                                                scope == Scope::Context, scope == Scope::Switch});
+                                                SituationOf(scope), scope == Scope::Switch});
         }
         // The keys that move the selection or leave a screen stay the game's; the mod only
         // answers each, by stopping what is being said the moment it goes down, whether or
@@ -365,6 +404,14 @@ namespace qa::hotkeys
             case Command::TarotCards:
                 if (features::ExplorationActive()) features::ToggleTarotCards();
                 break;
+            // A dropdown's keys work the mod's list in place of the game's, and nothing else.
+            case Command::DropdownOpen:
+            case Command::DropdownConfirm: features::PressDropdownKey(features::DropdownKey::OpenOrKeep); break;
+            case Command::DropdownPrevious: features::PressDropdownKey(features::DropdownKey::Previous); break;
+            case Command::DropdownNext: features::PressDropdownKey(features::DropdownKey::Next); break;
+            case Command::DropdownFirst: features::PressDropdownKey(features::DropdownKey::First); break;
+            case Command::DropdownLast: features::PressDropdownKey(features::DropdownKey::Last); break;
+            case Command::DropdownCancel: features::PressDropdownKey(features::DropdownKey::Cancel); break;
             case Command::DevDumpTree:
                 diag::DumpScreen();
                 speech::Announce(locale::Mod(L"diag.dumped"));

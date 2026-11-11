@@ -10,6 +10,16 @@
 
 namespace qa::keyhook
 {
+    // Where a binding is the mod's: everywhere, or only in a situation of the mod's own, the
+    // key being the game's, or a text field's, everywhere else.
+    enum class Situation
+    {
+        Always,
+        Context,      // the player walks the character, fights or looks around (the exploration letters)
+        Dropdown,     // a dropdown the mod stands in for has the selection, its list open or shut
+        DropdownList, // the mod's list of a dropdown is open
+    };
+
     struct Binding
     {
         int vk = 0;
@@ -17,9 +27,7 @@ namespace qa::keyhook
         bool alt = false;
         bool shift = false;
         int id = 0;
-        // A key that is the mod's only in some contexts (the exploration letters) and the
-        // game's, or the text field's, elsewhere.
-        bool contextual = false;
+        Situation situation = Situation::Always;
         // The mod's own switch, taken while the mod is off as well.
         bool switchKey = false;
     };
@@ -37,17 +45,8 @@ namespace qa::keyhook
     // Whether the contextual bindings are taken now; set from the game thread as the
     // context comes and goes.
     void SetContext(bool active);
-    // Whether the mod is on; off, the hook takes nothing but the switch. Set from the game
-    // thread as the mod is switched.
-    void SetOn(bool on);
-
-    // The ids of the bindings pressed since the last call, in order.
-    std::vector<int> TakePresses();
-
-    // A dropdown whose list the mod opens in place of the game's (features/Menus): while
-    // one has the selection, Space is the mod's; while its list is open, so are Up, Down,
-    // Home, End, Enter, Space and Escape. Set from the game thread; everywhere else these
-    // keys go to the game as always.
+    // Whether a dropdown the mod stands in for has the selection, and whether the mod's list
+    // of it is open (features/Menus); set from the game thread as either changes.
     enum class Dropdown
     {
         None,
@@ -55,6 +54,10 @@ namespace qa::keyhook
         Open,
     };
     void SetDropdown(Dropdown state);
-    // The virtual-key codes taken for the dropdown since the last call, in order.
-    std::vector<int> TakeDropdownKeys();
+    // Whether the mod is on; off, the hook takes nothing but the switch. Set from the game
+    // thread as the mod is switched.
+    void SetOn(bool on);
+
+    // The ids of the bindings pressed since the last call, in order.
+    std::vector<int> TakePresses();
 }

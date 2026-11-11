@@ -62,7 +62,7 @@ The game's Accessibility settings make many mechanics easier. Choice Timer, QTE 
 
 On the gamepad, hold Back (View) and press the second button. The game does not see buttons pressed while Back is held.
 
-F1, or Back + Start, turns the mod off. It then says nothing and plays no sound, and its keys for walking and fighting go back to the game. The same key turns it on again, and it reads the current screen.
+F1, or Back + Start, turns the mod off. It then says nothing and plays no sound, and its keys for walking, fighting and dropdowns go back to the game. The same key turns it on again, and it reads the current screen.
 
 These keys work while you walk and during fights:
 
@@ -152,7 +152,19 @@ To install it, put its `XAPOFX1_5.dll` into `SMG026\Binaries\Win64` in the game 
 
 The main menu then has a Debug prompt, Z on the keyboard. Blockouts in the debug menu starts the story at any of 64 points, from the Prologue to the Epilogue, and where a chapter depends on earlier events, a screen before it lets you set them. Automation Path lets the game make the story's choices for you, while you still walk and explore yourself. Movie Mode gets Debug Settings, which set each kind of decision for each character to Player, Good, Bad or Random. The Quarry Debug UI page describes the rest.
 
-On the keyboard, Space opens the list of a dropdown. The up and down arrows move through its options, Home and End go to the first and last, Space or Enter keeps the option you are on, and Escape puts back the one it had.
+Some of these menus have dropdowns. On a dropdown, these keys work its list:
+
+| Keyboard | Action                                                     |
+| -------- | ---------------------------------------------------------- |
+| Space    | Open the list of a dropdown, or keep the option you are on |
+| Enter    | The same as Space                                          |
+| Up       | Previous option                                            |
+| Down     | Next option                                                |
+| Home     | First option                                               |
+| End      | Last option                                                |
+| Escape   | Close the list and put back the option it had              |
+
+Each option is set as you reach it, and Left, Right or Tab leaves the list with the option you are on.
 
 ## Reporting Problems
 
