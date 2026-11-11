@@ -24,6 +24,7 @@ The Quarry Access is a mod that makes [The Quarry](https://store.steampowered.co
 - Text on in-game monitors, such as the newspaper in the epilogue
 - Credits
 - Couch co-op, Movie Mode and Wolf Pack screens
+- The game's hidden developer menus, with the Quarry Debug UI mod
 - Keyboard and gamepad keys for all mod functions
 - NVDA, JAWS, Narrator and other screen readers, SAPI and braille
 
@@ -42,8 +43,6 @@ If the game shows "Failed to load UE4SS.dll" at start, install the [Microsoft Vi
 Use the arrow keys or the D-pad to move through menus, Enter or A to select, and Backspace or B to go back. Left and right change a setting. Escape or Start pauses the game, and in the pause menu [ and ] or LB and RB switch tabs. When a clue or a tarot card is found, Q or LB opens it. The mod reads the keys each screen offers.
 
 The arrow keys, Backspace and Escape, or the D-pad, B and Start, also stop the speech as you press them, so a list moves on at once and a screen you leave is not still being read over the one you arrive at.
-
-On the keyboard, Space opens the list of a dropdown. The up and down arrows move through its options, Home and End go to the first and last, Space or Enter keeps the option you are on, and Escape puts back the one it had.
 
 The game's Accessibility settings make many mechanics easier. Choice Timer, QTE Speed and Interrupt Speed give more time. Simple QTE's accepts any direction or passes quick-time events by itself. Button Mash can ask for holding or a single press instead of mashing. Don't Breathe and Aim Assist can be set to Auto.
 
@@ -144,6 +143,16 @@ Move to a player in the list with the arrow keys, and step through the character
 A player may be left with no characters. The game asks whether you meant it and names them, and it starts if you say yes.
 
 During the game, whenever the next scene belongs to somebody else, the game stops and says whose turn it is. Hand over the controller or the keyboard and confirm. Everything else plays as it does alone.
+
+## Quarry Debug
+
+The game comes with developer menus that it keeps hidden. The [Quarry Debug UI](https://github.com/ObjectInSpace/quarry-debug-ui) mod by ObjectInSpace turns them on without adding menus of its own, and The Quarry Access reads them like the game's other menus.
+
+To install it, put its `XAPOFX1_5.dll` into `SMG026\Binaries\Win64` in the game folder, next to `TheQuarry-Win64-Shipping.exe`. Back up your saves in `%LOCALAPPDATA%\TheQuarry\Saved\SaveGames` first: the debug menu can delete all save data and reset all settings.
+
+The main menu then has a Debug prompt, Z on the keyboard. Blockouts in the debug menu starts the story at any of 64 points, from the Prologue to the Epilogue, and where a chapter depends on earlier events, a screen before it lets you set them. Automation Path lets the game make the story's choices for you, while you still walk and explore yourself. Movie Mode gets Debug Settings, which set each kind of decision for each character to Player, Good, Bad or Random. The Quarry Debug UI page describes the rest.
+
+On the keyboard, Space opens the list of a dropdown. The up and down arrows move through its options, Home and End go to the first and last, Space or Enter keeps the option you are on, and Escape puts back the one it had.
 
 ## Reporting Problems
 
