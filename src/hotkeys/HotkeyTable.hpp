@@ -27,6 +27,13 @@ namespace qa::hotkeys
         Walk,
         Beacon,
         TarotCards,
+        DropdownOpen,
+        DropdownConfirm,
+        DropdownPrevious,
+        DropdownNext,
+        DropdownFirst,
+        DropdownLast,
+        DropdownCancel,
         DevDumpTree,
         DevTrace,
         DevLogLevel,
@@ -35,10 +42,12 @@ namespace qa::hotkeys
     // Where a key works.
     enum class Scope
     {
-        Always,  // wherever the game is in front
-        Context, // only while the player walks the character, fights or looks around; the game's otherwise
-        Dev,     // a developer's key: everywhere, and not in the README
-        Switch,  // the mod's own switch, which works while the mod is off as well
+        Always,       // wherever the game is in front
+        Context,      // only while the player walks the character, fights or looks around; the game's otherwise
+        Dropdown,     // only while a dropdown has the selection, its list open or shut; the game's otherwise
+        DropdownList, // only while the mod's list of a dropdown is open; the game's otherwise
+        Dev,          // a developer's key: everywhere, and not in the README
+        Switch,       // the mod's own switch, which works while the mod is off as well
     };
 
     struct Hotkey

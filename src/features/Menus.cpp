@@ -2,12 +2,14 @@
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
+#include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "features/DropdownList.hpp"
 #include "features/Pause.hpp"
 #include "hooks/HookDispatcher.hpp"
-#include "hotkeys/KeyHook.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -93,14 +95,17 @@ namespace qa::features
         // A dropdown (UMG ComboBoxString, on the debug screens) opens a list that Slate alone
         // draws: nothing in it can be read, and the list never takes the keyboard focus, so
         // the first arrow closes it again with nothing chosen (log of 2026-09-29, 22:16:57).
-        // The mod keeps the game's list shut and stands in for it: Space opens the mod's list
-        // on the option shown; Up, Down, Home and End move through the options and set each
-        // as it is reached; Space or Enter keeps it; Escape puts back the option the list
-        // opened on. Setting an option raises the dropdown's OnSelectionChanged, which is what
-        // the game acts on (LevelVariableSingle_C: EnumSelectionChanged, SetEnum).
+        // The mod keeps the game's list shut and stands in for it, with the dropdown keys of
+        // the hotkey table: the keys that open Slate's list (Space and Enter, Slate's Accept)
+        // open the mod's list on the option shown; the steps move through the options and set
+        // each as it is reached; the opening keys keep it, and Cancel puts back the option the
+        // list opened on. Setting an option raises the dropdown's OnSelectionChanged, which is
+        // what the game acts on (LevelVariableSingle_C: EnumSelectionChanged, SetEnum).
         UObject* g_listBox = nullptr;
-        int64_t g_listStart = -1;
+        obj::ObjectKey g_listBoxKey; // its identity beyond the address, which the game reuses
+        int64_t g_listStart = -1;    // the option the dropdown showed when the list opened, -1 for none
         int64_t g_listIndex = -1;
+        DropdownState g_dropdownState = DropdownState::None;
 
         // Screens announce themselves when they show. A screen class that overrides Show
         // declares its own function, so each of these is routed separately. The pause tabs
@@ -506,14 +511,6 @@ namespace qa::features
         }
 
         // ---- the mod's list for a dropdown ----
-        constexpr int kKeySpace = 0x20;
-        constexpr int kKeyEnter = 0x0D;
-        constexpr int kKeyEscape = 0x1B;
-        constexpr int kKeyHome = 0x24;
-        constexpr int kKeyEnd = 0x23;
-        constexpr int kKeyUp = 0x26;
-        constexpr int kKeyDown = 0x28;
-
         int64_t IntResult(UObject* target, const wchar_t* function)
         {
             int64_t value = -1;
@@ -577,55 +574,44 @@ namespace qa::features
         void CloseList()
         {
             g_listBox = nullptr;
+            g_listBoxKey = {};
             g_listStart = -1;
             g_listIndex = -1;
         }
 
+        // The dropdown the selection is on, while it is drawn, enabled and has options.
+        UObject* UsableDropdown()
+        {
+            UObject* box = ui::Dropdown(ui::Interactable(watch::CurrentFocused()));
+            if (!box || !obj::IsWidgetShown(box) || !obj::CallForBool(box, L"GetIsEnabled")) return nullptr;
+            return IntResult(box, L"GetOptionCount") > 0 ? box : nullptr;
+        }
+
+        // Whether the list open now belongs to the dropdown the selection is on.
+        bool ListStands(UObject* box)
+        {
+            return g_listBox && box == g_listBox && obj::IsSame(g_listBoxKey);
+        }
+
         void PollDropdownImpl()
         {
-            UObject* interactable = ui::Interactable(watch::CurrentFocused());
-            UObject* box = ui::Dropdown(interactable);
-            const bool usable = box && obj::IsWidgetShown(box) && obj::CallForBool(box, L"GetIsEnabled");
-            // The arrows that leave a dropdown sideways, and Tab, are still the game's: moving
-            // off it keeps the option the list was on.
-            if (g_listBox && g_listBox != box) CloseList();
-            for (const int vk : keyhook::TakeDropdownKeys())
+            UObject* box = UsableDropdown();
+            // Moving off the dropdown, to the sides, with Tab or with its screen, keeps the
+            // option the list is on; so does switching the mod off, which gives the dropdown's
+            // keys back to the game.
+            if (g_listBox && (!ListStands(box) || !gate::IsOn())) CloseList();
+            g_dropdownState = g_listBox ? DropdownState::Open : (box ? DropdownState::Selected : DropdownState::None);
+        }
+
+        dropdown::Step StepOf(DropdownKey key)
+        {
+            switch (key)
             {
-                if (!g_listBox)
-                {
-                    if (vk != kKeySpace || !usable || IntResult(box, L"GetOptionCount") <= 0) continue;
-                    g_listBox = box;
-                    g_listStart = g_listIndex = std::max<int64_t>(0, IntResult(box, L"GetSelectedIndex"));
-                    g_focusChangedAt = gamethread::NowSeconds();
-                    speech::Focus(str::Join(std::vector<std::wstring>{locale::Mod(L"ui.list.open"), OptionLine(box, g_listIndex)}, L", "));
-                    continue;
-                }
-                if (vk == kKeySpace || vk == kKeyEnter || vk == kKeyEscape)
-                {
-                    if (vk == kKeyEscape && g_listIndex != g_listStart) SelectOption(g_listBox, g_listStart);
-                    CloseList();
-                    // The control is read whole below; the value it now holds is not a change
-                    // to announce on its own as well.
-                    g_valueWidget = interactable;
-                    g_lastValue = ui::Describe(interactable).value;
-                    g_focusChangedAt = gamethread::NowSeconds();
-                    const auto text = DescribeFocused(interactable);
-                    if (!text.empty()) speech::Focus(text);
-                    continue;
-                }
-                const auto count = IntResult(g_listBox, L"GetOptionCount");
-                int64_t next = g_listIndex;
-                if (vk == kKeyUp) next = g_listIndex - 1;
-                if (vk == kKeyDown) next = g_listIndex + 1;
-                if (vk == kKeyHome) next = 0;
-                if (vk == kKeyEnd) next = count - 1;
-                next = std::clamp<int64_t>(next, 0, std::max<int64_t>(0, count - 1));
-                if (next != g_listIndex && SelectOption(g_listBox, next)) g_listIndex = next;
-                // At either end the option the list stays on is said again.
-                g_focusChangedAt = gamethread::NowSeconds();
-                speech::Focus(OptionLine(g_listBox, g_listIndex));
+            case DropdownKey::Previous: return dropdown::Step::Previous;
+            case DropdownKey::First: return dropdown::Step::First;
+            case DropdownKey::Last: return dropdown::Step::Last;
+            default: return dropdown::Step::Next;
             }
-            keyhook::SetDropdown(g_listBox ? keyhook::Dropdown::Open : (usable ? keyhook::Dropdown::Selected : keyhook::Dropdown::None));
         }
 
         void PollCarouselImpl()
@@ -813,7 +799,62 @@ namespace qa::features
         g_tabSelectorScreen = nullptr;
         g_tabSelectorCandidate.clear();
         CloseList();
-        keyhook::SetDropdown(keyhook::Dropdown::None);
+        g_dropdownState = DropdownState::None;
+    }
+
+    DropdownState CurrentDropdown()
+    {
+        return g_dropdownState;
+    }
+
+    void PressDropdownKey(DropdownKey key)
+    {
+        UObject* interactable = ui::Interactable(watch::CurrentFocused());
+        UObject* box = UsableDropdown();
+        if (g_listBox && !ListStands(box)) CloseList();
+        if (!g_listBox)
+        {
+            // A shut dropdown answers only the keys that open it.
+            if (key != DropdownKey::OpenOrKeep || !box) return;
+            const int64_t shown = IntResult(box, L"GetSelectedIndex");
+            g_listIndex = dropdown::Opened(shown, IntResult(box, L"GetOptionCount"));
+            if (g_listIndex < 0) return;
+            g_listBox = box;
+            g_listBoxKey = obj::KeyOf(box);
+            g_listStart = shown;
+            g_dropdownState = DropdownState::Open;
+            log::Info(L"menus: dropdown {} opened on option {} of {}", obj::ObjectName(box), g_listIndex + 1, IntResult(box, L"GetOptionCount"));
+            g_focusChangedAt = gamethread::NowSeconds();
+            speech::Focus(str::Join(std::vector<std::wstring>{locale::Mod(L"ui.list.open"), OptionLine(box, g_listIndex)}, L", "));
+            return;
+        }
+        if (key == DropdownKey::OpenOrKeep || key == DropdownKey::Cancel)
+        {
+            // Putting back the option it had restores none at all when it showed none.
+            if (key == DropdownKey::Cancel && IntResult(g_listBox, L"GetSelectedIndex") != g_listStart)
+            {
+                if (g_listStart >= 0)
+                    SelectOption(g_listBox, g_listStart);
+                else
+                    obj::CallNoArgs(g_listBox, L"ClearSelection");
+            }
+            log::Info(L"menus: dropdown {} {}", obj::ObjectName(g_listBox), key == DropdownKey::Cancel ? L"put back" : L"kept");
+            CloseList();
+            g_dropdownState = DropdownState::Selected;
+            // The control is read whole; the value it now holds is not a change to announce
+            // on its own as well.
+            g_valueWidget = interactable;
+            g_lastValue = ui::Describe(interactable).value;
+            g_focusChangedAt = gamethread::NowSeconds();
+            const auto text = DescribeFocused(interactable);
+            if (!text.empty()) speech::Focus(text);
+            return;
+        }
+        const int64_t next = dropdown::Moved(g_listIndex, StepOf(key), IntResult(g_listBox, L"GetOptionCount"));
+        if (next >= 0 && next != g_listIndex && SelectOption(g_listBox, next)) g_listIndex = next;
+        // At either end the option the list stays on is said again.
+        g_focusChangedAt = gamethread::NowSeconds();
+        speech::Focus(OptionLine(g_listBox, g_listIndex));
     }
 
     void MenusFeature::Install()
@@ -876,9 +917,14 @@ namespace qa::features
             out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"UINavigationConfirm"), input::KeyForAction(L"UINavigationCancel")));
         // A dropdown is opened and walked with the keys the mod takes for it.
         if (ui::Dropdown(ui::Interactable(watch::CurrentFocused())))
-            out.push_back(locale::Mod(L"help.dropdown", std::vector<std::wstring>{input::KeyDisplayName(L"SpaceBar"), input::KeyDisplayName(L"Up"),
-                                                                                  input::KeyDisplayName(L"Down"), input::KeyDisplayName(L"Enter"),
-                                                                                  input::KeyDisplayName(L"Escape")}));
+        {
+            using hotkeys::Command;
+            out.push_back(locale::Mod(L"help.dropdown",
+                                      std::vector<std::wstring>{hotkeys::SpokenKey(Command::DropdownOpen), hotkeys::SpokenKey(Command::DropdownConfirm),
+                                                                hotkeys::SpokenKey(Command::DropdownPrevious), hotkeys::SpokenKey(Command::DropdownNext),
+                                                                hotkeys::SpokenKey(Command::DropdownFirst), hotkeys::SpokenKey(Command::DropdownLast),
+                                                                hotkeys::SpokenKey(Command::DropdownCancel)}));
+        }
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);
     }

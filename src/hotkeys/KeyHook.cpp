@@ -30,16 +30,6 @@ namespace qa::keyhook
         // since changed.
         constexpr size_t kMaxPresses = 8;
         std::atomic<Dropdown> g_dropdown{Dropdown::None};
-        std::vector<int> g_dropdownKeys;        // under g_mutex
-        std::array<bool, 256> g_dropdownDown{}; // the hook thread's own: keys it took down
-
-        // The keys of an open list, and of a dropdown with the selection.
-        bool DropdownKey(Dropdown state, int vk)
-        {
-            if (state == Dropdown::Open)
-                return vk == VK_UP || vk == VK_DOWN || vk == VK_HOME || vk == VK_END || vk == VK_RETURN || vk == VK_SPACE || vk == VK_ESCAPE;
-            return state == Dropdown::Selected && vk == VK_SPACE;
-        }
         std::atomic<DWORD> g_threadId{0};
         HHOOK g_hook = nullptr;
         HANDLE g_ready = nullptr;
@@ -57,6 +47,19 @@ namespace qa::keyhook
         bool ModifierDown(int vk)
         {
             return (GetAsyncKeyState(vk) & 0x8000) != 0;
+        }
+
+        // Whether the situation a binding belongs to holds now.
+        bool Holds(Situation situation)
+        {
+            switch (situation)
+            {
+            case Situation::Always: return true;
+            case Situation::Context: return g_context.load(std::memory_order_relaxed);
+            case Situation::Dropdown: return g_dropdown.load(std::memory_order_relaxed) != Dropdown::None;
+            case Situation::DropdownList: return g_dropdown.load(std::memory_order_relaxed) == Dropdown::Open;
+            }
+            return false;
         }
 
         LRESULT CALLBACK Proc(int code, WPARAM wParam, LPARAM lParam)
@@ -91,33 +94,15 @@ namespace qa::keyhook
                     const bool ctrl = ModifierDown(VK_CONTROL);
                     const bool alt = ModifierDown(VK_MENU);
                     const bool shift = ModifierDown(VK_SHIFT);
-
-                    // A key taken for a dropdown is taken whole: its release is taken too, even
-                    // when the list has closed in between, so the game never sees half a press.
-                    if (down && !ctrl && !alt && DropdownKey(g_dropdown.load(std::memory_order_relaxed), vk))
-                    {
-                        if (!g_dropdownDown[static_cast<size_t>(vk)])
-                        {
-                            std::lock_guard lock(g_mutex);
-                            g_dropdownKeys.push_back(vk);
-                        }
-                        g_dropdownDown[static_cast<size_t>(vk)] = true;
-                        input::NoteKeyboardActivity();
-                        return 1;
-                    }
-                    if (up && g_dropdownDown[static_cast<size_t>(vk)])
-                    {
-                        g_dropdownDown[static_cast<size_t>(vk)] = false;
-                        return 1;
-                    }
-
+                    // A key is taken whole: once its press is the mod's, so is its release, even
+                    // when the situation has ended in between, so the game never sees half a press.
                     for (const auto& binding : g_bindings)
                     {
                         if (binding.vk != vk) continue;
                         if (down)
                         {
                             if (ctrl != binding.ctrl || alt != binding.alt || shift != binding.shift) continue;
-                            if (binding.contextual && !g_context.load(std::memory_order_relaxed)) continue;
+                            if (!Holds(binding.situation)) continue;
                             if (!binding.switchKey && !g_on.load(std::memory_order_relaxed)) continue;
                             // The key repeats while held; only the press counts.
                             if (!g_down[static_cast<size_t>(vk)])
@@ -205,6 +190,11 @@ namespace qa::keyhook
         g_context.store(active, std::memory_order_relaxed);
     }
 
+    void SetDropdown(Dropdown state)
+    {
+        g_dropdown.store(state, std::memory_order_relaxed);
+    }
+
     void SetOn(bool on)
     {
         g_on.store(on, std::memory_order_relaxed);
@@ -216,18 +206,5 @@ namespace qa::keyhook
         std::vector<int> presses = std::move(g_presses);
         g_presses.clear();
         return presses;
-    }
-
-    void SetDropdown(Dropdown state)
-    {
-        g_dropdown.store(state, std::memory_order_relaxed);
-    }
-
-    std::vector<int> TakeDropdownKeys()
-    {
-        std::lock_guard lock(g_mutex);
-        std::vector<int> keys = std::move(g_dropdownKeys);
-        g_dropdownKeys.clear();
-        return keys;
     }
 }
