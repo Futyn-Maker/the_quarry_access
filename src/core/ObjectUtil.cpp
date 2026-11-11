@@ -606,52 +606,6 @@ namespace qa::obj
         return all.empty() ? nullptr : all.front();
     }
 
-    bool Call(UObject* target, UFunction* function, const std::function<void(void* params)>& fill, const std::function<void(void* params)>& read)
-    {
-        if (!target || !function || !IsLive(target)) return false;
-        const int32_t size = function->GetPropertiesSize();
-        if (size < 0 || size > 4096) return false;
-        std::vector<uint8_t> buffer(static_cast<size_t>(size) + 32, 0);
-        if (fill) fill(buffer.data());
-        target->ProcessEvent(function, buffer.data());
-        if (read) read(buffer.data());
-        // Release engine-allocated string/text/object-array parameters.
-        for (auto* prop : function->ForEachProperty())
-        {
-            if (!prop) continue;
-            const auto type = PropertyTypeName(prop);
-            void* ptr = prop->ContainerPtrToValuePtr<void>(static_cast<void*>(buffer.data()));
-            if (type == L"StrProperty")
-                std::destroy_at(static_cast<FString*>(ptr));
-            else if (type == L"TextProperty")
-                std::destroy_at(static_cast<FText*>(ptr));
-        }
-        return true;
-    }
-
-    bool CallNoArgs(UObject* target, std::wstring_view functionName)
-    {
-        auto* fn = FindFunction(target, functionName);
-        if (!fn) return false;
-        return Call(target, fn, nullptr, nullptr);
-    }
-
-    std::wstring CallForText(UObject* target, std::wstring_view functionName)
-    {
-        auto* fn = FindFunction(target, functionName);
-        if (!fn) return {};
-        std::wstring result;
-        Call(target, fn, nullptr,
-             [&](void* params)
-             {
-                 for (auto* prop : fn->ForEachProperty())
-                 {
-                     if (prop && prop->GetName() == L"ReturnValue") ReadStringAt(params, prop, result);
-                 }
-             });
-        return result;
-    }
-
     namespace
     {
         // Frees what the engine allocated inside a value the mod owns: the strings of a struct
@@ -696,6 +650,58 @@ namespace qa::obj
         }
     }
 
+    bool Call(UObject* target, UFunction* function, const std::function<void(void* params)>& fill, const std::function<void(void* params)>& read)
+    {
+        if (!target || !function || !IsLive(target)) return false;
+        const int32_t size = function->GetPropertiesSize();
+        if (size < 0 || size > 4096) return false;
+        std::vector<uint8_t> buffer(static_cast<size_t>(size) + 32, 0);
+        if (fill) fill(buffer.data());
+        target->ProcessEvent(function, buffer.data());
+        if (read) read(buffer.data());
+        // Once read, the parameters let go of what they hold: the strings and texts of every
+        // one, and whatever the function returned, an array or a struct with strings and
+        // arrays of its own, which the engine allocated. A struct or an array the caller put
+        // in stays the caller's: it may be a copy of memory the game still owns.
+        for (auto* prop : function->ForEachProperty())
+        {
+            if (!prop) continue;
+            const auto type = PropertyTypeName(prop);
+            void* ptr = prop->ContainerPtrToValuePtr<void>(static_cast<void*>(buffer.data()));
+            if (type == L"StrProperty")
+                std::destroy_at(static_cast<FString*>(ptr));
+            else if (type == L"TextProperty")
+                std::destroy_at(static_cast<FText*>(ptr));
+            else if ((type == L"ArrayProperty" || type == L"StructProperty") &&
+                     prop->HasAnyPropertyFlags(static_cast<uint64_t>(RC::Unreal::EPropertyFlags::CPF_ReturnParm)))
+                ReleaseValue(prop, buffer.data());
+        }
+        return true;
+    }
+
+    bool CallNoArgs(UObject* target, std::wstring_view functionName)
+    {
+        auto* fn = FindFunction(target, functionName);
+        if (!fn) return false;
+        return Call(target, fn, nullptr, nullptr);
+    }
+
+    std::wstring CallForText(UObject* target, std::wstring_view functionName)
+    {
+        auto* fn = FindFunction(target, functionName);
+        if (!fn) return {};
+        std::wstring result;
+        Call(target, fn, nullptr,
+             [&](void* params)
+             {
+                 for (auto* prop : fn->ForEachProperty())
+                 {
+                     if (prop && prop->GetName() == L"ReturnValue") ReadStringAt(params, prop, result);
+                 }
+             });
+        return result;
+    }
+
     bool CallReturn(UObject* target, std::wstring_view functionName, const std::function<void(void* params, FProperty* returnValue)>& read)
     {
         auto* fn = FindFunction(target, functionName);
@@ -709,9 +715,6 @@ namespace qa::obj
                     [&](void* params)
                     {
                         if (read) read(params, returnValue);
-                        // Call releases plain string results itself; a returned struct owns
-                        // strings and arrays of its own.
-                        if (returnValue && PropertyTypeName(returnValue) == L"StructProperty") ReleaseValue(returnValue, params);
                     });
     }
 

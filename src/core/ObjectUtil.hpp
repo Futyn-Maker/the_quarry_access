@@ -88,7 +88,10 @@ namespace qa::obj
     UObject* FindObject(std::wstring_view fullPath);               // StaticFindObject by path
     UObject* FindFirstLive(std::wstring_view className);           // first non-CDO instance
     std::vector<UObject*> FindAllLive(std::wstring_view className);
-    // Allocates the parameter block, lets `fill` write inputs, calls ProcessEvent, lets `read` read outputs.
+    // Allocates the parameter block, lets `fill` write inputs, calls ProcessEvent, lets `read`
+    // read outputs, then releases the strings and texts of every parameter and whatever the
+    // function returned (an array, or a struct's strings and arrays), so a caller frees nothing
+    // it read. A struct or an array the caller put in is its own to release.
     bool Call(UObject* target, UFunction* function, const std::function<void(void* params)>& fill, const std::function<void(void* params)>& read);
     bool CallNoArgs(UObject* target, std::wstring_view functionName);
     // Result of a no-argument function returning FText/FString/FName. Empty when there is
@@ -97,8 +100,8 @@ namespace qa::obj
     // Result of a no-argument function returning bool; false when there is no such function.
     bool CallForBool(UObject* target, std::wstring_view functionName);
     // Calls a no-argument function and hands `read` the parameter block and the property of
-    // the return value (null when the function returns nothing), then releases what the
-    // engine allocated in a returned struct. False when there is no such function.
+    // the return value (null when the function returns nothing); Call then releases what it
+    // returned. False when there is no such function.
     bool CallReturn(UObject* target, std::wstring_view functionName, const std::function<void(void* params, FProperty* returnValue)>& read);
 
     // Widgets
