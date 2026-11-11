@@ -919,11 +919,17 @@ namespace qa::features
         if (ui::Dropdown(ui::Interactable(watch::CurrentFocused())))
         {
             using hotkeys::Command;
-            out.push_back(locale::Mod(L"help.dropdown",
-                                      std::vector<std::wstring>{hotkeys::SpokenKey(Command::DropdownOpen), hotkeys::SpokenKey(Command::DropdownConfirm),
-                                                                hotkeys::SpokenKey(Command::DropdownPrevious), hotkeys::SpokenKey(Command::DropdownNext),
-                                                                hotkeys::SpokenKey(Command::DropdownFirst), hotkeys::SpokenKey(Command::DropdownLast),
-                                                                hotkeys::SpokenKey(Command::DropdownCancel)}));
+            if (input::CurrentScheme() == input::Scheme::Gamepad)
+                out.push_back(locale::Mod(L"help.dropdown.pad",
+                                          std::vector<std::wstring>{hotkeys::SpokenKey(Command::DropdownOpen), hotkeys::SpokenKey(Command::DropdownPrevious),
+                                                                    hotkeys::SpokenKey(Command::DropdownNext), hotkeys::SpokenKey(Command::DropdownFirst),
+                                                                    hotkeys::SpokenKey(Command::DropdownLast), hotkeys::SpokenKey(Command::DropdownCancel)}));
+            else
+                out.push_back(locale::Mod(L"help.dropdown",
+                                          std::vector<std::wstring>{hotkeys::SpokenKey(Command::DropdownOpen), hotkeys::SpokenKey(Command::DropdownConfirm),
+                                                                    hotkeys::SpokenKey(Command::DropdownPrevious), hotkeys::SpokenKey(Command::DropdownNext),
+                                                                    hotkeys::SpokenKey(Command::DropdownFirst), hotkeys::SpokenKey(Command::DropdownLast),
+                                                                    hotkeys::SpokenKey(Command::DropdownCancel)}));
         }
         const auto prompts = ui::SpeakPrompts(ui::Prompts(screen));
         if (!prompts.empty()) out.push_back(prompts);

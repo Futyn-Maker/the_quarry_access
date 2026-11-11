@@ -86,6 +86,18 @@ namespace qa::input
     using PadWatcher = void (*)(std::wstring_view keyName);
     void WatchPadButtons(const std::vector<std::wstring>& keyNames, PadWatcher handler);
 
+    // Buttons the mod takes from the game while a situation of its own lasts (the list it
+    // opens for a dropdown), each an engine key name, set from the game thread whenever the
+    // situation changes; an empty list takes none. A taken button that goes down is the mod's
+    // press, and the game is shown it up from that reading until it is let go, whether or not
+    // the taking has ended in between; one already down when the taking begins stays the
+    // game's. The chord is hidden first, so a button pressed under the hold is not taken, and
+    // a watched button is answered whether or not it is taken.
+    void TakePadButtons(const std::vector<std::wstring>& keyNames);
+    // The engine key names of the taken buttons pressed since the last call, in order, the
+    // last few at most.
+    std::vector<std::wstring> TakenPadPresses();
+
     // The device the player's last mod hotkey came from is the device the answer is worded
     // for: for a moment after the press the scheme reads as that device.
     void NoteHotkeyDevice(Scheme scheme);

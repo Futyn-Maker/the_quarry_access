@@ -128,6 +128,21 @@ TEST_CASE("A dropdown's keys are taken on a dropdown alone, its list's keys only
     CHECK(dropdownKeys == 7);
 }
 
+TEST_CASE("On the pad a dropdown's keys each have a button but Enter, whose button A is Space's")
+{
+    const Command onPad[] = {Command::DropdownOpen,  Command::DropdownPrevious, Command::DropdownNext,
+                             Command::DropdownFirst, Command::DropdownLast,     Command::DropdownCancel};
+    std::set<std::wstring> buttons;
+    for (const Command command : onPad)
+    {
+        INFO(U8(CommandName(command)));
+        CHECK(*Of(command).padName);
+        CHECK(buttons.insert(Of(command).pad).second);
+    }
+    CHECK_FALSE(*Of(Command::DropdownConfirm).padName);
+    CHECK(std::wstring_view(Of(Command::DropdownOpen).pad) == L"Gamepad_FaceButton_Bottom");
+}
+
 TEST_CASE("The shipped ini sets every key of the table to its default, with the chord hold")
 {
     const auto ini = ReadText(Repo() / "mod" / "QuarryAccess.ini");
