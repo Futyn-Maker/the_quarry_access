@@ -9,12 +9,10 @@
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 
-#include <Unreal/Core/Containers/Array.hpp>
 #include <Unreal/FString.hpp>
 
 #include <algorithm>
 #include <cwctype>
-#include <memory>
 
 namespace qa::ui
 {
@@ -330,7 +328,6 @@ namespace qa::ui
                                                              if (index == 0 && obj::IsLive(item) && obj::CallForText(item, L"GetChapterName") == name)
                                                                  index = count;
                                                          });
-                                std::destroy_at(static_cast<RC::Unreal::TArray<uint8_t>*>(obj::ValuePtrAt(params, returnValue)));
                             });
             return index;
         }
