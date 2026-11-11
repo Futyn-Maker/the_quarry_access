@@ -911,8 +911,6 @@ namespace qa::obj
                                                UObject* row = nullptr;
                                                if (ReadObjectAt(element, inner, row) && IsLive(row)) rows.push_back(row);
                                            });
-                       // The array the call returned is the mod's to free.
-                       std::destroy_at(static_cast<TArray<uint8_t>*>(ValuePtrAt(params, returnValue)));
                    });
         return rows;
     }
