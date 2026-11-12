@@ -125,9 +125,10 @@ namespace qa::ui
     // Everything readable on a screen, for reading it out on request.
     std::wstring ScreenText(UObject* screen);
 
-    // Selectors of the screen that the tab keys turn wherever the focus is: those showing
-    // their own tab-key prompts (the mode of the Wolf Pack lobby).
-    std::vector<UObject*> TabSelectors(UObject* screen);
+    // Selectors that the screen turns wherever the focus is: those showing their own
+    // tab-key prompts (the mode of the Wolf Pack lobby), and the pack's votes that Left and
+    // Right page through at the end of a Wolf Pack chapter.
+    std::vector<UObject*> ScreenSelectors(UObject* screen);
 
     // True when the screen holds anything to select besides the tabs of the pause menu.
     bool HasControls(UObject* screen);
