@@ -489,6 +489,42 @@ namespace qa::ui
             return d;
         }
 
+        // The pack's votes at the end of a Wolf Pack chapter: a carousel of pages, each of two
+        // choices with three lines apiece (the share that took the option chosen, the share
+        // that wanted the other, the share that did not vote). AddInfoByIndex writes choice
+        // 2i into the first container and 2i+1 into the second, which it collapses on a last
+        // page with one choice; the dots below it show the page and the page count
+        // (MenuCarouselEntriesSummary.Refresh(CurrentVisibleEntryIndex, NumVisibleEntries)).
+        // The screen turns it with Left and Right wherever the focus is (see ScreenSelectors).
+        if (obj::IsA(interactable, L"PackStats_Carousel_C"))
+        {
+            std::vector<std::wstring> lines;
+            for (const wchar_t* containerProperty : {L"PackStats_Container01", L"PackStats_Container02"})
+            {
+                UObject* container = nullptr;
+                if (!obj::ReadObject(interactable, containerProperty, container) || !obj::IsLive(container) || !obj::IsWidgetVisible(container)) continue;
+                for (const wchar_t* line : {L"String01", L"String02", L"String03"})
+                    lines.push_back(str::StripMarkup(BlockText(container, line)));
+            }
+            int64_t page = -1;
+            int64_t pages = 0;
+            obj::ReadInt(interactable, L"CurrentVisibleEntryIndex", page);
+            obj::ReadInt(interactable, L"NumVisibleEntries", pages);
+            std::vector<std::wstring> parts{str::JoinSentences(lines)};
+            // The page is drawn as dots, so the mod says it as a place, at the detailed level.
+            if (cfg::Detailed() && page >= 0 && pages > 1) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(page + 1), std::to_wstring(pages)));
+            d.value = str::Join(parts, L", ");
+            static UObject* lastStats = nullptr;
+            static std::wstring lastValue;
+            if (interactable != lastStats || d.value != lastValue)
+            {
+                lastStats = interactable;
+                lastValue = d.value;
+                log::Info(L"packstats: page {} of {}: {}", page + 1, pages, d.value);
+            }
+            return d;
+        }
+
         // An engine control placed on a screen as it is: a dropdown or a check box is named
         // by the words beside it and says its value; a button carries its own words.
         if (IsEngineControl(interactable))
@@ -1043,18 +1079,24 @@ namespace qa::ui
                     add(text);
             }
         }
-        // A selector the tab keys turn wherever the focus is belongs to the screen rather
-        // than to the selection, so its setting is part of what the screen says.
-        for (auto* selector : TabSelectors(screen))
+        // A selector the screen turns wherever the focus is belongs to the screen rather than
+        // to the selection, so its setting is part of what the screen says.
+        for (auto* selector : ScreenSelectors(screen))
             add(Speak(Describe(selector)));
         return JoinLines(parts);
     }
 
-    std::vector<UObject*> TabSelectors(UObject* screen)
+    std::vector<UObject*> ScreenSelectors(UObject* screen)
     {
         std::vector<UObject*> selectors;
         if (!screen) return selectors;
         const auto roots = ScreenRoots(screen);
+        // The pack's votes at the end of a Wolf Pack chapter: the screen (WolfPackStats_C,
+        // BindInputActions) turns them on UINavigationLeft and UINavigationRight.
+        for (auto* stats : obj::FindAllLive(L"PackStats_Carousel_C"))
+        {
+            if (OnScreen(stats, roots)) selectors.push_back(stats);
+        }
         for (auto* selector : obj::FindAllLive(L"MenuCarousel_New_C"))
         {
             if (!OnScreen(selector, roots)) continue;

@@ -144,6 +144,10 @@ A player may be left with no characters. The game asks whether you meant it and 
 
 During the game, whenever the next scene belongs to somebody else, the game stops and says whose turn it is. Hand over the controller or the keyboard and confirm. Everything else plays as it does alone.
 
+### Wolf Pack
+
+At the end of each chapter of a Wolf Pack game, the mod reads how the pack voted on that chapter's choices, two choices at a time. The left and right arrow keys or the D-pad turn to the next two.
+
 ## Quarry Debug
 
 The game comes with developer menus that it keeps hidden. The [Quarry Debug UI](https://github.com/ObjectInSpace/quarry-debug-ui) mod by ObjectInSpace turns them on without adding menus of its own, and The Quarry Access reads them like the game's other menus.

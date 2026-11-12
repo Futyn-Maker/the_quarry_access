@@ -84,9 +84,9 @@ namespace qa::features
         UObject* g_assignedCharacter = nullptr;
         std::wstring g_assignedPlayer;
 
-        // The selectors of the screen that the tab keys turn wherever the focus is (the
-        // mode of the Wolf Pack lobby), with what each said at the last poll: turning one
-        // does not move the focus either.
+        // The selectors that the screen turns wherever the focus is (the mode of the Wolf
+        // Pack lobby, the pack's votes at the end of a chapter), with what each said at the
+        // last poll: turning one does not move the focus either.
         std::vector<std::pair<UObject*, std::wstring>> g_tabSelectors;
         UObject* g_tabSelectorScreen = nullptr;
         unsigned long long g_lastTabSelectorScan = 0;
@@ -402,7 +402,7 @@ namespace qa::features
             if (!title.empty() && !sameTitle && !RepeatsTab(title)) parts.push_back(title);
             if (!sameScreen) parts.push_back(ScreenHint(g_screen));
             if (!sameBody) parts.push_back(body);
-            // A control the screen already names in its text (a selector the tab keys turn)
+            // A control the screen already names in its text (a selector the screen turns)
             // is not named again as the selection.
             if (body.find(focusText) == std::wstring::npos) parts.push_back(str::JoinSentences({GroupHeading(interactable), focusText}));
             parts.push_back(prompts);
@@ -683,7 +683,7 @@ namespace qa::features
                 // What a selector said is kept across scans; one found anew is taken as it
                 // is, since the screen that shows it reads it.
                 std::vector<std::pair<UObject*, std::wstring>> found;
-                for (auto* selector : ui::TabSelectors(g_screen))
+                for (auto* selector : ui::ScreenSelectors(g_screen))
                 {
                     const auto known = std::find_if(g_tabSelectors.begin(), g_tabSelectors.end(), [&](const auto& s) { return s.first == selector; });
                     const bool keep = g_screen == g_tabSelectorScreen && known != g_tabSelectors.end();
