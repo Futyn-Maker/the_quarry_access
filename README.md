@@ -23,7 +23,8 @@ The Quarry Access is a mod that makes [The Quarry](https://store.steampowered.co
 - Character fates in the epilogue
 - Text on in-game monitors, such as the newspaper in the epilogue
 - Credits
-- Couch co-op, Movie Mode and Wolf Pack screens
+- Couch co-op and Movie Mode screens
+- Full Wolf Pack mode support, including the pack's votes during choices and the summary at the end of each chapter
 - The game's hidden developer menus, with the Quarry Debug UI mod
 - Keyboard and gamepad keys for all mod functions
 - NVDA, JAWS, Narrator and other screen readers, SAPI and braille
@@ -146,7 +147,9 @@ During the game, whenever the next scene belongs to somebody else, the game stop
 
 ### Wolf Pack
 
-At the end of each chapter of a Wolf Pack game, the mod reads how the pack voted on that chapter's choices, two choices at a time. The left and right arrow keys or the D-pad turn to the next two.
+Wolf Pack lets you host or join a game with friends. During a choice, the mod reads how the pack votes as the votes come in, whether or not you have voted yet.
+
+At the end of each chapter, the game shows how the pack voted on that chapter's choices, two choices at a time, and the mod reads them. The left and right arrow keys or the D-pad turn to the other choices.
 
 ## Quarry Debug
 
