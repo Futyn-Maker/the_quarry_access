@@ -87,10 +87,10 @@ namespace qa::features
         // The selectors that the screen turns wherever the focus is (the mode of the Wolf
         // Pack lobby, the pack's votes at the end of a chapter), with what each said at the
         // last poll: turning one does not move the focus either.
-        std::vector<std::pair<UObject*, std::wstring>> g_tabSelectors;
-        UObject* g_tabSelectorScreen = nullptr;
-        unsigned long long g_lastTabSelectorScan = 0;
-        std::wstring g_tabSelectorCandidate;
+        std::vector<std::pair<UObject*, std::wstring>> g_screenSelectors;
+        UObject* g_screenSelectorScreen = nullptr;
+        unsigned long long g_lastScreenSelectorScan = 0;
+        std::wstring g_screenSelectorCandidate;
 
         // A dropdown (UMG ComboBoxString, on the debug screens) opens a list that Slate alone
         // draws: nothing in it can be read, and the list never takes the keyboard focus, so
@@ -674,36 +674,36 @@ namespace qa::features
             speech::Focus(ui::CharacterName(character) + L": " + (player.empty() ? locale::Mod(L"couch.free") : player));
         }
 
-        void PollTabSelectorsImpl()
+        void PollScreenSelectorsImpl()
         {
             const auto frame = gamethread::FrameCount();
             if (frame % 4 != 0 || !obj::IsLive(g_screen)) return;
-            if (g_screen != g_tabSelectorScreen || frame - g_lastTabSelectorScan > 30)
+            if (g_screen != g_screenSelectorScreen || frame - g_lastScreenSelectorScan > 30)
             {
                 // What a selector said is kept across scans; one found anew is taken as it
                 // is, since the screen that shows it reads it.
                 std::vector<std::pair<UObject*, std::wstring>> found;
                 for (auto* selector : ui::ScreenSelectors(g_screen))
                 {
-                    const auto known = std::find_if(g_tabSelectors.begin(), g_tabSelectors.end(), [&](const auto& s) { return s.first == selector; });
-                    const bool keep = g_screen == g_tabSelectorScreen && known != g_tabSelectors.end();
+                    const auto known = std::find_if(g_screenSelectors.begin(), g_screenSelectors.end(), [&](const auto& s) { return s.first == selector; });
+                    const bool keep = g_screen == g_screenSelectorScreen && known != g_screenSelectors.end();
                     found.emplace_back(selector, keep ? known->second : ui::Speak(ui::Describe(selector)));
                 }
-                g_tabSelectors = std::move(found);
-                g_tabSelectorScreen = g_screen;
-                g_lastTabSelectorScan = frame;
+                g_screenSelectors = std::move(found);
+                g_screenSelectorScreen = g_screen;
+                g_lastScreenSelectorScan = frame;
             }
             UObject* focused = ui::Interactable(watch::CurrentFocused());
-            for (auto& [selector, said] : g_tabSelectors)
+            for (auto& [selector, said] : g_screenSelectors)
             {
                 if (!obj::IsLive(selector) || selector == focused) continue;
                 const auto text = ui::Speak(ui::Describe(selector));
                 if (text == said) continue;
                 // The description beside the selector is written a moment after its value,
                 // so a new reading is taken once it holds for two polls.
-                if (text != g_tabSelectorCandidate)
+                if (text != g_screenSelectorCandidate)
                 {
-                    g_tabSelectorCandidate = text;
+                    g_screenSelectorCandidate = text;
                     continue;
                 }
                 said = text;
@@ -713,9 +713,9 @@ namespace qa::features
             }
         }
 
-        void PollTabSelectors(float)
+        void PollScreenSelectors(float)
         {
-            obj::SafeInvokeLogged(L"menus.PollTabSelectorsImpl", [](void*) { PollTabSelectorsImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"menus.PollScreenSelectorsImpl", [](void*) { PollScreenSelectorsImpl(); }, nullptr);
         }
 
         void PollArrival(float)
@@ -795,9 +795,9 @@ namespace qa::features
         g_assignedCharacter = nullptr;
         g_assignedPlayer.clear();
         g_group = nullptr;
-        g_tabSelectors.clear();
-        g_tabSelectorScreen = nullptr;
-        g_tabSelectorCandidate.clear();
+        g_screenSelectors.clear();
+        g_screenSelectorScreen = nullptr;
+        g_screenSelectorCandidate.clear();
         CloseList();
         g_dropdownState = DropdownState::None;
     }
@@ -875,7 +875,7 @@ namespace qa::features
         gamethread::AddPoller(L"menus.prompts", &PollPrompts);
         gamethread::AddPoller(L"menus.value", &PollValue);
         gamethread::AddPoller(L"menus.pages", &PollPages);
-        gamethread::AddPoller(L"menus.tabselectors", &PollTabSelectors);
+        gamethread::AddPoller(L"menus.screenselectors", &PollScreenSelectors);
         gamethread::AddPoller(L"menus.dropdown", &PollDropdown);
     }
 
